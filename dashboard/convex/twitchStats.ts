@@ -27,7 +27,7 @@ export const history = query({
       .query('twitchStats')
       .withIndex('by_channel', (q) => q.eq('channel', channel).gte('capturedAt', since))
       .order('desc')
-      .take(limit ?? 1000)
+      .take(limit ?? 24 * 60 * 2)
     return rows.reverse()
   },
 })

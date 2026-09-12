@@ -27,6 +27,7 @@ export interface DirectorPersistence {
     source: SessionModel
   }) => Promise<unknown>
   generateUploadUrl: () => Promise<string>
+  deleteStorage: (args: { storageId: Id<'_storage'> }) => Promise<unknown>
   createRecording: (args: {
     sessionId?: Id<'sessions'>
     storageId: Id<'_storage'>
@@ -45,10 +46,11 @@ export function useDirectorPersistence(): DirectorPersistence {
   const logPromptEvent = useMutation(api.promptEvents.log)
   const createClip = useMutation(api.clips.create)
   const generateUploadUrl = useMutation(api.recordings.generateUploadUrl)
+  const deleteStorage = useMutation(api.recordings.deleteStorage)
   const createRecording = useMutation(api.recordings.create)
 
   return useMemo(
-    () => ({ createSession, setSessionStatus, logPromptEvent, createClip, generateUploadUrl, createRecording }),
-    [createSession, setSessionStatus, logPromptEvent, createClip, generateUploadUrl, createRecording],
+    () => ({ createSession, setSessionStatus, logPromptEvent, createClip, generateUploadUrl, deleteStorage, createRecording }),
+    [createSession, setSessionStatus, logPromptEvent, createClip, generateUploadUrl, deleteStorage, createRecording],
   )
 }

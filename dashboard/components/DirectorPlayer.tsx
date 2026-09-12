@@ -56,8 +56,10 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const recordingStoppedAtRef = useRef<number | null>(null)
   const convexSessionIdRef = useRef<Id<'sessions'> | null>(null)
   const clipIndexRef = useRef(0)
+  // Monotonic attempt counter: invalidating it aborts an in-flight connect().
+  const connectAttemptRef = useRef(0)
 
-  const [state, setState] = useState<RealtimeState | 'idle'>('idle')
+  const [state, setState] = useState<RealtimeState | 'idle' | 'closing'>('idle')
   const [error, setError] = useState<string | null>(null)
   const [muted, setMuted] = useState(true)
   const [prompt, setPrompt] = useState(DEFAULT_PROMPT)
@@ -74,6 +76,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const logPromptEvent = persistence?.logPromptEvent ?? noop
   const createClip = persistence?.createClip ?? noop
   const generateUploadUrl = persistence?.generateUploadUrl
+  const deleteStorage = persistence?.deleteStorage
   const createRecording = persistence?.createRecording ?? noop
 
   const appendLog = useCallback((line: string) => {
@@ -109,7 +112,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   }, [])
 
   const uploadRecording = useCallback(
-    async (blob: Blob) => {
+    async (blob: Blob, sessionId?: Id<'sessions'>) => {
       if (!convexEnabled || !generateUploadUrl) {
         appendLog('Recording captured but NEXT_PUBLIC_CONVEX_URL is not set; download it instead.')
         const url = URL.createObjectURL(blob)
@@ -121,6 +124,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         return
       }
       setUploading(true)
+      let storageId: Id<'_storage'> | null = null
       try {
         const uploadUrl = await generateUploadUrl()
         const res = await fetch(uploadUrl, {
@@ -129,13 +133,13 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           body: blob,
         })
         if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
-        const { storageId } = (await res.json()) as { storageId: Id<'_storage'> }
+        storageId = ((await res.json()) as { storageId: Id<'_storage'> }).storageId
         const durationSeconds =
           recordingStartedAtRef.current && recordingStoppedAtRef.current
             ? (recordingStoppedAtRef.current - recordingStartedAtRef.current) / 1000
             : 0
         await createRecording({
-          sessionId: convexSessionIdRef.current ?? undefined,
+          sessionId: sessionId ?? convexSessionIdRef.current ?? undefined,
           storageId,
           mimeType: blob.type,
           sizeBytes: blob.size,
@@ -147,13 +151,33 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         appendLog(`Recording saved (${formatBytes(blob.size)})`)
       } catch (e) {
         appendLog(`upload: ${e instanceof Error ? e.message : String(e)}`)
+        // The uploaded blob may exist with no recording row — delete it and offer
+        // a local download so nothing is stranded in storage without the user seeing it.
+        if (storageId && deleteStorage) {
+          try {
+            await deleteStorage({ storageId })
+            appendLog('Orphaned upload cleaned from Convex storage')
+          } catch (de) {
+            appendLog(`cleanup: ${de instanceof Error ? de.message : String(de)}`)
+          }
+        }
+        try {
+          const url = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = url
+          a.download = `director-${Date.now()}.webm`
+          a.click()
+          URL.revokeObjectURL(url)
+        } catch {
+          // ignore
+        }
       } finally {
         setUploading(false)
         recordingStartedAtRef.current = null
         recordingStoppedAtRef.current = null
       }
     },
-    [convexEnabled, generateUploadUrl, createRecording, activePrompt, appendLog],
+    [convexEnabled, generateUploadUrl, createRecording, deleteStorage, activePrompt, appendLog],
   )
 
   const startRecorder = useCallback(() => {
@@ -262,23 +286,28 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   )
 
   const disconnect = useCallback(async () => {
+    // Invalidate any in-flight connect() so a cancelled startup can't open a session.
+    connectAttemptRef.current += 1
+    setState('closing')
     const blob = await stopRecorder()
     const session = sessionRef.current
     sessionRef.current = null
     if (session) await session.close()
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
-    setState('idle')
-    if (blob) await uploadRecording(blob)
-    await persist(() =>
-      convexSessionIdRef.current
-        ? setSessionStatus({ sessionId: convexSessionIdRef.current, status: 'ended' })
-        : Promise.resolve(),
-    )
+    // Capture this session's id before clearing the ref — a new connect() may
+    // replace it while the upload below is still running.
+    const sessionId = convexSessionIdRef.current
     convexSessionIdRef.current = null
+    if (blob) await uploadRecording(blob, sessionId ?? undefined)
+    await persist(() =>
+      sessionId ? setSessionStatus({ sessionId, status: 'ended' }) : Promise.resolve(),
+    )
+    setState('idle')
   }, [stopRecorder, uploadRecording, persist, setSessionStatus])
 
   const connect = useCallback(async () => {
+    const attempt = ++connectAttemptRef.current
     setError(null)
     setLog([])
     promptVersionRef.current = 0
@@ -295,6 +324,15 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         })
       } catch (e) {
         appendLog(`convex: ${e instanceof Error ? e.message : String(e)}`)
+      }
+      // Cancelled while the Convex row was being created: mark it ended and bail.
+      if (attempt !== connectAttemptRef.current) {
+        const orphanId = convexSessionIdRef.current
+        convexSessionIdRef.current = null
+        if (orphanId) {
+          void persist(() => setSessionStatus({ sessionId: orphanId, status: 'ended' }))
+        }
+        return
       }
     }
 
@@ -347,7 +385,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   }, [])
 
   const live = state === 'live'
-  const busy = state === 'opening'
+  const busy = state === 'opening' || state === 'closing'
 
   return (
     <div className="fal-card">
@@ -386,7 +424,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           <video ref={videoRef} autoPlay playsInline muted={muted} className="w-full h-full object-contain" />
           {!live && (
             <div className="absolute inset-0 flex items-center justify-center text-fal-gray-400 text-sm">
-              {busy ? 'Negotiating WebRTC session…' : 'Director offline'}
+              {state === 'opening' ? 'Negotiating WebRTC session…' : state === 'closing' ? 'Stopping…' : 'Director offline'}
             </div>
           )}
           {live && (

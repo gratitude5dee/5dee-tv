@@ -7,6 +7,14 @@ export const generateUploadUrl = mutation({
   handler: async (ctx) => ctx.storage.generateUploadUrl(),
 })
 
+/** Deletes an uploaded storage object that never got a recording row. */
+export const deleteStorage = mutation({
+  args: { storageId: v.id('_storage') },
+  handler: async (ctx, { storageId }) => {
+    await ctx.storage.delete(storageId)
+  },
+})
+
 export const create = mutation({
   args: {
     sessionId: v.optional(v.id('sessions')),

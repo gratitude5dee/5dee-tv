@@ -17,7 +17,15 @@ function configuredOrigin(): string | null {
 function isAllowedTarget(url: string): boolean {
   try {
     const parsed = new URL(url);
-    if (parsed.origin === configuredOrigin()) return true;
+    const origin = configuredOrigin();
+    // The configured app origin is only allowed over https, except localhost dev.
+    if (origin && parsed.origin === origin) {
+      return (
+        parsed.protocol === 'https:' ||
+        parsed.hostname === 'localhost' ||
+        parsed.hostname === '127.0.0.1'
+      );
+    }
     return parsed.protocol === 'https:' && FAL_HOST.test(parsed.hostname);
   } catch {
     return false;
