@@ -189,8 +189,12 @@ Custom domain: Pages project → Custom domains → add `stream.wzrd.tech`. Clou
 | Default hostname | `https://5dee-tv-admin.pages.dev` |
 | Custom domain | `https://stream.wzrd.tech` (proxied `CNAME stream → 5dee-tv-admin.pages.dev`) |
 | Convex | `https://hallowed-hare-401.convex.cloud` |
+| Access team | `shrill-cherry-ba30.cloudflareaccess.com` |
+| Access app | `5dee-tv admin (stream.wzrd.tech)`, allow policy on `gratitude@5-dee.com` (one-time PIN) |
 
-The deployment returns **401 on every route until auth is configured** — this is the intended fail-closed behaviour. Enable Zero Trust on the account, create the Access application, then set `CF_ACCESS_TEAM_DOMAIN` and `CF_ACCESS_AUD` in the Pages environment variables and redeploy.
+Both layers are active: `stream.wzrd.tech/admin` 302-redirects to the Access login, and the bare `5dee-tv-admin.pages.dev` hostname — which the Access app does not cover — still returns 401 because the middleware verifies the Access JWT at the origin. That is the reason to prefer `CF_ACCESS_*` over `ADMIN_AUTH_MODE=edge-only`.
+
+To grant someone else access, add their email to the Access application's allow policy; no redeploy is needed.
 
 ## Usage Guide
 
