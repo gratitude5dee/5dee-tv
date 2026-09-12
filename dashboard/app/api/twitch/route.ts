@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { runtimeEnv } from '../../../lib/runtimeEnv'
 
 export const runtime = 'edge'
 export const dynamic = 'force-dynamic'
@@ -70,9 +71,9 @@ interface HelixStream {
 }
 
 export async function GET() {
-  const clientId = process.env.TWITCH_CLIENT_ID
-  const clientSecret = process.env.TWITCH_CLIENT_SECRET
-  const channel = (process.env.TWITCH_CHANNEL || process.env.NEXT_PUBLIC_TWITCH_CHANNEL || '').toLowerCase()
+  const clientId = runtimeEnv('TWITCH_CLIENT_ID')
+  const clientSecret = runtimeEnv('TWITCH_CLIENT_SECRET')
+  const channel = (runtimeEnv('TWITCH_CHANNEL') || runtimeEnv('NEXT_PUBLIC_TWITCH_CHANNEL') || '').toLowerCase()
 
   if (!clientId || !clientSecret) {
     return NextResponse.json(

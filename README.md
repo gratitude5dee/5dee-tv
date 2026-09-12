@@ -174,10 +174,12 @@ Pages project settings (also in `dashboard/wrangler.toml`):
 - Root directory: `dashboard`
 - Build command: `npm run pages:build`
 - Build output directory: `.vercel/output/static`
-- Compatibility flags: `nodejs_compat`
-- Environment variables (Production **and** Preview): `NEXT_PUBLIC_FAL_API_URL`, `NEXT_PUBLIC_CONVEX_URL`, `TWITCH_CLIENT_ID`, `TWITCH_CHANNEL` as plain vars; `FAL_KEY` and `TWITCH_CLIENT_SECRET` as **encrypted secrets** (`wrangler pages secret put FAL_KEY`). Never commit them.
+- Compatibility flags: `nodejs_compat`, `nodejs_compat_populate_process_env`
+- Environment variables: `NEXT_PUBLIC_FAL_API_URL`, `NEXT_PUBLIC_CONVEX_URL`, `TWITCH_CLIENT_ID`, `TWITCH_CHANNEL`, `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` as plain vars in `[vars]`; `FAL_KEY` and `TWITCH_CLIENT_SECRET` as **encrypted secrets** on the Pages project (`wrangler pages secret put FAL_KEY`). Never commit the secrets.
 
-`wrangler.toml` deliberately has no `[vars]` block — values there override the Pages project's environment variables on every deploy, which would clobber the real configuration with placeholders.
+Plain (non-secret) variables live in `wrangler.toml`'s `[vars]` block, and secrets live in the Pages project. That split is forced by direct upload: `wrangler pages deploy` replaces the project's **plain-text** variables with whatever `[vars]` contains, so vars set only in the dashboard disappear on the next deploy — while `secret_text` variables survive it. Keep `FAL_KEY`/`TWITCH_CLIENT_SECRET` out of the repo, in the project, and keep the public identifiers (`CF_ACCESS_*`, `TWITCH_CLIENT_ID`, `TWITCH_CHANNEL`, `NEXT_PUBLIC_CONVEX_URL`) in `[vars]`.
+
+Server code must read env through `dashboard/lib/runtimeEnv.ts`, not `process.env` directly. On Pages the values arrive as request-context bindings, and Next inlines `process.env.*` in middleware at build time — so `process.env.CF_ACCESS_TEAM_DOMAIN` in `middleware.ts` is baked to `undefined` and the gate silently 401s everything. `runtimeEnv()` reads `getRequestContext().env` first and falls back to `process.env` for `next dev`. `nodejs_compat_populate_process_env` is also set, which is what makes `process.env` work in the edge API routes.
 
 Custom domain: Pages project → Custom domains → add `stream.wzrd.tech`. Cloudflare creates the CNAME to `<project>.pages.dev` automatically if the zone is on Cloudflare; otherwise add `CNAME stream -> <project>.pages.dev`. No `basePath` is configured — the app's `/admin` folder maps directly to `stream.wzrd.tech/admin`.
 
@@ -190,11 +192,17 @@ Custom domain: Pages project → Custom domains → add `stream.wzrd.tech`. Clou
 | Custom domain | `https://stream.wzrd.tech` (proxied `CNAME stream → 5dee-tv-admin.pages.dev`) |
 | Convex | `https://sleek-opossum-939.convex.cloud` (production deployment) |
 | Access team | `shrill-cherry-ba30.cloudflareaccess.com` |
-| Access app | `5dee-tv admin (stream.wzrd.tech)`, allow policy on `gratitude@5-dee.com` (one-time PIN) |
+| Access app | `5dee-tv admin (stream.wzrd.tech)`, allow policy on `gratitude@5-dee.com` (one-time PIN) + a non-identity policy for the `devin-admin-test` service token |
 
 Both layers are active: `stream.wzrd.tech/admin` 302-redirects to the Access login, and the bare `5dee-tv-admin.pages.dev` hostname — which the Access app does not cover — still returns 401 because the middleware verifies the Access JWT at the origin. That is the reason to prefer `CF_ACCESS_*` over `ADMIN_AUTH_MODE=edge-only`.
 
 To grant someone else access, add their email to the Access application's allow policy; no redeploy is needed.
+
+For headless checks, the `devin-admin-test` service token is accepted by a non-identity policy on the same app:
+
+```bash
+curl -H "CF-Access-Client-Id: <id>.access" -H "CF-Access-Client-Secret: <secret>" https://stream.wzrd.tech/admin
+```
 
 ## Usage Guide
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { runtimeEnv } from '../../../../lib/runtimeEnv';
 
 export const runtime = 'edge';
 
@@ -8,7 +9,8 @@ const FAL_HOST = /(^|\.)fal\.(ai|run)$/;
 
 function configuredOrigin(): string | null {
   try {
-    return process.env.NEXT_PUBLIC_FAL_API_URL ? new URL(process.env.NEXT_PUBLIC_FAL_API_URL).origin : null;
+    const apiUrl = runtimeEnv('NEXT_PUBLIC_FAL_API_URL');
+    return apiUrl ? new URL(apiUrl).origin : null;
   } catch {
     return null;
   }
@@ -34,7 +36,7 @@ function isAllowedTarget(url: string): boolean {
 
 export async function POST(request: NextRequest) {
   try {
-    const FAL_KEY = process.env.FAL_KEY;
+    const FAL_KEY = runtimeEnv('FAL_KEY');
     
     if (!FAL_KEY) {
       return NextResponse.json(
