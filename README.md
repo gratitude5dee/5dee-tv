@@ -154,6 +154,8 @@ Note: the Convex deployment itself has no auth — anyone with `NEXT_PUBLIC_CONV
 
 If you'd rather use app-level auth (Clerk/Auth.js), replace the check in `middleware.ts`.
 
+Caveat: a Pages project is also reachable on its `*.pages.dev` hostname, which an Access app scoped to the custom domain doesn't cover. Either add `5dee-tv-admin.pages.dev` as a second hostname in the Access application, or prefer the `CF_ACCESS_*` JWT-verification mode (which protects every origin path regardless of hostname).
+
 ### 6. Deploy the dashboard to Cloudflare Pages (`stream.wzrd.tech`)
 
 The dashboard uses server API routes (`/api/fal/proxy`, `/api/fal/sdk-proxy`, `/api/twitch`) so it is deployed with `@cloudflare/next-on-pages`; all API routes and the middleware run on the edge runtime.
