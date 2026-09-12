@@ -132,6 +132,8 @@ npx convex deploy       # production deployment (set NEXT_PUBLIC_CONVEX_URL on P
 
 Schema and functions live in `dashboard/convex/` (`sessions`, `clips`, `recordings`, `promptEvents`, `generations` (legacy LTX history), `twitchStats`). Run `npx convex codegen` after changing the schema to refresh `convex/_generated/`.
 
+Deployed project: `5dee-tv`. The production deployment is `sleek-opossum-939` (`https://sleek-opossum-939.convex.cloud`) and is what the live site is built against; `hallowed-hare-401` is the development deployment. `npx convex deploy` targets whichever deployment the `CONVEX_DEPLOY_KEY` belongs to (`prod:` vs `dev:` prefix).
+
 ### 5. Admin panel
 
 | Route | Contents |
@@ -175,7 +177,24 @@ Pages project settings (also in `dashboard/wrangler.toml`):
 - Compatibility flags: `nodejs_compat`
 - Environment variables (Production **and** Preview): `NEXT_PUBLIC_FAL_API_URL`, `NEXT_PUBLIC_CONVEX_URL`, `TWITCH_CLIENT_ID`, `TWITCH_CHANNEL` as plain vars; `FAL_KEY` and `TWITCH_CLIENT_SECRET` as **encrypted secrets** (`wrangler pages secret put FAL_KEY`). Never commit them.
 
+`wrangler.toml` deliberately has no `[vars]` block — values there override the Pages project's environment variables on every deploy, which would clobber the real configuration with placeholders.
+
 Custom domain: Pages project → Custom domains → add `stream.wzrd.tech`. Cloudflare creates the CNAME to `<project>.pages.dev` automatically if the zone is on Cloudflare; otherwise add `CNAME stream -> <project>.pages.dev`. No `basePath` is configured — the app's `/admin` folder maps directly to `stream.wzrd.tech/admin`.
+
+#### Live deployment
+
+| | |
+|---|---|
+| Pages project | `5dee-tv-admin` (production branch `main`) |
+| Default hostname | `https://5dee-tv-admin.pages.dev` |
+| Custom domain | `https://stream.wzrd.tech` (proxied `CNAME stream → 5dee-tv-admin.pages.dev`) |
+| Convex | `https://sleek-opossum-939.convex.cloud` (production deployment) |
+| Access team | `shrill-cherry-ba30.cloudflareaccess.com` |
+| Access app | `5dee-tv admin (stream.wzrd.tech)`, allow policy on `gratitude@5-dee.com` (one-time PIN) |
+
+Both layers are active: `stream.wzrd.tech/admin` 302-redirects to the Access login, and the bare `5dee-tv-admin.pages.dev` hostname — which the Access app does not cover — still returns 401 because the middleware verifies the Access JWT at the origin. That is the reason to prefer `CF_ACCESS_*` over `ADMIN_AUTH_MODE=edge-only`.
+
+To grant someone else access, add their email to the Access application's allow policy; no redeploy is needed.
 
 ## Usage Guide
 
