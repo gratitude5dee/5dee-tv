@@ -181,6 +181,8 @@ Plain (non-secret) variables live in `wrangler.toml`'s `[vars]` block, and secre
 
 Server code must read env through `dashboard/lib/runtimeEnv.ts`, not `process.env` directly. On Pages the values arrive as request-context bindings, and Next inlines `process.env.*` in middleware at build time — so `process.env.CF_ACCESS_TEAM_DOMAIN` in `middleware.ts` is baked to `undefined` and the gate silently 401s everything. `runtimeEnv()` reads `getRequestContext().env` first and falls back to `process.env` for `next dev`. `nodejs_compat_populate_process_env` is also set, which is what makes `process.env` work in the edge API routes.
 
+Client-side `NEXT_PUBLIC_*` vars are a separate build-time inline. `dashboard/.env.production` holds the non-secret defaults (`NEXT_PUBLIC_CONVEX_URL`) so a clean `pages:build` produces a working bundle — the `[vars]` binding exists only at runtime and can't rescue a bundle that was compiled without it.
+
 Custom domain: Pages project → Custom domains → add `stream.wzrd.tech`. Cloudflare creates the CNAME to `<project>.pages.dev` automatically if the zone is on Cloudflare; otherwise add `CNAME stream -> <project>.pages.dev`. No `basePath` is configured — the app's `/admin` folder maps directly to `stream.wzrd.tech/admin`.
 
 #### Live deployment
