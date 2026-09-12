@@ -6,16 +6,27 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p convex/tsconfig.json",
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy",
+    "pages:build": "npx @cloudflare/next-on-pages",
+    "pages:preview": "wrangler pages dev .vercel/output/static --compatibility-flag=nodejs_compat",
+    "pages:deploy": "wrangler pages deploy .vercel/output/static"
   },
   "dependencies": {
+    "@fal-ai/client": "^1.11.0-alpha.3",
+    "@fal-ai/server-proxy": "^1.3.0-alpha.0",
     "@fal-ai/serverless-client": "^0.14.0",
     "@types/node": "^20.9.0",
     "@types/react": "^18.2.37",
     "@types/react-dom": "^18.2.15",
     "autoprefixer": "^10.4.16",
+    "convex": "^1.45.0",
+    "eslint-config-next": "15.5.2",
+    "jose": "^6.2.12",
     "lucide-react": "^0.294.0",
-    "next": "14.0.0",
+    "next": "15.5.2",
     "postcss": "^8.4.31",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
@@ -24,9 +35,10 @@
     "typescript": "^5.2.2"
   },
   "devDependencies": {
+    "@cloudflare/next-on-pages": "^1.13.16",
     "@tailwindcss/typography": "^0.5.19",
     "eslint": "^8.53.0",
-    "eslint-config-next": "14.0.0",
-    "tailwindcss-animate": "^1.0.7"
+    "tailwindcss-animate": "^1.0.7",
+    "wrangler": "^3.114.17"
   }
 }

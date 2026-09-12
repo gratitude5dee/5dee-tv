@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
 import { JetBrains_Mono } from 'next/font/google'
 import './globals.css'
+import ConvexClientProvider from '../components/ConvexClientProvider'
 
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' })
 
 export const metadata: Metadata = {
-  title: 'FAL Realtime AI Dashboard',
-  description: 'Real-time monitoring dashboard for AI video generation pipeline',
+  title: 'stream.wzrd.tech admin',
+  description: 'Control panel for the realtime AI livestream: LTX + Director models, clips, recordings, Twitch analytics',
 }
 
 export default function RootLayout({
@@ -33,7 +34,7 @@ export default function RootLayout({
                     </div>
                     <div>
                       <h1 className="text-xl font-bold text-fal-gray-900">
-                        Realtime Video Streamer (Demo App)
+                        Realtime Video Streamer — Admin
                       </h1>
    
                     </div>
@@ -47,7 +48,7 @@ export default function RootLayout({
           {/* Main Content */}
           <main className="max-w-7xl mx-auto px-6 lg:px-8 py-8">
             <div className="fade-in">
-              {children}
+              <ConvexClientProvider>{children}</ConvexClientProvider>
             </div>
           </main>
           

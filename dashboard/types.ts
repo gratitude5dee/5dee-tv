@@ -158,7 +158,7 @@ export interface CharacterRef {
   label: string       // display name, e.g. "Homer Simpson"
 }
 
-export interface LTX23ConditionConfig extends LTX23LocalConfig {
+export interface LTX23ConditionConfig extends Omit<LTX23LocalConfig, 'model'> {
   model: 'ltx-2.3-condition'
   character_refs: CharacterRef[]
 }
