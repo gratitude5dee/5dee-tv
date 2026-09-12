@@ -132,7 +132,7 @@ npx convex deploy       # production deployment (set NEXT_PUBLIC_CONVEX_URL on P
 
 Schema and functions live in `dashboard/convex/` (`sessions`, `clips`, `recordings`, `promptEvents`, `generations` (legacy LTX history), `twitchStats`). Run `npx convex codegen` after changing the schema to refresh `convex/_generated/`.
 
-Deployed project: `5dee-tv` (`hallowed-hare-401`). Note the live deployment was pushed with a *development* deploy key, so `NEXT_PUBLIC_CONVEX_URL` currently points at the dev deployment; generate a production deploy key and re-run `npx convex deploy` to move to prod.
+Deployed project: `5dee-tv`. The production deployment is `sleek-opossum-939` (`https://sleek-opossum-939.convex.cloud`) and is what the live site is built against; `hallowed-hare-401` is the development deployment. `npx convex deploy` targets whichever deployment the `CONVEX_DEPLOY_KEY` belongs to (`prod:` vs `dev:` prefix).
 
 ### 5. Admin panel
 
@@ -188,7 +188,7 @@ Custom domain: Pages project → Custom domains → add `stream.wzrd.tech`. Clou
 | Pages project | `5dee-tv-admin` (production branch `main`) |
 | Default hostname | `https://5dee-tv-admin.pages.dev` |
 | Custom domain | `https://stream.wzrd.tech` (proxied `CNAME stream → 5dee-tv-admin.pages.dev`) |
-| Convex | `https://hallowed-hare-401.convex.cloud` |
+| Convex | `https://sleek-opossum-939.convex.cloud` (production deployment) |
 | Access team | `shrill-cherry-ba30.cloudflareaccess.com` |
 | Access app | `5dee-tv admin (stream.wzrd.tech)`, allow policy on `gratitude@5-dee.com` (one-time PIN) |
 
