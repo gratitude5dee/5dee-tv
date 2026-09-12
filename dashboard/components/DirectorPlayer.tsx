@@ -52,6 +52,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const chunksRef = useRef<Blob[]>([])
   const recordingStartedAtRef = useRef<number | null>(null)
   const promptVersionRef = useRef(0)
+  const promptsByVersionRef = useRef<Map<number, string>>(new Map())
+  const recordingStoppedAtRef = useRef<number | null>(null)
   const convexSessionIdRef = useRef<Id<'sessions'> | null>(null)
   const clipIndexRef = useRef(0)
 
@@ -95,6 +97,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     if (!recorder || recorder.state === 'inactive') return Promise.resolve(null)
     return new Promise((resolve) => {
       recorder.onstop = () => {
+        recordingStoppedAtRef.current = Date.now()
         const blob = new Blob(chunksRef.current, { type: recorder.mimeType || 'video/webm' })
         chunksRef.current = []
         recorderRef.current = null
@@ -127,9 +130,10 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         })
         if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
         const { storageId } = (await res.json()) as { storageId: Id<'_storage'> }
-        const durationSeconds = recordingStartedAtRef.current
-          ? (Date.now() - recordingStartedAtRef.current) / 1000
-          : 0
+        const durationSeconds =
+          recordingStartedAtRef.current && recordingStoppedAtRef.current
+            ? (recordingStoppedAtRef.current - recordingStartedAtRef.current) / 1000
+            : 0
         await createRecording({
           sessionId: convexSessionIdRef.current ?? undefined,
           storageId,
@@ -146,6 +150,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       } finally {
         setUploading(false)
         recordingStartedAtRef.current = null
+        recordingStoppedAtRef.current = null
       }
     },
     [convexEnabled, generateUploadUrl, createRecording, activePrompt, appendLog],
@@ -214,7 +219,10 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         void persist(() =>
           createClip({
             sessionId: convexSessionIdRef.current ?? undefined,
-            prompt: activePrompt ?? prompt,
+            prompt:
+              promptsByVersionRef.current.get(msg.prompt_version ?? promptVersionRef.current) ??
+              promptsByVersionRef.current.get(promptVersionRef.current) ??
+              '',
             promptVersion: msg.prompt_version ?? promptVersionRef.current,
             chunkIndex,
             durationSeconds: msg.duration_seconds ?? msg.duration ?? 0,
@@ -223,7 +231,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         )
       }
     },
-    [appendLog, persist, logPromptEvent, createClip, activePrompt, prompt],
+    [appendLog, persist, logPromptEvent, createClip],
   )
 
   const sendPrompt = useCallback(
@@ -232,6 +240,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       if (!session) return
       promptVersionRef.current += 1
       const version = promptVersionRef.current
+      promptsByVersionRef.current.set(version, text)
       session.send({
         protocol_version: 1,
         type: configure ? 'configure' : 'prompt',
@@ -273,6 +282,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     setError(null)
     setLog([])
     promptVersionRef.current = 0
+    promptsByVersionRef.current = new Map()
     clipIndexRef.current = 0
     setState('opening')
 

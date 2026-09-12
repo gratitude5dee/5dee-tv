@@ -5,7 +5,7 @@ export const record = mutation({
   args: {
     channel: v.string(),
     viewerCount: v.number(),
-    followerCount: v.number(),
+    followerCount: v.optional(v.number()),
     isLive: v.boolean(),
     title: v.optional(v.string()),
     gameName: v.optional(v.string()),

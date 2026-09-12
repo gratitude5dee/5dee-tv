@@ -2,6 +2,28 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
+// FAL_KEY is attached to every proxied request, so targets are restricted to fal.ai
+// hosts plus the configured app origin (covers a local dev server).
+const FAL_HOST = /(^|\.)fal\.(ai|run)$/;
+
+function configuredOrigin(): string | null {
+  try {
+    return process.env.NEXT_PUBLIC_FAL_API_URL ? new URL(process.env.NEXT_PUBLIC_FAL_API_URL).origin : null;
+  } catch {
+    return null;
+  }
+}
+
+function isAllowedTarget(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (parsed.origin === configuredOrigin()) return true;
+    return parsed.protocol === 'https:' && FAL_HOST.test(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const FAL_KEY = process.env.FAL_KEY;
@@ -16,6 +38,13 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const targetUrl = request.headers.get('X-Fal-Target-Url') || 'https://rest.alpha.fal.ai/tokens/';
     const method = request.headers.get('X-Fal-Method') || 'POST';
+
+    if (!isAllowedTarget(targetUrl)) {
+      return NextResponse.json(
+        { error: 'X-Fal-Target-Url must be a fal.ai/fal.run URL or match NEXT_PUBLIC_FAL_API_URL' },
+        { status: 400 }
+      );
+    }
 
     console.log(`📡 Proxying ${method} request to: ${targetUrl}`);
     console.log(`📡 Request body:`, body);

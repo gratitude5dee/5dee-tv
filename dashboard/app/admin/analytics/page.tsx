@@ -56,9 +56,10 @@ function ConvexHistory({
   onHistory: (samples: ViewerSample[]) => void
 }) {
   const record = useMutation(api.twitchStats.record)
+  // Anchor the window to the poll timestamp so query args only change once per poll.
   const history = useQuery(
     api.twitchStats.history,
-    latest ? { channel: latest.channel, sinceMs: Date.now() - HISTORY_WINDOW_MS } : 'skip',
+    latest ? { channel: latest.channel, sinceMs: latest.capturedAt - HISTORY_WINDOW_MS } : 'skip',
   )
   const lastRecordedRef = useRef<number>(0)
 
@@ -68,7 +69,7 @@ function ConvexHistory({
     record({
       channel: latest.channel,
       viewerCount: latest.viewerCount,
-      followerCount: latest.followerCount,
+      followerCount: latest.followerCount ?? undefined,
       isLive: latest.isLive,
       title: latest.title ?? undefined,
       gameName: latest.gameName ?? undefined,
@@ -178,7 +179,7 @@ export default function AnalyticsPage() {
         <StatCard
           icon={Heart}
           label="Followers"
-          value={data ? data.followerCount.toLocaleString() : '—'}
+          value={data?.followerCount != null ? data.followerCount.toLocaleString() : '—'}
           accent="bg-fal-red-500/10 text-fal-red-500"
         />
         <StatCard

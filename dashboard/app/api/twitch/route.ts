@@ -10,7 +10,8 @@ export interface TwitchAnalytics {
   channel: string
   isLive: boolean
   viewerCount: number
-  followerCount: number
+  /** null when the token lacks `moderator:read:followers` (app tokens only return `total` for some channels). */
+  followerCount: number | null
   title: string | null
   gameName: string | null
   startedAt: string | null
@@ -95,11 +96,15 @@ export async function GET() {
       return NextResponse.json({ error: `Twitch channel "${channel}" not found` }, { status: 404 })
     }
 
-    const followers = await helix<{ total: number }>(
+    // Followers is best-effort: Helix may reject app tokens for this endpoint, and
+    // live status/viewers must still be returned when it does.
+    const followerCount = await helix<{ total: number }>(
       `/channels/followers?broadcaster_id=${user.id}&first=1`,
       clientId,
       token,
     )
+      .then((r) => (typeof r.total === 'number' ? r.total : null))
+      .catch(() => null)
 
     const stream = streams.data[0] ?? null
     const startedAt = stream?.started_at ?? null
@@ -108,7 +113,7 @@ export async function GET() {
       channel,
       isLive: Boolean(stream),
       viewerCount: stream?.viewer_count ?? 0,
-      followerCount: followers.total ?? 0,
+      followerCount,
       title: stream?.title ?? null,
       gameName: stream?.game_name ?? null,
       startedAt,

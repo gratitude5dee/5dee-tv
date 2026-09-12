@@ -4,21 +4,31 @@ import { createRemoteJWKSet } from 'jose/jwks/remote'
 
 // Gates /admin/** and the FAL/Twitch API routes behind Cloudflare Access.
 //
-// Cloudflare Access is the primary enforcement layer (configured on the Cloudflare
-// dashboard for stream.wzrd.tech/admin*). This middleware is defense-in-depth: when
-// CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD are set it verifies the Cf-Access-Jwt-Assertion
-// header that Access injects, so the origin refuses requests that bypass the Access proxy.
-// When those vars are unset (local dev, or Access not yet configured) it is a no-op.
+// Modes, chosen by env:
+//  - CF_ACCESS_TEAM_DOMAIN + CF_ACCESS_AUD set: verify the Cf-Access-Jwt-Assertion JWT that
+//    Access injects, so requests that bypass the Access proxy are refused at the origin.
+//  - ADMIN_AUTH_MODE=edge-only: skip verification; Access (or another edge gate) is trusted
+//    to protect the path. Explicit opt-in so production never fails open by accident.
+//  - Neither, in development: allow (local dev).
+//  - Neither, in production: 401 everything.
 
 const teamDomain = process.env.CF_ACCESS_TEAM_DOMAIN
 const audience = process.env.CF_ACCESS_AUD
+const edgeOnly = process.env.ADMIN_AUTH_MODE === 'edge-only'
+const verifyAccess = Boolean(teamDomain && audience)
 
-const jwks = teamDomain
+const jwks = verifyAccess
   ? createRemoteJWKSet(new URL(`https://${teamDomain}/cdn-cgi/access/certs`))
   : null
 
 export async function middleware(request: NextRequest) {
-  if (!jwks || !teamDomain || !audience) return NextResponse.next()
+  if (!verifyAccess || !jwks) {
+    if (edgeOnly || process.env.NODE_ENV !== 'production') return NextResponse.next()
+    return new NextResponse(
+      'Unauthorized: set CF_ACCESS_TEAM_DOMAIN + CF_ACCESS_AUD, or ADMIN_AUTH_MODE=edge-only if Cloudflare Access already protects this path',
+      { status: 401 },
+    )
+  }
 
   const token =
     request.headers.get('cf-access-jwt-assertion') ?? request.cookies.get('CF_Authorization')?.value

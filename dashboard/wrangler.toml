@@ -22,9 +22,12 @@ NEXT_PUBLIC_CONVEX_URL = "https://your-deployment.convex.cloud"
 TWITCH_CHANNEL = "your_channel"
 # Twitch developer app client ID (public identifier; the secret is a Pages secret).
 TWITCH_CLIENT_ID = ""
-# Optional: verify Cloudflare Access JWTs in middleware (defense-in-depth).
+# Auth for /admin and /api (middleware.ts). Production fails closed (401) unless one of these is set:
+#   a) verify Cloudflare Access JWTs at the origin (recommended)
 # CF_ACCESS_TEAM_DOMAIN = "yourteam.cloudflareaccess.com"
 # CF_ACCESS_AUD = "<application audience tag from Zero Trust -> Access -> Applications>"
+#   b) trust the edge (Access app on stream.wzrd.tech/admin* and /api*) and skip verification
+# ADMIN_AUTH_MODE = "edge-only"
 
 # Secrets (set via `wrangler pages secret put`, never here):
 #   FAL_KEY
