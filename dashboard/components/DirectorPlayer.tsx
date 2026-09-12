@@ -316,8 +316,11 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     setState('opening')
 
     if (createSession) {
+      // Attempt-local: only becomes the shared session id if this connect is
+      // still current when the mutation resolves.
+      let sessionId: Id<'sessions'> | null = null
       try {
-        convexSessionIdRef.current = await createSession({
+        sessionId = await createSession({
           model: 'director',
           outputMode: 'webrtc',
           config: { model: DIRECTOR_MODEL, prompt },
@@ -325,15 +328,14 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       } catch (e) {
         appendLog(`convex: ${e instanceof Error ? e.message : String(e)}`)
       }
-      // Cancelled while the Convex row was being created: mark it ended and bail.
       if (attempt !== connectAttemptRef.current) {
-        const orphanId = convexSessionIdRef.current
-        convexSessionIdRef.current = null
-        if (orphanId) {
-          void persist(() => setSessionStatus({ sessionId: orphanId, status: 'ended' }))
+        // Cancelled while the row was being created: end only this attempt's row.
+        if (sessionId) {
+          void persist(() => setSessionStatus({ sessionId, status: 'ended' }))
         }
         return
       }
+      convexSessionIdRef.current = sessionId
     }
 
     const fal = createFalClient({ proxyUrl: FAL_SDK_PROXY_URL })
