@@ -107,9 +107,75 @@ EOF
 npm run dev
 ```
 
-**Important**: The dashboard needs two environment variables:
-- `NEXT_PUBLIC_FAL_API_URL`: Your deployed FAL app URL (synchronous endpoint)
-- `FAL_KEY`: Your FAL API key (server-side only, for authentication)
+The dashboard is served at **`/admin`** (the root `/` redirects there). Open http://localhost:3000/admin.
+
+Dashboard environment variables (`dashboard/.env.local` locally, Pages env vars in production):
+
+| Variable | Scope | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_FAL_API_URL` | public | Your deployed FAL app URL (synchronous endpoint) |
+| `FAL_KEY` | **secret** | FAL API key, used only by `/api/fal/proxy` and `/api/fal/sdk-proxy` |
+| `NEXT_PUBLIC_CONVEX_URL` | public | Convex deployment URL. Backs sessions, clips, recordings, prompt events and Twitch stats. Without it the panel still runs; Clips/Recordings/history persistence are disabled. |
+| `TWITCH_CLIENT_ID` | server | Twitch developer app client ID (https://dev.twitch.tv/console/apps) |
+| `TWITCH_CLIENT_SECRET` | **secret** | Twitch developer app secret. Only read by `/api/twitch`; never shipped to the browser. |
+| `TWITCH_CHANNEL` (or `NEXT_PUBLIC_TWITCH_CHANNEL`) | server | Channel login to report analytics for |
+| `CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD` | server | Enables Cloudflare Access JWT verification in `middleware.ts` (see below) |
+| `ADMIN_AUTH_MODE` | server | Set to `edge-only` to skip JWT verification when Access alone guards the path. In production, if neither this nor the `CF_ACCESS_*` pair is set, `/admin` and `/api` return 401. |
+
+#### Convex
+
+```bash
+cd dashboard
+npx convex dev          # creates a project, writes NEXT_PUBLIC_CONVEX_URL to .env.local, runs codegen
+npx convex deploy       # production deployment (set NEXT_PUBLIC_CONVEX_URL on Pages to the prod URL)
+```
+
+Schema and functions live in `dashboard/convex/` (`sessions`, `clips`, `recordings`, `promptEvents`, `generations` (legacy LTX history), `twitchStats`). Run `npx convex codegen` after changing the schema to refresh `convex/_generated/`.
+
+### 5. Admin panel
+
+| Route | Contents |
+|---|---|
+| `/admin` | Live Control: **Director** realtime player (`minimax/h3-max/director` over WebRTC via `/api/fal/sdk-proxy`) — prompt updates, MediaRecorder capture uploaded to Convex storage |
+| `/admin/clips` | Convex `clips` grid: Director chunk completions, with playback where a URL exists |
+| `/admin/recordings` | Convex `recordings`: full Director session captures with playback/download/delete |
+| `/admin/analytics` | Twitch Helix analytics: live status, viewers, followers, uptime, title/game, viewer chart (samples persisted to `twitchStats` when Convex is configured) |
+
+#### Protecting `/admin`
+
+The panel starts livestreams and spends FAL credits, so it must not be public. Recommended: **Cloudflare Access** (zero-code):
+
+1. Zero Trust → Access → Applications → *Add an application* → Self-hosted.
+2. Application domain: `stream.wzrd.tech`, path `admin` (add a second entry for path `api` to cover the FAL/Twitch routes).
+3. Add an Allow policy (e.g. emails ending in your domain, or a one-time PIN list).
+4. Copy the application's **Audience (AUD) tag** and your team domain into the Pages env vars `CF_ACCESS_AUD` and `CF_ACCESS_TEAM_DOMAIN`. `dashboard/middleware.ts` then verifies the `Cf-Access-Jwt-Assertion` header on every `/admin/**` and `/api/**` request and returns 401 if it is missing or invalid, so the origin can't be reached by bypassing Access. If you'd rather rely on Access alone, set `ADMIN_AUTH_MODE=edge-only` instead. Production builds with neither configured fail closed (401); local `next dev` is always allowed.
+
+Note: the Convex deployment itself has no auth — anyone with `NEXT_PUBLIC_CONVEX_URL` can call its public functions. Treat clip/recording data as non-sensitive, or add [Convex auth](https://docs.convex.dev/auth) as a follow-up.
+
+If you'd rather use app-level auth (Clerk/Auth.js), replace the check in `middleware.ts`.
+
+Caveat: a Pages project is also reachable on its `*.pages.dev` hostname, which an Access app scoped to the custom domain doesn't cover. Either add `5dee-tv-admin.pages.dev` as a second hostname in the Access application, or prefer the `CF_ACCESS_*` JWT-verification mode (which protects every origin path regardless of hostname).
+
+### 6. Deploy the dashboard to Cloudflare Pages (`stream.wzrd.tech`)
+
+The dashboard uses server API routes (`/api/fal/proxy`, `/api/fal/sdk-proxy`, `/api/twitch`) so it is deployed with `@cloudflare/next-on-pages`; all API routes and the middleware run on the edge runtime.
+
+```bash
+cd dashboard
+npm run pages:build     # next build + next-on-pages -> .vercel/output/static
+npm run pages:preview   # local preview with wrangler
+npm run pages:deploy    # wrangler pages deploy (or connect the repo in the Pages dashboard)
+```
+
+Pages project settings (also in `dashboard/wrangler.toml`):
+
+- Root directory: `dashboard`
+- Build command: `npm run pages:build`
+- Build output directory: `.vercel/output/static`
+- Compatibility flags: `nodejs_compat`
+- Environment variables (Production **and** Preview): `NEXT_PUBLIC_FAL_API_URL`, `NEXT_PUBLIC_CONVEX_URL`, `TWITCH_CLIENT_ID`, `TWITCH_CHANNEL` as plain vars; `FAL_KEY` and `TWITCH_CLIENT_SECRET` as **encrypted secrets** (`wrangler pages secret put FAL_KEY`). Never commit them.
+
+Custom domain: Pages project → Custom domains → add `stream.wzrd.tech`. Cloudflare creates the CNAME to `<project>.pages.dev` automatically if the zone is on Cloudflare; otherwise add `CNAME stream -> <project>.pages.dev`. No `basePath` is configured — the app's `/admin` folder maps directly to `stream.wzrd.tech/admin`.
 
 ## Usage Guide
 

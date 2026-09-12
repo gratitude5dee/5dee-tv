@@ -236,7 +236,7 @@ export default function WebRTCPlayer({ apiUrl }: WebRTCPlayerProps) {
               <div className="text-center">
                 <WifiOff className="w-12 h-12 mx-auto mb-2" />
                 <p className="text-sm">Waiting for WebRTC connection...</p>
-                <p className="text-xs mt-1">Start a stream with output_mode = "webrtc"</p>
+                <p className="text-xs mt-1">Start a stream with output_mode = &quot;webrtc&quot;</p>
               </div>
             </div>
           )}

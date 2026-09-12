@@ -859,7 +859,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
               </label>
               <p className="text-xs text-fal-gray-600 mt-1 ml-6">
                 LTX 2.3 jointly generates audio with video. When off, the stream uses
-                silent <code>anullsrc</code> like before. When on, the model's PCM
+                silent <code>anullsrc</code> like before. When on, the model&apos;s PCM
                 output is fed into ffmpeg via a FIFO. The stream must be restarted
                 for this toggle to take effect.
               </p>

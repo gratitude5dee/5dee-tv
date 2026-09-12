@@ -1,0 +1,34 @@
+# Cloudflare Pages project for the admin dashboard (stream.wzrd.tech).
+#
+#   npm run pages:build      # next build + @cloudflare/next-on-pages -> .vercel/output/static
+#   npm run pages:preview    # run the built output locally with wrangler
+#   npm run pages:deploy     # wrangler pages deploy
+#
+# Non-secret vars live under [vars]. Secrets (FAL_KEY, TWITCH_CLIENT_SECRET) must NOT be
+# committed: set them with `wrangler pages secret put <NAME>` or in the Pages dashboard
+# (Settings -> Environment variables) for both Production and Preview.
+
+name = "5dee-tv-admin"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".vercel/output/static"
+
+[vars]
+# Public URL of the deployed fal streaming app (used by the dashboard for control/metrics).
+NEXT_PUBLIC_FAL_API_URL = "https://fal.run/your-username/realtime-streaming"
+# Convex deployment URL (from `npx convex dev` / the Convex dashboard).
+NEXT_PUBLIC_CONVEX_URL = "https://your-deployment.convex.cloud"
+# Twitch channel login (lowercase) used for analytics. Server-side; NEXT_PUBLIC_TWITCH_CHANNEL also works.
+TWITCH_CHANNEL = "your_channel"
+# Twitch developer app client ID (public identifier; the secret is a Pages secret).
+TWITCH_CLIENT_ID = ""
+# Auth for /admin and /api (middleware.ts). Production fails closed (401) unless one of these is set:
+#   a) verify Cloudflare Access JWTs at the origin (recommended)
+# CF_ACCESS_TEAM_DOMAIN = "yourteam.cloudflareaccess.com"
+# CF_ACCESS_AUD = "<application audience tag from Zero Trust -> Access -> Applications>"
+#   b) trust the edge (Access app on stream.wzrd.tech/admin* and /api*) and skip verification
+# ADMIN_AUTH_MODE = "edge-only"
+
+# Secrets (set via `wrangler pages secret put`, never here):
+#   FAL_KEY
+#   TWITCH_CLIENT_SECRET
