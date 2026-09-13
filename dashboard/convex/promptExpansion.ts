@@ -3,9 +3,10 @@ import { internal } from './_generated/api'
 import { v } from 'convex/values'
 
 const GMI_URL = 'https://api.gmi-serving.com/v1/chat/completions'
-const TEMPLATE_VERSION = 'gmi-astra-glm-2026-09-1'
 const DEFAULT_COORDINATOR = 'openai/gpt-6-astra'
 const DEFAULT_WORKER = 'zai-org/GLM-5.3-Flash'
+const DIRECTOR_TEMPLATE_VERSION = 'gmi-director-glm-2026-09-2'
+const STORYBOARD_TEMPLATE_VERSION = 'gmi-astra-glm-2026-09-1'
 type Message = { role: 'system' | 'user' | 'developer'; content: string }
 type Usage = { prompt_tokens?: number; completion_tokens?: number }
 let activeExpansions = 0
@@ -46,14 +47,18 @@ function validateModelId(value: string, role: string): string {
   return value
 }
 function parseObject(text: string): { prompt: string; notes?: string } { let parsed: unknown; try { parsed = JSON.parse(text) } catch { throw new Error('GMI returned invalid JSON') }; if (!parsed || typeof parsed !== 'object' || typeof (parsed as { prompt?: unknown }).prompt !== 'string') throw new Error('GMI response did not contain a prompt'); const prompt = (parsed as { prompt: string }).prompt.trim(); if (!prompt || prompt.length > 12_000) throw new Error('GMI returned an invalid prompt length'); return { prompt, notes: typeof (parsed as { notes?: unknown }).notes === 'string' ? (parsed as { notes: string }).notes : undefined } }
-const system = (kind: 'image' | 'director') => `You are Astra, a prompt editor for a storyboard application. Return JSON only: {"prompt":"...","notes":"..."}. Preserve the user's intent and any quoted dialogue exactly. Never invent asset IDs, URLs, timings, or model parameters. The target is ${kind === 'image' ? 'a Nano Banana or GPT image prompt' : 'a MiniMax H3 Max Director beat prompt'}; use concrete subject, composition, motion, camera, lighting, materials, and constraints.`
+const system = (kind: 'image' | 'director') => `You are ${kind === 'image' ? 'Astra' : 'a Director prompt editor'}, working in a storyboard application. Return JSON only: {"prompt":"...","notes":"..."}. Preserve the user's intent and any quoted dialogue exactly. Never invent asset IDs, URLs, timings, or model parameters. The target is ${kind === 'image' ? 'a Nano Banana or GPT image prompt' : 'a MiniMax H3 Max Director beat prompt'}; use concrete subject, composition, motion, camera, lighting, materials, and constraints.`
 
 export const expand = action({
   args: { kind: v.union(v.literal('image'), v.literal('director')), source: v.string(), context: v.optional(v.string()), requestId: v.string(), sourceRevision: v.optional(v.number()), shotId: v.optional(v.id('shots')) },
   handler: async (ctx, args): Promise<{ prompt: string; notes?: string; requestId: string; templateVersion: string; coordinatorModel: string; workerModel: string }> => {
     if (!(await ctx.auth.getUserIdentity())) throw new Error('Authentication required for GMI prompt expansion')
     if (args.source.trim().length < 1 || args.source.length > 12_000 || args.requestId.length < 8 || args.requestId.length > 128) throw new Error('Invalid prompt expansion request')
-    const coordinator = validateModelId(process.env.GMI_COORDINATOR_MODEL || DEFAULT_COORDINATOR, 'coordinator'); const worker = validateModelId(process.env.GMI_WORKER_MODEL || DEFAULT_WORKER, 'worker'); const base = `${args.source}\n\nContext:\n${args.context || '(none)'}`
+    const isDirector = args.kind === 'director'
+    const coordinator = validateModelId(isDirector ? process.env.GMI_DIRECTOR_COORDINATOR_MODEL || DEFAULT_WORKER : process.env.GMI_STORYBOARD_COORDINATOR_MODEL || process.env.GMI_COORDINATOR_MODEL || DEFAULT_COORDINATOR, 'coordinator')
+    const worker = validateModelId(isDirector ? process.env.GMI_DIRECTOR_WORKER_MODEL || DEFAULT_WORKER : process.env.GMI_WORKER_MODEL || DEFAULT_WORKER, 'worker')
+    const templateVersion = isDirector ? DIRECTOR_TEMPLATE_VERSION : STORYBOARD_TEMPLATE_VERSION
+    const base = `${args.source}\n\nContext:\n${args.context || '(none)'}`
     if (activeExpansions >= 2) throw new Error('Two prompt-expansion jobs are already running; try again shortly')
     activeExpansions += 1
     const startedAt = Date.now()
@@ -66,15 +71,15 @@ export const expand = action({
         if (!shot || revision !== args.sourceRevision) throw new Error('Prompt is stale; reload the shot before expanding')
       }
       const sourceHash = await hash(base)
-      const reservation = await ctx.runMutation(internal.promptExpansion.reserve, { kind: args.kind, shotId: args.shotId, requestId: args.requestId, sourceRevision: args.sourceRevision, sourceHash, coordinatorModel: coordinator, workerModel: worker, templateVersion: TEMPLATE_VERSION })
-      if (reservation.state === 'completed' && reservation.result) return { prompt: reservation.result, requestId: args.requestId, templateVersion: TEMPLATE_VERSION, coordinatorModel: coordinator, workerModel: worker }
+      const reservation = await ctx.runMutation(internal.promptExpansion.reserve, { kind: args.kind, shotId: args.shotId, requestId: args.requestId, sourceRevision: args.sourceRevision, sourceHash, coordinatorModel: coordinator, workerModel: worker, templateVersion })
+      if (reservation.state === 'completed' && reservation.result) return { prompt: reservation.result, requestId: args.requestId, templateVersion, coordinatorModel: coordinator, workerModel: worker }
       if (reservation.state !== 'reserved') throw new Error('Prompt expansion is already running or has failed; use a new requestId')
       ownsReservation = true
       await verifyModelCatalog(coordinator, worker)
-      const cached = await ctx.runQuery(internal.promptExpansion.findCached, { kind: args.kind, sourceRevision: args.sourceRevision, sourceHash, coordinatorModel: coordinator, workerModel: worker, templateVersion: TEMPLATE_VERSION })
+      const cached = await ctx.runQuery(internal.promptExpansion.findCached, { kind: args.kind, sourceRevision: args.sourceRevision, sourceHash, coordinatorModel: coordinator, workerModel: worker, templateVersion })
       if (cached?.result) {
-        await ctx.runMutation(internal.promptExpansion.record, { kind: args.kind, shotId: args.shotId, requestId: args.requestId, sourceRevision: args.sourceRevision, sourceHash, result: cached.result, coordinatorModel: coordinator, workerModel: worker, templateVersion: TEMPLATE_VERSION, provider: 'gmi-cache', phase: 'completed', durationMs: Date.now() - startedAt, inputTokens: 0, outputTokens: 0 })
-        return { prompt: cached.result, requestId: args.requestId, templateVersion: TEMPLATE_VERSION, coordinatorModel: coordinator, workerModel: worker }
+        await ctx.runMutation(internal.promptExpansion.record, { kind: args.kind, shotId: args.shotId, requestId: args.requestId, sourceRevision: args.sourceRevision, sourceHash, result: cached.result, coordinatorModel: coordinator, workerModel: worker, templateVersion, provider: 'gmi-cache', phase: 'completed', durationMs: Date.now() - startedAt, inputTokens: 0, outputTokens: 0 })
+        return { prompt: cached.result, requestId: args.requestId, templateVersion, coordinatorModel: coordinator, workerModel: worker }
       }
       if (Date.now() >= deadline) throw new Error('GMI prompt expansion exceeded its three-minute deadline')
       const brief = await completion(coordinator, [{ role: 'system', content: system(args.kind) + '\nCreate a compact specialist brief.' }, { role: 'user', content: base }])
@@ -88,8 +93,8 @@ export const expand = action({
       const parsed = parseObject(final.text)
       // Revalidation is also enforced inside record() in the same Convex
       // mutation that writes the result, closing the check-to-write race.
-      await ctx.runMutation(internal.promptExpansion.record, { kind: args.kind, shotId: args.shotId, requestId: args.requestId, sourceRevision: args.sourceRevision, sourceHash, result: parsed.prompt, coordinatorModel: coordinator, workerModel: worker, templateVersion: TEMPLATE_VERSION, provider: 'gmi', phase: 'completed', durationMs: Date.now() - startedAt, inputTokens: (brief.usage?.prompt_tokens || 0) + (visual.usage?.prompt_tokens || 0) + (continuity.usage?.prompt_tokens || 0) + (final.usage?.prompt_tokens || 0), outputTokens: (brief.usage?.completion_tokens || 0) + (visual.usage?.completion_tokens || 0) + (continuity.usage?.completion_tokens || 0) + (final.usage?.completion_tokens || 0) })
-      return { ...parsed, requestId: args.requestId, templateVersion: TEMPLATE_VERSION, coordinatorModel: coordinator, workerModel: worker }
+      await ctx.runMutation(internal.promptExpansion.record, { kind: args.kind, shotId: args.shotId, requestId: args.requestId, sourceRevision: args.sourceRevision, sourceHash, result: parsed.prompt, coordinatorModel: coordinator, workerModel: worker, templateVersion, provider: 'gmi', phase: 'completed', durationMs: Date.now() - startedAt, inputTokens: (brief.usage?.prompt_tokens || 0) + (visual.usage?.prompt_tokens || 0) + (continuity.usage?.prompt_tokens || 0) + (final.usage?.prompt_tokens || 0), outputTokens: (brief.usage?.completion_tokens || 0) + (visual.usage?.completion_tokens || 0) + (continuity.usage?.completion_tokens || 0) + (final.usage?.completion_tokens || 0) })
+      return { ...parsed, requestId: args.requestId, templateVersion, coordinatorModel: coordinator, workerModel: worker }
     } catch (error) {
       if (ownsReservation) await ctx.runMutation(internal.promptExpansion.recordFailure, { requestId: args.requestId, error: error instanceof Error ? error.message.slice(0, 500) : 'Prompt expansion failed', durationMs: Date.now() - startedAt }).catch(() => undefined)
       throw error
