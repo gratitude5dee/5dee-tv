@@ -2,9 +2,13 @@ import { mutation, query } from './_generated/server'
 import { v } from 'convex/values'
 import { sessionModel } from './schema'
 
+const requireIdentity = async (ctx: { auth: { getUserIdentity: () => Promise<unknown> } }) => {
+  if (!(await ctx.auth.getUserIdentity())) throw new Error('Authentication required')
+}
+
 export const generateUploadUrl = mutation({
   args: {},
-  handler: async (ctx) => ctx.storage.generateUploadUrl(),
+  handler: async (ctx) => { await requireIdentity(ctx); return ctx.storage.generateUploadUrl() },
 })
 
 export const create = mutation({
@@ -21,6 +25,7 @@ export const create = mutation({
     source: sessionModel,
   },
   handler: async (ctx, args) => {
+    await requireIdentity(ctx)
     return await ctx.db.insert('clips', { ...args, createdAt: Date.now() })
   },
 })
@@ -36,6 +41,7 @@ export const attachMedia = mutation({
     durationSeconds: v.number(),
   },
   handler: async (ctx, { clipId, ...media }) => {
+    await requireIdentity(ctx)
     await ctx.db.patch(clipId, media)
   },
 })
@@ -43,6 +49,7 @@ export const attachMedia = mutation({
 export const list = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
+    if (!(await ctx.auth.getUserIdentity())) return []
     const rows = await ctx.db
       .query('clips')
       .withIndex('by_createdAt')
@@ -60,6 +67,7 @@ export const list = query({
 export const listBySession = query({
   args: { sessionId: v.id('sessions') },
   handler: async (ctx, { sessionId }) => {
+    if (!(await ctx.auth.getUserIdentity())) return []
     const rows = await ctx.db
       .query('clips')
       .withIndex('by_session', (q) => q.eq('sessionId', sessionId))

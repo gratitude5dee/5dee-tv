@@ -1,6 +1,10 @@
 import { mutation, query } from './_generated/server'
 import { v } from 'convex/values'
 
+const requireIdentity = async (ctx: { auth: { getUserIdentity: () => Promise<unknown> } }) => {
+  if (!(await ctx.auth.getUserIdentity())) throw new Error('Authentication required')
+}
+
 export const log = mutation({
   args: {
     sessionId: v.id('sessions'),
@@ -15,6 +19,7 @@ export const log = mutation({
     detail: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    await requireIdentity(ctx)
     return await ctx.db.insert('promptEvents', { ...args, createdAt: Date.now() })
   },
 })
@@ -22,6 +27,7 @@ export const log = mutation({
 export const listBySession = query({
   args: { sessionId: v.id('sessions') },
   handler: async (ctx, { sessionId }) => {
+    if (!(await ctx.auth.getUserIdentity())) return []
     return await ctx.db
       .query('promptEvents')
       .withIndex('by_session', (q) => q.eq('sessionId', sessionId))

@@ -2,6 +2,10 @@ import { mutation, query } from './_generated/server'
 import { v } from 'convex/values'
 import { sessionModel } from './schema'
 
+const requireIdentity = async (ctx: { auth: { getUserIdentity: () => Promise<unknown> } }) => {
+  if (!(await ctx.auth.getUserIdentity())) throw new Error('Authentication required')
+}
+
 const generationArgs = {
   generationId: v.number(),
   timestamp: v.number(),
@@ -26,6 +30,7 @@ export const recordMany = mutation({
     generations: v.array(v.object(generationArgs)),
   },
   handler: async (ctx, { sessionId, model, fps, generations }) => {
+    await requireIdentity(ctx)
     let inserted = 0
     for (const generation of generations) {
       const existing = await ctx.db
@@ -53,6 +58,7 @@ export const recordMany = mutation({
 export const list = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
+    if (!(await ctx.auth.getUserIdentity())) return []
     return await ctx.db
       .query('generations')
       .withIndex('by_timestamp')

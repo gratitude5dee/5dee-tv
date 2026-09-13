@@ -93,7 +93,10 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null)
   const directorSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
   const musicSourceRef = useRef<MediaElementAudioSourceNode | null>(null)
+  const musicGainRef = useRef<GainNode | null>(null)
   const musicElementRef = useRef<HTMLAudioElement | null>(null)
+  const musicUrlRef = useRef('')
+  const outputStreamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const recordingStartedAtRef = useRef<number | null>(null)
@@ -171,12 +174,48 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     setLog((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev].slice(0, 50))
   }, [])
 
-  // Build one output stream so preview, MediaRecorder, clips, and Twitch all
-  // receive identical Director audio plus the optional original song.
+  const primeMusic = useCallback((config: { url: string; volume: number; offsetSeconds: number; loop: boolean }) => {
+    if (!config.url || typeof AudioContext === 'undefined') return
+    try {
+      const context = audioContextRef.current ?? new AudioContext()
+      audioContextRef.current = context
+      const destination = audioDestinationRef.current ?? context.createMediaStreamDestination()
+      audioDestinationRef.current = destination
+      if (context.state === 'suspended') void context.resume()
+      let music = musicElementRef.current
+      if (!music) {
+        // Set crossOrigin before assigning src so the media element can be
+        // connected to Web Audio without a tainted stream.
+        music = new Audio()
+        music.crossOrigin = 'anonymous'
+        musicSourceRef.current = context.createMediaElementSource(music)
+        musicGainRef.current = context.createGain()
+        musicSourceRef.current.connect(musicGainRef.current).connect(destination)
+        musicElementRef.current = music
+      }
+      if (musicUrlRef.current !== config.url) {
+        musicUrlRef.current = config.url
+        music.src = config.url
+        music.load()
+      }
+      music.loop = config.loop
+      music.currentTime = Math.max(0, config.offsetSeconds)
+      if (musicGainRef.current) musicGainRef.current.gain.value = Math.min(1, Math.max(0, config.volume))
+      // Called directly by the Mix button as well as by the graph effect; the
+      // browser can honor the first call while the user activation is live.
+      void music.play().catch(() => appendLog('music: press Mix in output again after a user gesture'))
+    } catch (e) {
+      appendLog(`music mixer unavailable: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }, [appendLog])
+
+  // Build one stable output stream so preview, MediaRecorder, clips, and
+  // Twitch keep receiving the same destination track when the mix changes.
   const attachOutputStream = useCallback((raw: MediaStream) => {
     rawStreamRef.current = raw
-    if (!musicConfig.url || typeof AudioContext === 'undefined' || raw.getAudioTracks().length === 0) {
+    if (typeof AudioContext === 'undefined' || raw.getAudioTracks().length === 0) {
       streamRef.current = raw
+      outputStreamRef.current = null
       return raw
     }
     try {
@@ -190,28 +229,24 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       directorGain.gain.value = 1
       directorSource.connect(directorGain).connect(destination)
       directorSourceRef.current = directorSource
-      musicSourceRef.current?.disconnect()
-      musicElementRef.current?.pause()
-      const music = new Audio(musicConfig.url)
-      music.crossOrigin = 'anonymous'
-      music.loop = musicConfig.loop
-      music.currentTime = Math.max(0, musicConfig.offsetSeconds)
-      const musicSource = context.createMediaElementSource(music)
-      const musicGain = context.createGain()
-      musicGain.gain.value = Math.min(1, Math.max(0, musicConfig.volume))
-      musicSource.connect(musicGain).connect(destination)
-      musicSourceRef.current = musicSource
-      musicElementRef.current = music
-      void music.play().catch(() => appendLog('music: press Mix in output again after a user gesture'))
-      const mixed = new MediaStream([...raw.getVideoTracks(), ...destination.stream.getAudioTracks()])
-      streamRef.current = mixed
-      return mixed
+      if (musicConfig.url) primeMusic(musicConfig)
+      else if (musicGainRef.current) {
+        musicGainRef.current.gain.value = 0
+        musicElementRef.current?.pause()
+      }
+      const output = outputStreamRef.current ?? new MediaStream([...raw.getVideoTracks(), ...destination.stream.getAudioTracks()])
+      const currentVideo = output.getVideoTracks()
+      currentVideo.forEach((track) => output.removeTrack(track))
+      raw.getVideoTracks().forEach((track) => output.addTrack(track))
+      outputStreamRef.current = output
+      streamRef.current = output
+      return output
     } catch (e) {
       appendLog(`music mixer unavailable: ${e instanceof Error ? e.message : String(e)}`)
       streamRef.current = raw
       return raw
     }
-  }, [musicConfig, appendLog])
+  }, [musicConfig, primeMusic, appendLog])
 
   useEffect(() => {
     if (rawStreamRef.current && state !== 'idle' && state !== 'closing') {
@@ -224,6 +259,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     musicElementRef.current?.pause()
     musicSourceRef.current?.disconnect()
     directorSourceRef.current?.disconnect()
+    musicGainRef.current?.disconnect()
+    outputStreamRef.current?.getTracks().forEach((track) => track.stop())
     void audioContextRef.current?.close()
   }, [])
 
@@ -607,7 +644,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         setConnectStep((s) => (s >= 0 ? CONNECT_STEPS.length - 1 : s))
       }
     },
-    [appendLog, persist, logPromptEvent, rotateClip, setSessionStatus],
+    [appendLog, persist, logPromptEvent, rotateClip],
   )
 
   const sendPrompt = useCallback(
@@ -846,6 +883,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     musicElementRef.current?.pause()
     rawStreamRef.current = null
     streamRef.current = null
+    outputStreamRef.current?.getTracks().forEach((track) => track.stop())
+    outputStreamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
     setConnectStep(-1)
     setElapsedSeconds(null)
@@ -1291,6 +1330,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         onUseForSession={(url) => setSettings((s) => ({ ...s, audioUrl: url }))}
         onUseLive={setLiveAudioUrl}
         onUseForMix={(config) => {
+          // Prime/resume the graph in the button's user-activation path so
+          // autoplay policy cannot turn the mixed output silent.
+          primeMusic(config)
           setMusicConfig(config)
           appendLog(`original song mixed with Director output at ${Math.round(config.volume * 100)}% music gain`)
         }}

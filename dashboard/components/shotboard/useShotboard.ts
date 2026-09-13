@@ -130,15 +130,32 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
   const hydratedRevisionRef = useRef<number | undefined>(undefined)
   const pendingWritesRef = useRef<Set<Promise<unknown>>>(new Set())
   const trackWrite = useCallback((promise: Promise<unknown>) => {
-    pendingWritesRef.current.add(promise)
-    void promise.then(
-      () => pendingWritesRef.current.delete(promise),
-      () => pendingWritesRef.current.delete(promise),
+    let tracked: Promise<unknown>
+    tracked = promise.then(
+      (value) => {
+        pendingWritesRef.current.delete(tracked)
+        return value
+      },
+      (error) => {
+        // Keep rejected writes visible to flush() so a transfer cannot race
+        // ahead of an optimistic edit that never reached Convex.
+        throw error
+      },
     )
-    return promise
+    pendingWritesRef.current.add(tracked)
+    // Event handlers intentionally do not await every edit; attach a handler
+    // here to avoid an unhandled rejection while retaining it for flush().
+    void tracked.catch(() => undefined)
+    return tracked
   }, [])
   const flush = useCallback(async () => {
-    while (pendingWritesRef.current.size) await Promise.all([...pendingWritesRef.current])
+    while (pendingWritesRef.current.size) {
+      const writes = [...pendingWritesRef.current]
+      const results = await Promise.allSettled(writes)
+      writes.forEach((write) => pendingWritesRef.current.delete(write))
+      const failure = results.find((result): result is PromiseRejectedResult => result.status === 'rejected')
+      if (failure) throw failure.reason
+    }
   }, [])
 
   // Hydrate on first selection and on later server revisions. Optimistic

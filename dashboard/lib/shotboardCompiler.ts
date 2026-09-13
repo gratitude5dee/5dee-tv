@@ -1,16 +1,18 @@
 import type { ScriptBeat } from './directorProtocol'
-import type { CharacterDetails, LocationDetails, SceneDetails, ShotDetails } from './shotboardTypes'
+import type { CharacterDetails, LocationDetails, SceneDetails, ShotDetails, StyleDetails } from './shotboardTypes'
 import { shotTypeLabel } from './shotboardTypes'
 
 export const DEFAULT_SHOT_SECONDS = 8
 
-function sceneContextLine(scene: SceneDetails, locations: Map<string, LocationDetails>): string {
+function sceneContextLine(scene: SceneDetails, locations: Map<string, LocationDetails>, style?: StyleDetails): string {
   const selectedLocation = scene.locationId ? locations.get(scene.locationId) : undefined
   const parts = [
     scene.title || `Scene ${scene.sceneNumber}`,
     selectedLocation?.name,
     scene.location,
     selectedLocation?.description,
+    style?.name,
+    style?.description,
     scene.timeOfDay,
     scene.weather,
     scene.atmosphere,
@@ -31,12 +33,11 @@ function characterHandles(shot: ShotDetails, byId: Map<string, CharacterDetails>
   return names.length ? `Featuring ${names.join(', ')}.` : ''
 }
 
-function shotPrompt(shot: ShotDetails, scene: SceneDetails, isFirstOfScene: boolean, byId: Map<string, CharacterDetails>, locations: Map<string, LocationDetails>): string {
+function shotPrompt(shot: ShotDetails, scene: SceneDetails, isFirstOfScene: boolean, byId: Map<string, CharacterDetails>, locations: Map<string, LocationDetails>, style?: StyleDetails): string {
   const parts = [
-    isFirstOfScene ? sceneContextLine(scene, locations) : '',
+    isFirstOfScene ? sceneContextLine(scene, locations, style) : '',
     shotTypeLabel(shot.shotType),
-    shot.directorPrompt?.trim() || shot.expandedPrompt?.trim() || shot.promptIdea?.trim(),
-    !shot.promptIdea?.trim() ? shot.visualPrompt?.trim() : undefined,
+    shot.directorPrompt?.trim() || shot.expandedPrompt?.trim() || shot.visualPrompt?.trim() || shot.promptIdea?.trim(),
     characterHandles(shot, byId),
     shot.dialogue?.trim() ? `Dialogue: "${shot.dialogue.trim()}"` : '',
     shot.soundEffects?.trim() ? `SFX: ${shot.soundEffects.trim()}` : '',
@@ -72,6 +73,7 @@ export function compileShotsToBeats(
   shots: ShotDetails[],
   characters: CharacterDetails[],
   locations: LocationDetails[] = [],
+  style?: StyleDetails,
 ): ScriptBeat[] {
   const byId = new Map(characters.map((c) => [c.id, c]))
   const locationsById = new Map(locations.map((location) => [location.id, location]))
@@ -81,7 +83,7 @@ export function compileShotsToBeats(
     const offset = clock
     const duration = Math.max(1, Math.floor(shot.duration ?? DEFAULT_SHOT_SECONDS))
     const existing = events.get(offset) ?? { offset, prompt: '', endImageUrl: '', audioUrl: '' }
-    existing.prompt = shotPrompt(shot, scene, firstOfScene, byId, locationsById)
+    existing.prompt = shotPrompt(shot, scene, firstOfScene, byId, locationsById, style)
     existing.audioUrl = shot.audioUrl ?? ''
     events.set(offset, existing)
     // The first image is supplied as image_url on configure. Later images are

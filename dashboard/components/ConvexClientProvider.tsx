@@ -8,15 +8,23 @@ const ConvexEnabledContext = createContext(false)
 function useCloudflareAuth() {
   const [isLoading, setIsLoading] = useState(true)
   const [token, setToken] = useState<string | null>(null)
-  useEffect(() => {
-    let active = true
-    fetch('/api/auth/convex', { credentials: 'include', cache: 'no-store' })
-      .then((response) => response.ok ? response.json() as Promise<{ token?: string }> : null)
-      .then((value) => { if (active) { setToken(value?.token ?? null); setIsLoading(false) } })
-      .catch(() => { if (active) { setToken(null); setIsLoading(false) } })
-    return () => { active = false }
+  const fetchAccessToken = useCallback(async () => {
+    try {
+      const response = await fetch('/api/auth/convex', { credentials: 'include', cache: 'no-store' })
+      const value = response.ok ? await response.json() as { token?: string } : null
+      const nextToken = value?.token ?? null
+      setToken(nextToken)
+      setIsLoading(false)
+      return nextToken
+    } catch {
+      setToken(null)
+      setIsLoading(false)
+      return null
+    }
   }, [])
-  const fetchAccessToken = useCallback(async () => token, [token])
+  useEffect(() => {
+    void fetchAccessToken()
+  }, [fetchAccessToken])
   return { isLoading, isAuthenticated: Boolean(token), fetchAccessToken }
 }
 

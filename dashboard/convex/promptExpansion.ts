@@ -55,36 +55,41 @@ export const expand = action({
     activeExpansions += 1
     const startedAt = Date.now()
     const deadline = startedAt + 180_000
+    let ownsReservation = false
     try {
       if (args.shotId && args.sourceRevision != null) {
         const shot = await ctx.runQuery(internal.promptExpansion.getShot, { shotId: args.shotId })
         const revision = shot ? await ctx.runQuery(internal.promptExpansion.getBoardRevision, { boardId: shot.boardId }) : null
         if (!shot || revision !== args.sourceRevision) throw new Error('Prompt is stale; reload the shot before expanding')
       }
+      const sourceHash = await hash(base)
+      const reservation = await ctx.runMutation(internal.promptExpansion.reserve, { kind: args.kind, shotId: args.shotId, requestId: args.requestId, sourceRevision: args.sourceRevision, sourceHash, coordinatorModel: coordinator, workerModel: worker, templateVersion: TEMPLATE_VERSION })
+      if (reservation.state === 'completed' && reservation.result) return { prompt: reservation.result, requestId: args.requestId, templateVersion: TEMPLATE_VERSION, coordinatorModel: coordinator, workerModel: worker }
+      if (reservation.state !== 'reserved') throw new Error('Prompt expansion is already running or has failed; use a new requestId')
+      ownsReservation = true
       await verifyModelCatalog(coordinator, worker)
-    const sourceHash = await hash(base)
-    const cached = await ctx.runQuery(internal.promptExpansion.findCached, { kind: args.kind, sourceRevision: args.sourceRevision, sourceHash, coordinatorModel: coordinator, workerModel: worker, templateVersion: TEMPLATE_VERSION })
-    if (cached?.result) return { prompt: cached.result, requestId: cached.requestId, templateVersion: TEMPLATE_VERSION, coordinatorModel: coordinator, workerModel: worker }
-    if (Date.now() >= deadline) throw new Error('GMI prompt expansion exceeded its three-minute deadline')
-    const brief = await completion(coordinator, [{ role: 'system', content: system(args.kind) + '\nCreate a compact specialist brief.' }, { role: 'user', content: base }])
-    const briefPrompt = parseObject(brief.text).prompt
-    if (Date.now() >= deadline) throw new Error('GMI prompt expansion exceeded its three-minute deadline')
-    const [visual, continuity] = await Promise.all([completion(worker, [{ role: 'system', content: system(args.kind) + '\nAct as the visual/motion specialist.' }, { role: 'user', content: `Specialist brief:\n${briefPrompt}` }]), completion(worker, [{ role: 'system', content: system(args.kind) + '\nAct as the reference and continuity specialist. Keep dialogue verbatim.' }, { role: 'user', content: `Specialist brief:\n${briefPrompt}` }])])
-    const visualPrompt = parseObject(visual.text).prompt
-    const continuityPrompt = parseObject(continuity.text).prompt
-    if (Date.now() >= deadline) throw new Error('GMI prompt expansion exceeded its three-minute deadline')
-    const final = await completion(coordinator, [{ role: 'system', content: system(args.kind) + '\nSynthesize the candidates into the final prompt.' }, { role: 'user', content: `Original:\n${base}\n\nVisual:\n${visualPrompt}\n\nContinuity:\n${continuityPrompt}` }])
-    const parsed = parseObject(final.text)
-    // The source can change while the paid calls are in flight. Re-read the
-    // authoritative revision immediately before persisting the result so a
-    // late response can never overwrite newer user input.
-    if (args.shotId && args.sourceRevision != null) {
-      const latestShot = await ctx.runQuery(internal.promptExpansion.getShot, { shotId: args.shotId })
-      const latestRevision = latestShot ? await ctx.runQuery(internal.promptExpansion.getBoardRevision, { boardId: latestShot.boardId }) : null
-      if (!latestShot || latestRevision !== args.sourceRevision) throw new Error('Prompt is stale; reload the shot before expanding')
-    }
-    await ctx.runMutation(internal.promptExpansion.record, { kind: args.kind, shotId: args.shotId, requestId: args.requestId, sourceRevision: args.sourceRevision, sourceHash, result: parsed.prompt, coordinatorModel: coordinator, workerModel: worker, templateVersion: TEMPLATE_VERSION, provider: 'gmi', phase: 'completed', durationMs: Date.now() - startedAt, inputTokens: (brief.usage?.prompt_tokens || 0) + (visual.usage?.prompt_tokens || 0) + (continuity.usage?.prompt_tokens || 0) + (final.usage?.prompt_tokens || 0), outputTokens: (brief.usage?.completion_tokens || 0) + (visual.usage?.completion_tokens || 0) + (continuity.usage?.completion_tokens || 0) + (final.usage?.completion_tokens || 0) })
-    return { ...parsed, requestId: args.requestId, templateVersion: TEMPLATE_VERSION, coordinatorModel: coordinator, workerModel: worker }
+      const cached = await ctx.runQuery(internal.promptExpansion.findCached, { kind: args.kind, sourceRevision: args.sourceRevision, sourceHash, coordinatorModel: coordinator, workerModel: worker, templateVersion: TEMPLATE_VERSION })
+      if (cached?.result) {
+        await ctx.runMutation(internal.promptExpansion.record, { kind: args.kind, shotId: args.shotId, requestId: args.requestId, sourceRevision: args.sourceRevision, sourceHash, result: cached.result, coordinatorModel: coordinator, workerModel: worker, templateVersion: TEMPLATE_VERSION, provider: 'gmi-cache', phase: 'completed', durationMs: Date.now() - startedAt, inputTokens: 0, outputTokens: 0 })
+        return { prompt: cached.result, requestId: args.requestId, templateVersion: TEMPLATE_VERSION, coordinatorModel: coordinator, workerModel: worker }
+      }
+      if (Date.now() >= deadline) throw new Error('GMI prompt expansion exceeded its three-minute deadline')
+      const brief = await completion(coordinator, [{ role: 'system', content: system(args.kind) + '\nCreate a compact specialist brief.' }, { role: 'user', content: base }])
+      const briefPrompt = parseObject(brief.text).prompt
+      if (Date.now() >= deadline) throw new Error('GMI prompt expansion exceeded its three-minute deadline')
+      const [visual, continuity] = await Promise.all([completion(worker, [{ role: 'system', content: system(args.kind) + '\nAct as the visual/motion specialist.' }, { role: 'user', content: `Specialist brief:\n${briefPrompt}` }]), completion(worker, [{ role: 'system', content: system(args.kind) + '\nAct as the reference and continuity specialist. Keep dialogue verbatim.' }, { role: 'user', content: `Specialist brief:\n${briefPrompt}` }])])
+      const visualPrompt = parseObject(visual.text).prompt
+      const continuityPrompt = parseObject(continuity.text).prompt
+      if (Date.now() >= deadline) throw new Error('GMI prompt expansion exceeded its three-minute deadline')
+      const final = await completion(coordinator, [{ role: 'system', content: system(args.kind) + '\nSynthesize the candidates into the final prompt.' }, { role: 'user', content: `Original:\n${base}\n\nVisual:\n${visualPrompt}\n\nContinuity:\n${continuityPrompt}` }])
+      const parsed = parseObject(final.text)
+      // Revalidation is also enforced inside record() in the same Convex
+      // mutation that writes the result, closing the check-to-write race.
+      await ctx.runMutation(internal.promptExpansion.record, { kind: args.kind, shotId: args.shotId, requestId: args.requestId, sourceRevision: args.sourceRevision, sourceHash, result: parsed.prompt, coordinatorModel: coordinator, workerModel: worker, templateVersion: TEMPLATE_VERSION, provider: 'gmi', phase: 'completed', durationMs: Date.now() - startedAt, inputTokens: (brief.usage?.prompt_tokens || 0) + (visual.usage?.prompt_tokens || 0) + (continuity.usage?.prompt_tokens || 0) + (final.usage?.prompt_tokens || 0), outputTokens: (brief.usage?.completion_tokens || 0) + (visual.usage?.completion_tokens || 0) + (continuity.usage?.completion_tokens || 0) + (final.usage?.completion_tokens || 0) })
+      return { ...parsed, requestId: args.requestId, templateVersion: TEMPLATE_VERSION, coordinatorModel: coordinator, workerModel: worker }
+    } catch (error) {
+      if (ownsReservation) await ctx.runMutation(internal.promptExpansion.recordFailure, { requestId: args.requestId, error: error instanceof Error ? error.message.slice(0, 500) : 'Prompt expansion failed', durationMs: Date.now() - startedAt }).catch(() => undefined)
+      throw error
     } finally {
       activeExpansions -= 1
     }
@@ -96,9 +101,47 @@ export const expand = action({
 // different safety or billing behavior.
 export const start = expand
 
+export const reserve = internalMutation({
+  args: { kind: v.union(v.literal('image'), v.literal('director')), shotId: v.optional(v.id('shots')), requestId: v.string(), sourceRevision: v.optional(v.number()), sourceHash: v.string(), coordinatorModel: v.string(), workerModel: v.string(), templateVersion: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db.query('promptJobs').withIndex('by_requestId', (q) => q.eq('requestId', args.requestId)).unique()
+    if (existing) {
+      if (existing.sourceHash !== args.sourceHash || existing.kind !== args.kind || existing.sourceRevision !== args.sourceRevision || existing.coordinatorModel !== args.coordinatorModel || existing.workerModel !== args.workerModel || existing.templateVersion !== args.templateVersion) throw new Error('requestId was already used for a different expansion')
+      if (existing.status === 'completed' && existing.result) return { state: 'completed' as const, result: existing.result }
+      return { state: 'busy' as const }
+    }
+    const now = Date.now()
+    await ctx.db.insert('promptJobs', { ...args, status: 'running', provider: 'gmi', phase: 'reserved', createdAt: now, updatedAt: now })
+    return { state: 'reserved' as const }
+  },
+})
+
+export const recordFailure = internalMutation({
+  args: { requestId: v.string(), error: v.string(), durationMs: v.number() },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.query('promptJobs').withIndex('by_requestId', (q) => q.eq('requestId', args.requestId)).unique()
+    if (job && job.status !== 'completed') await ctx.db.patch(job._id, { status: 'failed', phase: 'failed', error: args.error.slice(0, 500), durationMs: args.durationMs, updatedAt: Date.now() })
+  },
+})
+
 export const record = internalMutation({
   args: { kind: v.union(v.literal('image'), v.literal('director')), shotId: v.optional(v.id('shots')), requestId: v.string(), sourceRevision: v.optional(v.number()), sourceHash: v.string(), result: v.string(), coordinatorModel: v.string(), workerModel: v.string(), templateVersion: v.string(), provider: v.optional(v.string()), phase: v.optional(v.string()), durationMs: v.optional(v.number()), inputTokens: v.number(), outputTokens: v.number() },
-  handler: async (ctx, args) => { const existing = await ctx.db.query('promptJobs').withIndex('by_requestId', (q) => q.eq('requestId', args.requestId)).unique(); const now = Date.now(); if (existing) { await ctx.db.patch(existing._id, { status: 'completed', result: args.result, shotId: args.shotId, provider: args.provider, phase: args.phase, durationMs: args.durationMs, updatedAt: now }); return existing._id }; return await ctx.db.insert('promptJobs', { ...args, status: 'completed', createdAt: now, updatedAt: now }) },
+  handler: async (ctx, args) => {
+    if (args.shotId && args.sourceRevision != null) {
+      const shot = await ctx.db.get(args.shotId)
+      const board = shot ? await ctx.db.get(shot.boardId) : null
+      if (!shot || !board || (board.revision ?? 0) !== args.sourceRevision) throw new Error('Prompt is stale; reload the shot before expanding')
+    }
+    const existing = await ctx.db.query('promptJobs').withIndex('by_requestId', (q) => q.eq('requestId', args.requestId)).unique()
+    const now = Date.now()
+    if (existing) {
+      if (existing.sourceHash !== args.sourceHash || existing.kind !== args.kind || existing.sourceRevision !== args.sourceRevision) throw new Error('requestId was already used for a different expansion')
+      if (existing.status === 'completed' && existing.result) return existing._id
+      await ctx.db.patch(existing._id, { status: 'completed', result: args.result, shotId: args.shotId, provider: args.provider, phase: args.phase, durationMs: args.durationMs, inputTokens: args.inputTokens, outputTokens: args.outputTokens, updatedAt: now })
+      return existing._id
+    }
+    return await ctx.db.insert('promptJobs', { ...args, status: 'completed', createdAt: now, updatedAt: now })
+  },
 })
 export const getShot = internalQuery({ args: { shotId: v.id('shots') }, handler: async (ctx, { shotId }) => await ctx.db.get(shotId) })
 export const getBoardRevision = internalQuery({ args: { boardId: v.id('shotboards') }, handler: async (ctx, { boardId }) => (await ctx.db.get(boardId))?.revision ?? 0 })

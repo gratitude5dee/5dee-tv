@@ -22,9 +22,12 @@ export const generateDraft = mutation({
     await requireIdentity(ctx)
     const premise = args.premise.trim()
     if (!premise || premise.length > 12_000) throw new Error('Premise must be 1–12,000 characters')
-    if (!Number.isFinite(args.duration) || args.duration < 5 || args.duration > 3_600) throw new Error('Duration must be between 5 and 3,600 seconds')
-    const shotCount = Math.max(1, Math.min(16, Math.floor(args.shotCount || 8)))
-    const duration = Math.max(1, Math.round(args.duration / shotCount))
+    if (!Number.isInteger(args.duration) || args.duration < 5 || args.duration > 3_600) throw new Error('Duration must be an integer between 5 and 3,600 seconds')
+    const totalSeconds = args.duration
+    // Keep every planned shot playable while preserving the requested total.
+    const shotCount = Math.max(1, Math.min(16, Math.floor(args.shotCount || 8), totalSeconds))
+    const baseDuration = Math.floor(totalSeconds / shotCount)
+    const remainder = totalSeconds % shotCount
     const now = Date.now()
     const jobId = await ctx.db.insert('storyboardJobs', { premise, seriesId: args.seriesId, duration: args.duration, shotCount, includeDialogue: args.includeDialogue, status: 'queued', provider: 'scaffold-awaiting-terra', createdAt: now, updatedAt: now })
     const boardId = await ctx.db.insert('shotboards', { title: premise.slice(0, 80) || 'Untitled storyboard', description: premise, seriesId: args.seriesId, revision: 1, createdAt: now, updatedAt: now })
@@ -36,7 +39,7 @@ export const generateDraft = mutation({
         shotNumber: index + 1,
         order: index + 1,
         shotType: index === 0 ? 'establishing' : 'medium',
-        duration,
+        duration: baseDuration + (index < remainder ? 1 : 0),
         promptIdea: `${premise} — beat ${index + 1} of ${shotCount}: develop the next visual moment.`,
         dialogue: args.includeDialogue ? `Beat ${index + 1}: advance the story. ` : undefined,
         imageStatus: 'pending',

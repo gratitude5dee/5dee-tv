@@ -2,6 +2,10 @@ import { mutation, query } from './_generated/server'
 import { v } from 'convex/values'
 import { sessionModel, sessionStatus } from './schema'
 
+const requireIdentity = async (ctx: { auth: { getUserIdentity: () => Promise<unknown> } }) => {
+  if (!(await ctx.auth.getUserIdentity())) throw new Error('Authentication required')
+}
+
 export const create = mutation({
   args: {
     model: sessionModel,
@@ -9,6 +13,7 @@ export const create = mutation({
     config: v.any(),
   },
   handler: async (ctx, args) => {
+    await requireIdentity(ctx)
     return await ctx.db.insert('sessions', {
       ...args,
       status: 'opening',
@@ -24,6 +29,7 @@ export const setStatus = mutation({
     error: v.optional(v.string()),
   },
   handler: async (ctx, { sessionId, status, error }) => {
+    await requireIdentity(ctx)
     const session = await ctx.db.get(sessionId)
     if (!session) return
     const ended = status === 'ended' || status === 'failed'
@@ -38,6 +44,7 @@ export const setStatus = mutation({
 export const list = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
+    if (!(await ctx.auth.getUserIdentity())) return []
     return await ctx.db
       .query('sessions')
       .withIndex('by_startedAt')
@@ -48,5 +55,5 @@ export const list = query({
 
 export const get = query({
   args: { sessionId: v.id('sessions') },
-  handler: async (ctx, { sessionId }) => ctx.db.get(sessionId),
+  handler: async (ctx, { sessionId }) => { if (!(await ctx.auth.getUserIdentity())) return null; return ctx.db.get(sessionId) },
 })

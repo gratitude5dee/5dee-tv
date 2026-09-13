@@ -153,7 +153,7 @@ export default function ShotCard({
         <button
           type="button"
           onClick={() => void expandPrompt()}
-          disabled={expanding || !displayedPrompt.trim()}
+          disabled={!onExpandPrompt || expanding || !displayedPrompt.trim()}
           className="absolute right-1 top-1 rounded border border-fal-primary-300 bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-fal-primary-700 shadow-sm hover:bg-fal-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-fal-gray-900/90 dark:text-fal-primary-300"
           title="Expand this prompt with GMI"
         >

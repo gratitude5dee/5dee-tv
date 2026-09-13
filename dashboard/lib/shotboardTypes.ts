@@ -42,6 +42,12 @@ export interface LocationDetails {
   imageUrl?: string
 }
 
+export interface StyleDetails {
+  id: string
+  name: string
+  description?: string
+}
+
 export interface ShotDetails {
   id: string
   sceneId: string
