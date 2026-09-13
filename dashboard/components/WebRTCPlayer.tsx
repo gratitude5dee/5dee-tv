@@ -190,11 +190,11 @@ export default function WebRTCPlayer({ apiUrl }: WebRTCPlayerProps) {
             ) : (
               <WifiOff className="w-5 h-5 text-fal-gray-400" />
             )}
-            <h3 className="text-lg font-semibold text-fal-gray-900">
+            <h3 className="text-lg font-semibold text-fal-gray-900 dark:text-fal-gray-50">
               WebRTC Stream
             </h3>
             {connected && (
-              <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full font-medium">
+              <span className="text-xs bg-green-100 dark:bg-green-500/15 text-green-800 px-2 py-0.5 rounded-full font-medium">
                 LIVE
               </span>
             )}
@@ -219,7 +219,7 @@ export default function WebRTCPlayer({ apiUrl }: WebRTCPlayerProps) {
 
       <div className="fal-card-content">
         {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-700">
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4 text-sm text-red-700 dark:text-red-400">
             {error}
           </div>
         )}
@@ -242,7 +242,7 @@ export default function WebRTCPlayer({ apiUrl }: WebRTCPlayerProps) {
           )}
         </div>
         {muted && connected && (
-          <p className="text-xs text-fal-gray-600 mt-2 text-center">
+          <p className="text-xs text-fal-gray-600 dark:text-fal-gray-400 mt-2 text-center">
             Click the speaker icon to unmute audio
           </p>
         )}

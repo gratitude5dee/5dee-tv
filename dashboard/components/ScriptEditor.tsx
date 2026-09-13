@@ -50,30 +50,30 @@ export default function ScriptEditor({
       <div className="fal-card-header">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Clapperboard className="w-4 h-4 text-fal-gray-500" />
+            <Clapperboard className="w-4 h-4 text-fal-gray-500 dark:text-fal-gray-400" />
             <h3 className="fal-card-title">Script</h3>
           </div>
-          <span className="text-xs text-fal-gray-500">
+          <span className="text-xs text-fal-gray-500 dark:text-fal-gray-400">
             {wire.length} beat{wire.length === 1 ? '' : 's'}
             {activeBeat && ` · beat @${activeBeat.offset}s playing`}
           </span>
         </div>
       </div>
       <div className="fal-card-content space-y-3">
-        <p className="text-xs text-fal-gray-500">
+        <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400">
           Timed shots the model runs on its own clock — each beat&rsquo;s direction starts at its offset and
           holds until the next one. Sent with the session, or pushed live to replace/append the queue.
         </p>
 
         {beats.map((beat, i) => (
-          <div key={i} className="rounded-md border border-fal-gray-200 p-2 space-y-2">
+          <div key={i} className="rounded-md border border-fal-gray-200 dark:border-fal-gray-700 p-2 space-y-2">
             <div className="flex items-center gap-2">
               <input
                 type="number"
                 min={0}
                 value={beat.offset}
                 onChange={(e) => update(i, { offset: Math.max(0, Math.floor(Number(e.target.value) || 0)) })}
-                className="w-16 rounded-md border border-fal-gray-300 px-2 py-1 text-xs"
+                className="w-16 rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-2 py-1 text-xs"
                 title="Offset in seconds"
               />
               <span className="text-xs text-fal-gray-400">s</span>
@@ -82,12 +82,12 @@ export default function ScriptEditor({
                 onChange={(e) => update(i, { prompt: e.target.value })}
                 rows={2}
                 placeholder="Direction for this shot…"
-                className="flex-1 rounded-md border border-fal-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-fal-primary-500"
+                className="flex-1 rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-fal-primary-500"
               />
               <button
                 type="button"
                 onClick={() => setExpanded((p) => ({ ...p, [i]: !p[i] }))}
-                className="p-1 text-fal-gray-400 hover:text-fal-gray-600"
+                className="p-1 text-fal-gray-400 hover:text-fal-gray-600 dark:text-fal-gray-400"
                 aria-label="Optional assets"
               >
                 {expanded[i] ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -95,7 +95,7 @@ export default function ScriptEditor({
               <button
                 type="button"
                 onClick={() => onChange(beats.filter((_, j) => j !== i))}
-                className="p-1 text-fal-gray-400 hover:text-red-600"
+                className="p-1 text-fal-gray-400 hover:text-red-600 dark:text-red-400"
                 aria-label="Delete shot"
               >
                 <Trash2 className="w-3.5 h-3.5" />
@@ -104,7 +104,7 @@ export default function ScriptEditor({
             {expanded[i] && (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 pl-1">
                 <div>
-                  <label className="block text-xs text-fal-gray-500 mb-1">End frame at this offset</label>
+                  <label className="block text-xs text-fal-gray-500 dark:text-fal-gray-400 mb-1">End frame at this offset</label>
                   <AssetUrlInput
                     value={beat.endImageUrl}
                     onChange={(u) => update(i, { endImageUrl: u })}
@@ -112,7 +112,7 @@ export default function ScriptEditor({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-fal-gray-500 mb-1">Audio starting at this offset</label>
+                  <label className="block text-xs text-fal-gray-500 dark:text-fal-gray-400 mb-1">Audio starting at this offset</label>
                   <AssetUrlInput
                     value={beat.audioUrl}
                     onChange={(u) => update(i, { audioUrl: u })}
@@ -159,12 +159,12 @@ export default function ScriptEditor({
               </button>
             </>
           ) : (
-            <label className="flex items-center gap-1.5 text-xs text-fal-gray-600">
+            <label className="flex items-center gap-1.5 text-xs text-fal-gray-600 dark:text-fal-gray-400">
               <input
                 type="checkbox"
                 checked={sendOnConnect}
                 onChange={(e) => onSendOnConnectChange(e.target.checked)}
-                className="rounded border-fal-gray-300"
+                className="rounded border-fal-gray-300 dark:border-fal-gray-700"
               />
               <span className="flex items-center gap-1">
                 <Play className="w-3 h-3" /> Send with session start

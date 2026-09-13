@@ -187,7 +187,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Settings className="w-5 h-5 text-fal-yellow-500" />
-            <h3 className="text-lg font-semibold text-fal-gray-900">Video Generation</h3>
+            <h3 className="text-lg font-semibold text-fal-gray-900 dark:text-fal-gray-50">Video Generation</h3>
           </div>
           <div className="flex items-center space-x-3">
             <button
@@ -213,7 +213,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
               className={`px-4 py-3 rounded-lg text-sm font-medium transition-all border-2 ${
                 selectedModel === 'ltxv1'
                   ? 'bg-fal-primary-500 text-white border-fal-primary-500 shadow-lg'
-                  : 'bg-white text-fal-gray-700 hover:bg-fal-gray-50 border-fal-gray-300'
+                  : 'bg-white dark:bg-fal-gray-900 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-50 dark:bg-fal-gray-800 border-fal-gray-300 dark:border-fal-gray-700'
               }`}
             >
               <div className="flex items-center justify-center space-x-2">
@@ -229,7 +229,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
               className={`px-4 py-3 rounded-lg text-sm font-medium transition-all border-2 ${
                 selectedModel === 'ltx-2.3'
                   ? 'bg-fal-primary-500 text-white border-fal-primary-500 shadow-lg'
-                  : 'bg-white text-fal-gray-700 hover:bg-fal-gray-50 border-fal-gray-300'
+                  : 'bg-white dark:bg-fal-gray-900 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-50 dark:bg-fal-gray-800 border-fal-gray-300 dark:border-fal-gray-700'
               }`}
             >
               <div className="flex items-center justify-center space-x-2">
@@ -245,7 +245,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
               className={`px-4 py-3 rounded-lg text-sm font-medium transition-all border-2 ${
                 selectedModel === 'ltx-2.3-local'
                   ? 'bg-fal-primary-500 text-white border-fal-primary-500 shadow-lg'
-                  : 'bg-white text-fal-gray-700 hover:bg-fal-gray-50 border-fal-gray-300'
+                  : 'bg-white dark:bg-fal-gray-900 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-50 dark:bg-fal-gray-800 border-fal-gray-300 dark:border-fal-gray-700'
               }`}
             >
               <div className="flex items-center justify-center space-x-2">
@@ -261,7 +261,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
               className={`px-4 py-3 rounded-lg text-sm font-medium transition-all border-2 ${
                 selectedModel === 'ltx-2.3-condition'
                   ? 'bg-fal-primary-500 text-white border-fal-primary-500 shadow-lg'
-                  : 'bg-white text-fal-gray-700 hover:bg-fal-gray-50 border-fal-gray-300'
+                  : 'bg-white dark:bg-fal-gray-900 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-50 dark:bg-fal-gray-800 border-fal-gray-300 dark:border-fal-gray-700'
               }`}
             >
               <div className="flex items-center justify-center space-x-2">
@@ -297,7 +297,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                     setLtxv2Config(prev => ({ ...prev, prompt: newPrompt }))
                   }
                 }}
-                className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 text-sm"
+                className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 text-sm"
                 rows={3}
                 placeholder={selectedModel === 'ltxv1' 
                   ? "Describe the initial video content..." 
@@ -320,7 +320,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       ltxv1Config.mode === 'regular'
                         ? 'bg-fal-primary-500 text-white'
-                        : 'bg-fal-gray-100 text-fal-gray-700 hover:bg-fal-gray-200 border border-fal-gray-300'
+                        : 'bg-fal-gray-100 dark:bg-fal-gray-800 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-200 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700'
                     }`}
                   >
                     🌟 Regular
@@ -335,7 +335,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                       ltxv1Config.mode === 'nightmare'
                         ? 'bg-fal-red-500 text-white'
-                        : 'bg-fal-gray-100 text-fal-gray-700 hover:bg-fal-gray-200 border border-fal-gray-300'
+                        : 'bg-fal-gray-100 dark:bg-fal-gray-800 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-200 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700'
                     }`}
                   >
                     😈 Nightmare
@@ -362,7 +362,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                         ltxv2Config.duration === 6
                           ? 'bg-fal-primary-500 text-white'
-                          : 'bg-fal-gray-100 text-fal-gray-700 hover:bg-fal-gray-200 border border-fal-gray-300'
+                          : 'bg-fal-gray-100 dark:bg-fal-gray-800 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-200 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700'
                       }`}
                     >
                       6 seconds
@@ -373,7 +373,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                         ltxv2Config.duration === 8
                           ? 'bg-fal-primary-500 text-white'
-                          : 'bg-fal-gray-100 text-fal-gray-700 hover:bg-fal-gray-200 border border-fal-gray-300'
+                          : 'bg-fal-gray-100 dark:bg-fal-gray-800 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-200 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700'
                       }`}
                     >
                       8 seconds
@@ -389,7 +389,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                       ...prev, 
                       resolution: e.target.value as '1080p' | '1440p' | '2160p' 
                     }))}
-                    className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 text-sm"
+                    className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 text-sm"
                   >
                     <option value="1080p">1080p</option>
                     <option value="1440p">1440p</option>
@@ -406,7 +406,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                         ltxv2Config.aspect_ratio === '16:9'
                           ? 'bg-fal-primary-500 text-white'
-                          : 'bg-fal-gray-100 text-fal-gray-700 hover:bg-fal-gray-200 border border-fal-gray-300'
+                          : 'bg-fal-gray-100 dark:bg-fal-gray-800 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-200 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700'
                       }`}
                     >
                       16:9 Landscape
@@ -417,7 +417,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                       className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                         ltxv2Config.aspect_ratio === '9:16'
                           ? 'bg-fal-primary-500 text-white'
-                          : 'bg-fal-gray-100 text-fal-gray-700 hover:bg-fal-gray-200 border border-fal-gray-300'
+                          : 'bg-fal-gray-100 dark:bg-fal-gray-800 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-200 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700'
                       }`}
                     >
                       9:16 Portrait
@@ -434,7 +434,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                 <textarea
                   value={ltxv1Config.negative_prompt}
                   onChange={(e) => setLtxv1Config(prev => ({ ...prev, negative_prompt: e.target.value }))}
-                  className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 text-sm"
+                  className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 text-sm"
                   rows={2}
                   placeholder="What to avoid in the generation..."
                 />
@@ -466,8 +466,8 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                     uploadingImage 
                       ? 'border-fal-primary-400 bg-fal-primary-50' 
                       : (selectedModel === 'ltxv1' ? ltxv1Config.initial_image_url : selectedModel === 'ltx-2.3-local' ? ltx23LocalConfig.initial_image_url : ltxv2Config.image_url)
-                        ? 'border-fal-gray-300 bg-fal-gray-50' 
-                        : 'border-fal-gray-300 bg-fal-gray-100 hover:border-fal-primary-400 hover:bg-fal-primary-50 cursor-pointer'
+                        ? 'border-fal-gray-300 dark:border-fal-gray-700 bg-fal-gray-50 dark:bg-fal-gray-800' 
+                        : 'border-fal-gray-300 dark:border-fal-gray-700 bg-fal-gray-100 dark:bg-fal-gray-800 hover:border-fal-primary-400 hover:bg-fal-primary-50 cursor-pointer'
                   }`}
                   onClick={() => !uploadingImage && fileInputRef.current?.click()}
                 >
@@ -510,14 +510,14 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                     // Uploading State
                     <div className="flex flex-col items-center justify-center py-12">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-fal-primary-500 mb-3"></div>
-                      <p className="text-fal-primary-600 font-medium">Uploading image...</p>
+                      <p className="text-fal-primary-600 dark:text-fal-primary-400 font-medium">Uploading image...</p>
                     </div>
                   ) : (
                     // Empty State
                     <div className="flex flex-col items-center justify-center py-12 text-center">
                       <Upload className="w-12 h-12 text-fal-gray-400 mb-3" />
-                      <p className="text-fal-gray-600 font-medium mb-1">Click to upload an image</p>
-                      <p className="text-fal-gray-500 text-sm">PNG, JPG, GIF up to 10MB</p>
+                      <p className="text-fal-gray-600 dark:text-fal-gray-400 font-medium mb-1">Click to upload an image</p>
+                      <p className="text-fal-gray-500 dark:text-fal-gray-400 text-sm">PNG, JPG, GIF up to 10MB</p>
                     </div>
                   )}
                 </div>
@@ -563,7 +563,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                           setLtxv2Config(prev => ({ ...prev, target_fps: value }))
                         }
                       }}
-                      className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono"
+                      className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                       min={1}
                       max={30}
                       step={0.5}
@@ -580,7 +580,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                         const preset = RESOLUTION_PRESETS.find(p => `${p.width}x${p.height}` === key)
                         if (preset) setDimensions(preset.width, preset.height)
                       }}
-                      className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono"
+                      className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                     >
                       {RESOLUTION_PRESETS.map(p => (
                         <option key={`${p.width}x${p.height}`} value={`${p.width}x${p.height}`}>
@@ -600,7 +600,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                         type="number"
                         value={currentWidth}
                         onChange={(e) => setDimensions(parseInt(e.target.value), currentHeight)}
-                        className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono"
+                        className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                         min={256}
                         max={1920}
                         step={32}
@@ -612,7 +612,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                         type="number"
                         value={currentHeight}
                         onChange={(e) => setDimensions(currentWidth, parseInt(e.target.value))}
-                        className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono"
+                        className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                         min={256}
                         max={1920}
                         step={32}
@@ -621,7 +621,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                   </div>
                 )}
 
-                <p className="text-xs text-fal-gray-600 mt-2">
+                <p className="text-xs text-fal-gray-600 dark:text-fal-gray-400 mt-2">
                   {selectedModel === 'ltx-2.3'
                     ? 'Stream resolution: videos from the remote LTX 2.3 API are resized to these dimensions before streaming.'
                     : 'Generation and streaming resolution. Must be divisible by 32 (all presets are).'}
@@ -640,7 +640,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                 type="number"
                 value={ltxv1Config.num_frames}
                 onChange={(e) => setLtxv1Config(prev => ({ ...prev, num_frames: parseInt(e.target.value) }))}
-                className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono"
+                className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                 min={60}
                 max={500}
                 step={10}
@@ -653,7 +653,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                 type="number"
                 value={ltxv1Config.guidance_scale}
                 onChange={(e) => setLtxv1Config(prev => ({ ...prev, guidance_scale: parseFloat(e.target.value) }))}
-                className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono"
+                className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                 min={1}
                 max={10}
                 step={0.1}
@@ -666,7 +666,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                 type="number"
                 value={ltxv1Config.strength}
                 onChange={(e) => setLtxv1Config(prev => ({ ...prev, strength: parseFloat(e.target.value) }))}
-                className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono"
+                className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                 min={0.1}
                 max={2.0}
                 step={0.1}
@@ -678,7 +678,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
         {/* Advanced Parameters - LTXv1 only */}
         {showAdvanced && selectedModel === 'ltxv1' && (
           <div className="space-y-4 border-t border-fal-gray-700 pt-6">
-            <h4 className="text-fal-gray-900 font-medium">Advanced LTXv1 Parameters</h4>
+            <h4 className="text-fal-gray-900 dark:text-fal-gray-50 font-medium">Advanced LTXv1 Parameters</h4>
             
             <div>
               <label className="metric-label mb-2 block">Timesteps (comma-separated)</label>
@@ -693,7 +693,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                     // Invalid input, ignore
                   }
                 }}
-                className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono text-sm"
+                className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono text-sm"
                 placeholder="1000, 981, 909, 725, 0.03"
               />
             </div>
@@ -705,13 +705,13 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
         {/* Advanced Parameters - LTX 2.3 Local + Condition (fixation-control knobs) */}
         {showAdvanced && (selectedModel === 'ltx-2.3-local' || selectedModel === 'ltx-2.3-condition') && (
           <div className="space-y-4 border-t border-fal-gray-700 pt-6">
-            <h4 className="text-fal-gray-900 font-medium">
+            <h4 className="text-fal-gray-900 dark:text-fal-gray-50 font-medium">
               Advanced LTX 2.3 Local Parameters
               {ltx23LocalConfig.style_preset !== 'custom' && (
-                <span className="text-xs font-normal text-fal-gray-500 ml-2">(preset: {ltx23LocalConfig.style_preset} -- edit to customize)</span>
+                <span className="text-xs font-normal text-fal-gray-500 dark:text-fal-gray-400 ml-2">(preset: {ltx23LocalConfig.style_preset} -- edit to customize)</span>
               )}
             </h4>
-            <p className="text-xs text-fal-gray-600">
+            <p className="text-xs text-fal-gray-600 dark:text-fal-gray-400">
               Tune these to fight scene fixation. Higher <code>guidance_scale</code> makes
               the prompt matter more; <code>noise_scale</code> injects entropy into the
               latents; leave seed empty for a fresh random seed every generation
@@ -728,7 +728,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                   type="number"
                   value={ltx23LocalConfig.num_frames}
                   onChange={(e) => updateLocalParam({ num_frames: parseInt(e.target.value) })}
-                  className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono"
+                  className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                   min={9}
                   max={241}
                   step={8}
@@ -741,7 +741,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                   type="number"
                   value={ltx23LocalConfig.guidance_scale}
                   onChange={(e) => updateLocalParam({ guidance_scale: parseFloat(e.target.value) })}
-                  className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono"
+                  className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                   min={1}
                   max={7}
                   step={0.1}
@@ -754,7 +754,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                   type="number"
                   value={ltx23LocalConfig.stg_scale}
                   onChange={(e) => updateLocalParam({ stg_scale: parseFloat(e.target.value) })}
-                  className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono"
+                  className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                   min={0}
                   max={3}
                   step={0.1}
@@ -778,7 +778,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                       .filter(n => !isNaN(n) && n >= 0)
                     updateLocalParam({ spatio_temporal_guidance_blocks: blocks.length ? blocks : null })
                   }}
-                  className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono text-sm"
+                  className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono text-sm"
                 />
               </div>
 
@@ -788,7 +788,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                   type="number"
                   value={ltx23LocalConfig.noise_scale}
                   onChange={(e) => updateLocalParam({ noise_scale: parseFloat(e.target.value) })}
-                  className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono"
+                  className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                   min={0}
                   max={0.3}
                   step={0.01}
@@ -801,7 +801,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                   type="number"
                   value={ltx23LocalConfig.llm_temperature}
                   onChange={(e) => updateLocalParam({ llm_temperature: parseFloat(e.target.value) })}
-                  className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono"
+                  className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                   min={0.1}
                   max={1.5}
                   step={0.1}
@@ -820,11 +820,11 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                       const v = e.target.value
                       updateLocalParam({ seed: v === '' ? null : parseInt(v) })
                     }}
-                    className="flex-1 bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono disabled:opacity-50"
+                    className="flex-1 bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono disabled:opacity-50"
                     min={0}
                     step={1}
                   />
-                  <label className="flex items-center space-x-2 text-xs text-fal-gray-700 select-none">
+                  <label className="flex items-center space-x-2 text-xs text-fal-gray-700 dark:text-fal-gray-300 select-none">
                     <input
                       type="checkbox"
                       checked={ltx23LocalConfig.seed === null}
@@ -843,7 +843,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
               <textarea
                 value={ltx23LocalConfig.negative_prompt}
                 onChange={(e) => updateLocalParam({ negative_prompt: e.target.value })}
-                className="w-full bg-fal-gray-100 border border-fal-gray-300 rounded-lg p-3 text-fal-gray-900 font-mono text-sm"
+                className="w-full bg-fal-gray-100 dark:bg-fal-gray-800 border border-fal-gray-300 dark:border-fal-gray-700 rounded-lg p-3 text-fal-gray-900 dark:text-fal-gray-50 font-mono text-sm"
                 rows={2}
               />
             </div>
@@ -855,9 +855,9 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                   checked={ltx23LocalConfig.enable_audio}
                   onChange={(e) => setLtx23LocalConfig(prev => ({ ...prev, enable_audio: e.target.checked }))}
                 />
-                <span className="text-sm text-fal-gray-900 font-medium">Stream native audio (experimental)</span>
+                <span className="text-sm text-fal-gray-900 dark:text-fal-gray-50 font-medium">Stream native audio (experimental)</span>
               </label>
-              <p className="text-xs text-fal-gray-600 mt-1 ml-6">
+              <p className="text-xs text-fal-gray-600 dark:text-fal-gray-400 mt-1 ml-6">
                 LTX 2.3 jointly generates audio with video. When off, the stream uses
                 silent <code>anullsrc</code> like before. When on, the model&apos;s PCM
                 output is fed into ffmpeg via a FIFO. The stream must be restarted
@@ -869,16 +869,16 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
               <button
                 type="button"
                 onClick={() => setShowSystemPrompt(!showSystemPrompt)}
-                className="text-sm text-fal-primary-500 hover:text-fal-primary-600 font-medium"
+                className="text-sm text-fal-primary-500 hover:text-fal-primary-600 dark:text-fal-primary-400 font-medium"
               >
                 {showSystemPrompt ? 'Hide' : 'Show'} System Prompt
               </button>
               {showSystemPrompt && (
-                <div className="mt-2 bg-fal-gray-50 border border-fal-gray-200 rounded-lg p-3">
-                  <p className="text-xs text-fal-gray-500 mb-2 font-medium">
+                <div className="mt-2 bg-fal-gray-50 dark:bg-fal-gray-800 border border-fal-gray-200 dark:border-fal-gray-700 rounded-lg p-3">
+                  <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400 mb-2 font-medium">
                     System prompt for preset: <strong>{ltx23LocalConfig.style_preset}</strong>
                   </p>
-                  <pre className="text-xs text-fal-gray-700 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
+                  <pre className="text-xs text-fal-gray-700 dark:text-fal-gray-300 whitespace-pre-wrap font-mono leading-relaxed max-h-64 overflow-y-auto">
                     {SYSTEM_PROMPT_PREVIEWS[ltx23LocalConfig.style_preset] || 'Unknown preset'}
                   </pre>
                 </div>
@@ -893,13 +893,13 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
         {selectedModel === 'ltx-2.3-condition' && (
           <div>
             <label className="metric-label mb-3 block">Character References</label>
-            <p className="text-xs text-fal-gray-600 mb-3">
+            <p className="text-xs text-fal-gray-600 dark:text-fal-gray-400 mb-3">
               Add up to 4 character reference images. The model uses these as visual anchors
               for character consistency. Characters appear in the story when the narrative calls for them.
             </p>
             <div className="space-y-3">
               {ltx23ConditionConfig.character_refs.map((ref, idx) => (
-                <div key={idx} className="flex items-start space-x-3 bg-fal-gray-50 border border-fal-gray-200 rounded-lg p-3">
+                <div key={idx} className="flex items-start space-x-3 bg-fal-gray-50 dark:bg-fal-gray-800 border border-fal-gray-200 dark:border-fal-gray-700 rounded-lg p-3">
                   {ref.image && (
                     <img
                       src={ref.image.startsWith('data:') ? ref.image : ref.image}
@@ -917,7 +917,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                         updated[idx] = { ...ref, label: e.target.value }
                         setLtx23ConditionConfig(prev => ({ ...prev, character_refs: updated }))
                       }}
-                      className="w-full bg-white border border-fal-gray-300 rounded p-2 text-sm text-fal-gray-900"
+                      className="w-full bg-white dark:bg-fal-gray-900 border border-fal-gray-300 dark:border-fal-gray-700 rounded p-2 text-sm text-fal-gray-900 dark:text-fal-gray-50"
                     />
                     <div className="flex items-center space-x-3">
                       <input
@@ -929,7 +929,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                           updated[idx] = { ...ref, image: e.target.value }
                           setLtx23ConditionConfig(prev => ({ ...prev, character_refs: updated }))
                         }}
-                        className="flex-1 bg-white border border-fal-gray-300 rounded p-2 text-xs text-fal-gray-900 font-mono"
+                        className="flex-1 bg-white dark:bg-fal-gray-900 border border-fal-gray-300 dark:border-fal-gray-700 rounded p-2 text-xs text-fal-gray-900 dark:text-fal-gray-50 font-mono"
                       />
                       <label className="btn-secondary text-xs cursor-pointer px-2 py-1">
                         Upload
@@ -952,7 +952,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                       </label>
                     </div>
                     <div className="flex items-center space-x-2">
-                      <label className="text-xs text-fal-gray-600 w-20">Strength:</label>
+                      <label className="text-xs text-fal-gray-600 dark:text-fal-gray-400 w-20">Strength:</label>
                       <input
                         type="range"
                         min={0}
@@ -966,7 +966,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                         }}
                         className="flex-1"
                       />
-                      <span className="text-xs text-fal-gray-700 font-mono w-8">{ref.strength.toFixed(2)}</span>
+                      <span className="text-xs text-fal-gray-700 dark:text-fal-gray-300 font-mono w-8">{ref.strength.toFixed(2)}</span>
                     </div>
                   </div>
                   <button
@@ -1029,7 +1029,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                   className={`px-3 py-2 rounded-lg text-sm font-medium transition-all border-2 ${
                     ltx23LocalConfig.style_preset === preset.id
                       ? 'bg-fal-primary-500 text-white border-fal-primary-500 shadow-lg'
-                      : 'bg-white text-fal-gray-700 hover:bg-fal-gray-50 border-fal-gray-300'
+                      : 'bg-white dark:bg-fal-gray-900 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-50 dark:bg-fal-gray-800 border-fal-gray-300 dark:border-fal-gray-700'
                   }`}
                 >
                   {preset.label}
@@ -1038,7 +1038,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
               ))}
             </div>
             {ltx23LocalConfig.style_preset !== 'custom' && (
-              <p className="text-xs text-fal-gray-600 mt-2">
+              <p className="text-xs text-fal-gray-600 dark:text-fal-gray-400 mt-2">
                 Preset overrides guidance_scale, noise_scale, and LLM temperature.
                 Switch to <strong>Custom</strong> for full manual control via Advanced.
               </p>
@@ -1057,7 +1057,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                 className={`px-4 py-3 rounded-lg text-sm font-medium transition-all border-2 ${
                   ltx23LocalConfig.output_mode === 'rtmp'
                     ? 'bg-fal-primary-500 text-white border-fal-primary-500 shadow-lg'
-                    : 'bg-white text-fal-gray-700 hover:bg-fal-gray-50 border-fal-gray-300'
+                    : 'bg-white dark:bg-fal-gray-900 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-50 dark:bg-fal-gray-800 border-fal-gray-300 dark:border-fal-gray-700'
                 }`}
               >
                 RTMP / Twitch
@@ -1069,7 +1069,7 @@ export default function TestControlPanel({ onStartTest, onStopTest, onUpdateConf
                 className={`px-4 py-3 rounded-lg text-sm font-medium transition-all border-2 ${
                   ltx23LocalConfig.output_mode === 'webrtc'
                     ? 'bg-fal-primary-500 text-white border-fal-primary-500 shadow-lg'
-                    : 'bg-white text-fal-gray-700 hover:bg-fal-gray-50 border-fal-gray-300'
+                    : 'bg-white dark:bg-fal-gray-900 text-fal-gray-700 dark:text-fal-gray-300 hover:bg-fal-gray-50 dark:bg-fal-gray-800 border-fal-gray-300 dark:border-fal-gray-700'
                 }`}
               >
                 WebRTC Direct

@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { MessagesSquare, Plug, Unplug } from 'lucide-react'
+import { DitherAvatar } from './dither-kit/avatar'
 
 interface ChatSteererProps {
   /** Whether a Director session is live; directions are only sent while true. */
@@ -27,11 +28,15 @@ interface ChatLine {
 export default function ChatSteerer({ live, onDirection, onFrameCommand, channel }: ChatSteererProps) {
   const ch = channel ?? process.env.NEXT_PUBLIC_TWITCH_CHANNEL ?? ''
   const [connected, setConnected] = useState(false)
+  const [connecting, setConnecting] = useState(false)
   const [steer, setSteer] = useState(true)
   const [command, setCommand] = useState('!direct')
   const [chatLog, setChatLog] = useState<ChatLine[]>([])
   const [status, setStatus] = useState<string | null>(null)
   const clientRef = useRef<{ disconnect: () => Promise<unknown> } | null>(null)
+  const connectingRef = useRef(false)
+  const lastDirectionAtRef = useRef(0)
+  const lastDirectionByUserRef = useRef(new Map<string, number>())
   const onFrameCommandRef = useRef(onFrameCommand)
   onFrameCommandRef.current = onFrameCommand
   const liveRef = useRef(live)
@@ -42,6 +47,8 @@ export default function ChatSteerer({ live, onDirection, onFrameCommand, channel
   commandRef.current = command
 
   const disconnect = useCallback(async () => {
+    connectingRef.current = false
+    setConnecting(false)
     const c = clientRef.current
     clientRef.current = null
     setConnected(false)
@@ -49,16 +56,23 @@ export default function ChatSteerer({ live, onDirection, onFrameCommand, channel
   }, [])
 
   const connect = useCallback(async () => {
+    if (connectingRef.current || clientRef.current) return
+    connectingRef.current = true
+    setConnecting(true)
     setStatus(null)
+    let client: { disconnect: () => Promise<unknown> } | null = null
     try {
       const tmi = (await import('tmi.js')).default
-      const client = new tmi.Client({
+      const c = new tmi.Client({
         connection: { secure: true, reconnect: true },
         channels: [ch],
       })
-      client.on('message', (_chan, tags, message, self) => {
+      client = c
+      c.on('message', (_chan, tags, message, self) => {
         if (self) return
         const user = String(tags['display-name'] ?? tags.username ?? 'chat')
+          .replace(/[\[\]<>\n\r@]/g, '')
+          .slice(0, 32) || 'chat'
         const text = message.trim()
         setChatLog((prev) => [...prev.slice(-19), { user, text, ts: Date.now() }])
         const lower = text.toLowerCase()
@@ -67,22 +81,46 @@ export default function ChatSteerer({ live, onDirection, onFrameCommand, channel
           return
         }
         const prefix = commandRef.current.trim().toLowerCase()
-        if (steerRef.current && liveRef.current && prefix && lower.startsWith(prefix)) {
+        if (
+          steerRef.current &&
+          liveRef.current &&
+          prefix &&
+          (lower === prefix || lower.startsWith(prefix + ' '))
+        ) {
           const direction = text.slice(prefix.length).trim()
-          if (direction) onDirection(direction, user)
+          if (!direction) return
+          // Throttle: one direction per user per 8s, 2s global minimum.
+          const now = Date.now()
+          if (now - lastDirectionAtRef.current < 2000) return
+          const lastByUser = lastDirectionByUserRef.current.get(user) ?? 0
+          if (now - lastByUser < 8000) return
+          lastDirectionAtRef.current = now
+          lastDirectionByUserRef.current.set(user, now)
+          onDirection(direction, user)
         }
       })
-      client.on('connected', () => setConnected(true))
-      client.on('disconnected', () => setConnected(false))
-      clientRef.current = client
-      await client.connect()
+      c.on('connected', () => setConnected(true))
+      c.on('disconnected', () => setConnected(false))
+      await c.connect()
+      // Only adopt the client if nobody disconnected while the handshake ran.
+      if (connectingRef.current) {
+        clientRef.current = c
+      } else {
+        void c.disconnect().catch(() => undefined)
+      }
     } catch (e) {
+      if (client) await client.disconnect().catch(() => undefined)
+      if (clientRef.current === client) clientRef.current = null
       setStatus(e instanceof Error ? e.message : String(e))
+    } finally {
+      connectingRef.current = false
+      setConnecting(false)
     }
   }, [ch, onDirection])
 
   useEffect(() => {
     return () => {
+      connectingRef.current = false
       void clientRef.current?.disconnect().catch(() => undefined)
       clientRef.current = null
     }
@@ -93,12 +131,12 @@ export default function ChatSteerer({ live, onDirection, onFrameCommand, channel
       <div className="fal-card-header">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <MessagesSquare className="w-4 h-4 text-fal-gray-500" />
+            <MessagesSquare className="w-4 h-4 text-fal-gray-500 dark:text-fal-gray-400" />
             <h3 className="fal-card-title">Chat steering</h3>
           </div>
           <span
             className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-              connected ? 'bg-green-100 text-green-700' : 'bg-fal-gray-100 text-fal-gray-600'
+              connected ? 'bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-400' : 'bg-fal-gray-100 dark:bg-fal-gray-800 text-fal-gray-600 dark:text-fal-gray-400'
             }`}
           >
             {connected ? 'listening' : 'offline'}
@@ -106,7 +144,7 @@ export default function ChatSteerer({ live, onDirection, onFrameCommand, channel
         </div>
       </div>
       <div className="fal-card-content space-y-3">
-        <p className="text-xs text-fal-gray-500">
+        <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400">
           Anonymous read-only IRC on <span className="font-mono">#{ch || '…'}</span>. While the stream is
           live, <span className="font-mono">{command || '!direct'} &lt;text&gt;</span> messages are sent as
           directions with the chatter&rsquo;s name, and <span className="font-mono">!frame</span> snapshots the
@@ -116,7 +154,7 @@ export default function ChatSteerer({ live, onDirection, onFrameCommand, channel
           {!connected ? (
             <button
               onClick={connect}
-              disabled={!ch}
+              disabled={!ch || connecting}
               className="fal-button-secondary flex items-center gap-1.5 !py-1.5 disabled:opacity-50"
             >
               <Plug className="w-3.5 h-3.5" />
@@ -131,12 +169,12 @@ export default function ChatSteerer({ live, onDirection, onFrameCommand, channel
               <span>Disconnect</span>
             </button>
           )}
-          <label className="flex items-center gap-1.5 text-fal-gray-600">
+          <label className="flex items-center gap-1.5 text-fal-gray-600 dark:text-fal-gray-400">
             <input
               type="checkbox"
               checked={steer}
               onChange={(e) => setSteer(e.target.checked)}
-              className="rounded border-fal-gray-300"
+              className="rounded border-fal-gray-300 dark:border-fal-gray-700"
             />
             Chat can direct
           </label>
@@ -144,15 +182,22 @@ export default function ChatSteerer({ live, onDirection, onFrameCommand, channel
             type="text"
             value={command}
             onChange={(e) => setCommand(e.target.value)}
-            className="w-24 rounded-md border border-fal-gray-300 px-2 py-1 font-mono"
+            className="w-24 rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-2 py-1 font-mono"
             title="Command prefix"
           />
-          {status && <span className="text-red-600">{status}</span>}
+          {status && <span className="text-red-600 dark:text-red-400">{status}</span>}
         </div>
         {chatLog.length > 0 && (
-          <pre className="text-xs font-mono bg-fal-gray-50 border border-fal-gray-200 rounded-md p-3 max-h-32 overflow-auto">
-            {chatLog.map((l) => `${l.user}: ${l.text}`).join('\n')}
-          </pre>
+          <div className="text-xs font-mono bg-fal-gray-50 dark:bg-fal-gray-800 border border-fal-gray-200 dark:border-fal-gray-700 rounded-md p-3 max-h-32 overflow-auto space-y-1.5">
+            {chatLog.map((l, i) => (
+              <div key={`${l.ts}-${i}`} className="flex items-center gap-2 min-w-0">
+                <DitherAvatar name={l.user} className="w-4 h-4 shrink-0 rounded-sm" />
+                <span className="truncate">
+                  <span className="text-fal-gray-500 dark:text-fal-gray-400">{l.user}:</span> {l.text}
+                </span>
+              </div>
+            ))}
+          </div>
         )}
       </div>
     </div>

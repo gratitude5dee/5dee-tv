@@ -3,15 +3,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createFalClient } from '@fal-ai/client'
 import { wma, type ManagedRealtimeSession, type RealtimeState, type WmaRealtimeSession } from '@fal-ai/client/realtime'
-import { Camera, Circle, Play, Send, Square, Upload, Volume2, VolumeX } from 'lucide-react'
+import { Camera, Circle, Play, Send, Sparkles, Square, Upload, Volume2, VolumeX } from 'lucide-react'
 import type { Id } from '../convex/_generated/dataModel'
 import type { DirectorPersistence } from './useDirectorPersistence'
 import AssetUrlInput from './AssetUrlInput'
 import ChatSteerer from './ChatSteerer'
 import DirectorSettingsForm from './DirectorSettingsForm'
 import ScriptEditor from './ScriptEditor'
+import { DitherButton } from './dither-kit/button'
+import { DitherGradient } from './dither-kit/gradient'
 import {
   beatsToWire,
+  FAL_SDK_PROXY_URL,
   DEFAULT_DIRECTOR_SETTINGS,
   type ConfigureWire,
   type DirectorSettings,
@@ -20,7 +23,6 @@ import {
 } from '../lib/directorProtocol'
 
 export const DIRECTOR_MODEL = 'minimax/h3-max/director'
-export const FAL_SDK_PROXY_URL = '/api/fal/sdk-proxy'
 
 const DEFAULT_PROMPT =
   'A continuous original live-action stream following a group of friends as they explore a new city.'
@@ -94,6 +96,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const clipIndexRef = useRef(0)
   // Monotonic attempt counter: invalidating it aborts an in-flight connect().
   const connectAttemptRef = useRef(0)
+  // Lets server-driven teardown (stream_exhausted) reach the cleanup path.
+  const disconnectRef = useRef<(() => Promise<void>) | null>(null)
 
   const [state, setState] = useState<RealtimeState | 'idle' | 'closing'>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -122,6 +126,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const [directions, setDirections] = useState<RoutedDirection[]>([])
   const [capturing, setCapturing] = useState(false)
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null)
+  const [remixing, setRemixing] = useState(false)
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const noop = async () => undefined
@@ -289,6 +294,16 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
             type === 'prompt_pending' ? 'pending' : type === 'prompt_applied' ? 'applied' : 'rejected'
           setDirections((prev) => prev.map((d) => (d.version === v ? { ...d, status } : d)))
         }
+        if (type === 'prompt_applied' || type === 'prompt_rejected') {
+          void persist(() =>
+            logPromptEvent({
+              sessionId: convexSessionIdRef.current!,
+              kind: type === 'prompt_applied' ? 'prompt_applied' : 'error',
+              promptVersion: typeof v === 'number' ? v : undefined,
+              detail: raw.slice(0, 2000),
+            }),
+          )
+        }
         if (type === 'prompt_rejected') {
           const reason = String(msg.reason ?? msg.error ?? 'rejected')
           setError(`Prompt rejected: ${reason}`)
@@ -324,12 +339,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
 
       if (type === 'stream_exhausted') {
         appendLog(`stream_exhausted: ${String(msg.reason ?? 'ended')}`)
-        setState('idle')
-        void persist(() =>
-          convexSessionIdRef.current
-            ? setSessionStatus({ sessionId: convexSessionIdRef.current, status: 'ended' })
-            : Promise.resolve(),
-        )
+        // Full cleanup path (recorder, session close, Convex finalize) so the
+        // exhausted session can't keep running after the UI goes idle.
+        void disconnectRef.current?.()
         return
       }
 
@@ -405,6 +417,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           ...(liveAudioUrl.trim() ? { audio_url: liveAudioUrl.trim(), audio_behavior: 'replace' } : {}),
         }
         session.send(wire)
+        // End-frame/audio are one-shot per the model contract — clear after use.
+        if (liveEndImage.trim()) setLiveEndImage('')
+        if (liveAudioUrl.trim()) setLiveAudioUrl('')
       }
       setActivePrompt(text)
       setDirections((prev) => [...prev, { version, text, status: 'sent' as const }].slice(-8))
@@ -490,11 +505,50 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     [capturing, appendLog],
   )
 
-  /** A chat-sourced direction; attributed so the expander and the log show the chatter. */
+  /**
+   * Reroll the captured frame through nano-banana-2/edit (Gemini 3.1 Flash
+   * Image) — keeps the character/scene intact, produces a fresh continuity
+   * frame. Replaces the pending end frame + next session's first frame.
+   */
+  const remixFrame = useCallback(
+    async (directionText?: string) => {
+      const source = capturedFrame ?? settings.imageUrl.trim()
+      if (!source || remixing) return
+      setRemixing(true)
+      try {
+        const fal = createFalClient({ proxyUrl: FAL_SDK_PROXY_URL })
+        const editPrompt =
+          directionText?.trim() ||
+          'Keep the same character, same outfit, same art style and setting; evolve the shot forward — a new camera angle / next beat of the same scene.'
+        const res = (await fal.subscribe('fal-ai/nano-banana-2/edit', {
+          input: { prompt: editPrompt, image_urls: [source] },
+        })) as { images?: { url: string }[] }
+        const url = res.images?.[0]?.url
+        if (!url) throw new Error('nano-banana returned no image')
+        setLiveEndImage(url)
+        setCapturedFrame(url)
+        setSettings((s) => ({ ...s, imageUrl: url }))
+        appendLog('frame remixed via nano-banana-2 → next end frame')
+      } catch (e) {
+        appendLog(`frame remix: ${e instanceof Error ? e.message : String(e)}`)
+      } finally {
+        setRemixing(false)
+      }
+    },
+    [capturedFrame, settings.imageUrl, remixing, appendLog],
+  )
+
+  /**
+   * A chat-sourced direction. Chat text and display names are untrusted —
+   * strip brackets/control chars/newlines and cap lengths before splicing.
+   */
   const sendChatDirection = useCallback(
     (text: string, author: string) => {
-      sendPrompt(`[chat @${author}] ${text}`, false)
-      appendLog(`chat @${author}: ${text.slice(0, 80)}`)
+      const safeAuthor = author.replace(/[\[\]<>\n\r@]/g, '').slice(0, 32) || 'chat'
+      const safeText = text.replace(/[\n\r<>]/g, ' ').trim().slice(0, 300)
+      if (!safeText) return
+      sendPrompt(`[chat @${safeAuthor}] ${safeText}`, false)
+      appendLog(`chat @${safeAuthor}: ${safeText.slice(0, 80)}`)
     },
     [sendPrompt, appendLog],
   )
@@ -530,6 +584,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     )
     setState('idle')
   }, [stopRecorder, uploadRecording, persist, setSessionStatus])
+  disconnectRef.current = disconnect
 
   const connect = useCallback(async () => {
     const attempt = ++connectAttemptRef.current
@@ -539,6 +594,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     promptsByVersionRef.current = new Map()
     clipIndexRef.current = 0
     setPlaybackSeconds(null)
+    setSessionAllowance(null)
+    setDirections([])
+    setCapturedFrame(null)
     setState('opening')
 
     if (createSession) {
@@ -654,24 +712,24 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         <div className="flex items-center justify-between">
           <div>
             <h3 className="fal-card-title">Director (realtime WebRTC)</h3>
-            <p className="text-xs text-fal-gray-500 font-mono">{DIRECTOR_MODEL}</p>
+            <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400 font-mono">{DIRECTOR_MODEL}</p>
           </div>
           <div className="flex items-center space-x-2 text-xs">
             <span
               className={`inline-flex items-center px-2 py-1 rounded-full font-medium ${
                 live
-                  ? 'bg-green-100 text-green-700'
+                  ? 'bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-400'
                   : busy
-                    ? 'bg-yellow-100 text-yellow-700'
+                    ? 'bg-yellow-100 dark:bg-yellow-500/15 text-yellow-700 dark:text-yellow-400'
                     : state === 'failed'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-fal-gray-100 text-fal-gray-600'
+                      ? 'bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400'
+                      : 'bg-fal-gray-100 dark:bg-fal-gray-800 text-fal-gray-600 dark:text-fal-gray-400'
               }`}
             >
               {state}
             </span>
             {recording && (
-              <span className="inline-flex items-center space-x-1 px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium">
+              <span className="inline-flex items-center space-x-1 px-2 py-1 rounded-full bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 font-medium">
                 <Circle className="w-3 h-3 fill-current animate-pulse" />
                 <span>REC {formatBytes(recordedBytes)}</span>
               </span>
@@ -682,7 +740,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
 
         <div className="fal-card-content space-y-4">
         <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
-          <video ref={videoRef} autoPlay playsInline muted={muted} className="w-full h-full object-contain" />
+          <DitherGradient from="blue" direction="up" className="absolute inset-0" />
+          <video ref={videoRef} autoPlay playsInline muted={muted} className="relative w-full h-full object-contain" />
           {!live && (
             <div className="absolute inset-0 flex items-center justify-center">
               {state === 'opening' || (connectStep >= 0 && state !== 'idle' && state !== 'failed') ? (
@@ -694,9 +753,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
                       ) : i === connectStep ? (
                         <Circle className="w-3 h-3 fill-transparent text-fal-gray-300 animate-pulse" />
                       ) : (
-                        <Circle className="w-3 h-3 fill-transparent text-fal-gray-600" />
+                        <Circle className="w-3 h-3 fill-transparent text-fal-gray-600 dark:text-fal-gray-400" />
                       )}
-                      <span className={i <= connectStep ? 'text-fal-gray-100' : 'text-fal-gray-500'}>
+                      <span className={i <= connectStep ? 'text-fal-gray-100' : 'text-fal-gray-500 dark:text-fal-gray-400'}>
                         {label}
                       </span>
                     </div>
@@ -706,7 +765,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
                   </button>
                 </div>
               ) : (
-                <span className="text-fal-gray-400 text-sm">
+                <span className="relative text-fal-gray-400 text-sm">
                   {state === 'closing' ? 'Stopping…' : state === 'failed' ? 'Session failed' : 'Director offline'}
                 </span>
               )}
@@ -721,15 +780,28 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
               >
                 {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
               </button>
-              <button
-                onClick={() => void captureFrame('admin')}
-                disabled={capturing}
-                className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2.5 py-2 rounded-md bg-black/60 text-white text-xs hover:bg-black/80 disabled:opacity-50"
-                title="Snapshot this frame → becomes the next end frame + next session's first frame"
-              >
-                <Camera className="w-4 h-4" />
-                {capturing ? 'Capturing…' : 'Capture frame'}
-              </button>
+              <div className="absolute bottom-3 left-3 flex items-center gap-1.5">
+                <button
+                  onClick={() => void captureFrame('admin')}
+                  disabled={capturing}
+                  className="flex items-center gap-1.5 px-2.5 py-2 rounded-md bg-black/60 text-white text-xs hover:bg-black/80 disabled:opacity-50"
+                  title="Snapshot this frame → becomes the next end frame + next session's first frame"
+                >
+                  <Camera className="w-4 h-4" />
+                  {capturing ? 'Capturing…' : 'Capture frame'}
+                </button>
+                {capturedFrame && (
+                  <button
+                    onClick={() => void remixFrame()}
+                    disabled={remixing}
+                    className="flex items-center gap-1.5 px-2.5 py-2 rounded-md bg-black/60 text-white text-xs hover:bg-black/80 disabled:opacity-50"
+                    title="Evolve the captured frame with nano-banana-2 (same character, new shot)"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {remixing ? 'Remixing…' : 'Remix frame'}
+                  </button>
+                )}
+              </div>
               <div className="absolute top-3 left-3 flex items-center gap-3 rounded-md bg-black/60 px-3 py-1.5 text-xs font-mono text-white">
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
@@ -745,7 +817,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         </div>
 
         {(live || connectStep >= 0) && (
-          <div className="text-xs font-mono text-fal-gray-500 space-y-1">
+          <div className="text-xs font-mono text-fal-gray-500 dark:text-fal-gray-400 space-y-1">
             {sessionAllowance != null && (
               <p>
                 Session allowance: {Math.floor(sessionAllowance / 60)}:{String(Math.floor(sessionAllowance % 60)).padStart(2, '0')}
@@ -761,7 +833,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
                       d.status === 'applied'
                         ? 'text-green-600'
                         : d.status === 'rejected'
-                          ? 'text-red-600'
+                          ? 'text-red-600 dark:text-red-400'
                           : d.status === 'pending'
                             ? 'text-yellow-600'
                             : 'text-fal-gray-400'
@@ -780,8 +852,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         )}
 
         {!live && !busy && (
-          <details className="rounded-md border border-fal-gray-200">
-            <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-fal-gray-700 select-none">
+          <details className="rounded-md border border-fal-gray-200 dark:border-fal-gray-700">
+            <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-fal-gray-700 dark:text-fal-gray-300 select-none">
               Session settings <span className="text-xs text-fal-gray-400 font-normal">(locked once connected)</span>
             </summary>
             <div className="px-3 pb-3">
@@ -796,28 +868,28 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         )}
 
         <div>
-          <label className="block text-sm font-medium text-fal-gray-700 mb-1">
+          <label className="block text-sm font-medium text-fal-gray-700 dark:text-fal-gray-300 mb-1">
             {live ? 'Next direction' : 'Opening prompt (the series premise)'}
           </label>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             rows={3}
-            className="w-full rounded-md border border-fal-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fal-primary-500"
+            className="w-full rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fal-primary-500"
           />
           {activePrompt && (
-            <p className="text-xs text-fal-gray-500 mt-1">
+            <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400 mt-1">
               Active (v{promptVersionRef.current}): {activePrompt}
             </p>
           )}
           {live && (
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 mt-2">
               <div>
-                <label className="block text-xs text-fal-gray-500 mb-1">End frame for next scene (optional)</label>
+                <label className="block text-xs text-fal-gray-500 dark:text-fal-gray-400 mb-1">End frame for next scene (optional)</label>
                 <AssetUrlInput value={liveEndImage} onChange={setLiveEndImage} placeholder="Image URL or upload" />
               </div>
               <div>
-                <label className="block text-xs text-fal-gray-500 mb-1">Replace audio track (optional)</label>
+                <label className="block text-xs text-fal-gray-500 dark:text-fal-gray-400 mb-1">Replace audio track (optional)</label>
                 <AssetUrlInput value={liveAudioUrl} onChange={setLiveAudioUrl} kind="audio" placeholder="Audio URL or upload" />
               </div>
             </div>
@@ -826,10 +898,16 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
 
         <div className="flex flex-wrap gap-2">
           {!live && !busy ? (
-            <button onClick={connect} className="fal-button-primary flex items-center space-x-2">
+            <DitherButton
+              onClick={connect}
+              color="blue"
+              variant="gradient"
+              bloom="low"
+              className="flex items-center space-x-2 px-4 py-2 text-sm font-medium"
+            >
               <Play className="w-4 h-4" />
               <span>Start Director</span>
-            </button>
+            </DitherButton>
           ) : (
             <button onClick={disconnect} className="fal-button-secondary flex items-center space-x-2">
               <Square className="w-4 h-4" />
@@ -846,7 +924,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           </button>
           {live && !recording && (
             <button onClick={startRecorder} className="fal-button-secondary flex items-center space-x-2">
-              <Circle className="w-4 h-4 text-red-600" />
+              <Circle className="w-4 h-4 text-red-600 dark:text-red-400" />
               <span>Record</span>
             </button>
           )}
@@ -862,16 +940,16 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
               <span>Stop & save recording</span>
             </button>
           )}
-          {uploading && <span className="text-sm text-fal-gray-500 self-center">Uploading…</span>}
-          {lastUpload && !uploading && <span className="text-sm text-green-700 self-center">{lastUpload}</span>}
+          {uploading && <span className="text-sm text-fal-gray-500 dark:text-fal-gray-400 self-center">Uploading…</span>}
+          {lastUpload && !uploading && <span className="text-sm text-green-700 dark:text-green-400 self-center">{lastUpload}</span>}
         </div>
 
         {error && (
-          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</div>
+          <div className="text-sm text-red-700 dark:text-red-400 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</div>
         )}
 
         {log.length > 0 && (
-          <pre className="text-xs font-mono bg-fal-gray-50 border border-fal-gray-200 rounded-md p-3 max-h-40 overflow-auto">
+          <pre className="text-xs font-mono bg-fal-gray-50 dark:bg-fal-gray-800 border border-fal-gray-200 dark:border-fal-gray-700 rounded-md p-3 max-h-40 overflow-auto">
             {log.join('\n')}
           </pre>
         )}

@@ -18,7 +18,7 @@ interface DirectorSettingsFormProps {
 }
 
 const selectClass =
-  'rounded-md border border-fal-gray-300 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-fal-primary-500 disabled:opacity-50 bg-white'
+  'rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-fal-primary-500 disabled:opacity-50 bg-white dark:bg-fal-gray-900'
 
 export default function DirectorSettingsForm({
   settings,
@@ -33,7 +33,7 @@ export default function DirectorSettingsForm({
     <fieldset disabled={disabled} className="space-y-3">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <div>
-          <label className="block text-xs font-medium text-fal-gray-600 mb-1">Resolution</label>
+          <label className="block text-xs font-medium text-fal-gray-600 dark:text-fal-gray-400 mb-1">Resolution</label>
           <select
             value={settings.resolution}
             onChange={(e) => set('resolution', e.target.value as DirectorResolution)}
@@ -45,7 +45,7 @@ export default function DirectorSettingsForm({
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-fal-gray-600 mb-1">Aspect ratio</label>
+          <label className="block text-xs font-medium text-fal-gray-600 dark:text-fal-gray-400 mb-1">Aspect ratio</label>
           <select
             value={settings.aspectRatio}
             onChange={(e) => set('aspectRatio', e.target.value as DirectorAspectRatio)}
@@ -57,7 +57,7 @@ export default function DirectorSettingsForm({
           </select>
         </div>
         <div>
-          <label className="block text-xs font-medium text-fal-gray-600 mb-1" title="Prior segment prompts kept as prompt-expansion context (1-50)">
+          <label className="block text-xs font-medium text-fal-gray-600 dark:text-fal-gray-400 mb-1" title="Prior segment prompts kept as prompt-expansion context (1-50)">
             Memory
           </label>
           <input
@@ -70,7 +70,7 @@ export default function DirectorSettingsForm({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-fal-gray-600 mb-1" title="Fixes the opening setup; blank = random">
+          <label className="block text-xs font-medium text-fal-gray-600 dark:text-fal-gray-400 mb-1" title="Fixes the opening setup; blank = random">
             Seed
           </label>
           <input
@@ -85,7 +85,7 @@ export default function DirectorSettingsForm({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
-          <label className="block text-xs font-medium text-fal-gray-600 mb-1">First frame (optional)</label>
+          <label className="block text-xs font-medium text-fal-gray-600 dark:text-fal-gray-400 mb-1">First frame (optional)</label>
           <AssetUrlInput
             value={settings.imageUrl}
             onChange={(u) => set('imageUrl', u)}
@@ -95,7 +95,7 @@ export default function DirectorSettingsForm({
         </div>
         <div>
           <label
-            className="block text-xs font-medium text-fal-gray-600 mb-1"
+            className="block text-xs font-medium text-fal-gray-600 dark:text-fal-gray-400 mb-1"
             title={scriptPlanned ? 'Not available while a script is queued for this session' : undefined}
           >
             Last frame of first chunk{scriptPlanned ? ' (scripted)' : ' (optional)'}
@@ -112,7 +112,7 @@ export default function DirectorSettingsForm({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>
           <label
-            className="block text-xs font-medium text-fal-gray-600 mb-1"
+            className="block text-xs font-medium text-fal-gray-600 dark:text-fal-gray-400 mb-1"
             title={scriptPlanned ? 'Not available while a script is queued for this session' : undefined}
           >
             Target audio{scriptPlanned ? ' (scripted)' : ' (optional)'}
@@ -126,7 +126,7 @@ export default function DirectorSettingsForm({
           />
         </div>
         <div>
-          <label className="block text-xs font-medium text-fal-gray-600 mb-1">Audio bitrate</label>
+          <label className="block text-xs font-medium text-fal-gray-600 dark:text-fal-gray-400 mb-1">Audio bitrate</label>
           <select
             value={settings.audioBitrate}
             onChange={(e) => set('audioBitrate', Number(e.target.value) as DirectorAudioBitrate)}

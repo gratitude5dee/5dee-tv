@@ -13,7 +13,7 @@ export default function AIPerformanceBreakdown({ data }: AIPerformanceBreakdownP
       <div className="fal-card">
         <div className="fal-card-content">
           <div className="flex items-center justify-center h-32">
-            <div className="text-fal-gray-600">No pipeline data available</div>
+            <div className="text-fal-gray-600 dark:text-fal-gray-400">No pipeline data available</div>
           </div>
         </div>
       </div>
@@ -28,7 +28,7 @@ export default function AIPerformanceBreakdown({ data }: AIPerformanceBreakdownP
   }
 
   const getPerformanceColor = (time: number | undefined, threshold: number) => {
-    if (!time || time === 0) return 'text-fal-gray-600'
+    if (!time || time === 0) return 'text-fal-gray-600 dark:text-fal-gray-400'
     if (time < threshold * 0.5) return 'text-fal-green-600'
     if (time < threshold) return 'text-fal-yellow-600'
     return 'text-fal-red-600'
@@ -45,9 +45,9 @@ export default function AIPerformanceBreakdown({ data }: AIPerformanceBreakdownP
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Brain className="w-5 h-5 text-fal-purple-500" />
-            <h3 className="text-lg font-semibold text-fal-gray-900">AI Pipeline Breakdown</h3>
+            <h3 className="text-lg font-semibold text-fal-gray-900 dark:text-fal-gray-50">AI Pipeline Breakdown</h3>
           </div>
-          <div className="text-sm text-fal-gray-600 font-mono">
+          <div className="text-sm text-fal-gray-600 dark:text-fal-gray-400 font-mono">
             Total: {formatTime(totalPipelineTime)}
           </div>
         </div>
@@ -59,13 +59,13 @@ export default function AIPerformanceBreakdown({ data }: AIPerformanceBreakdownP
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             
             {/* AI Prompt Generation */}
-            <div className="bg-fal-gray-50 border border-fal-gray-200 rounded-lg p-4 hover:border-fal-blue-500/50 transition-colors">
+            <div className="bg-fal-gray-50 dark:bg-fal-gray-800 border border-fal-gray-200 dark:border-fal-gray-700 rounded-lg p-4 hover:border-fal-blue-500/50 transition-colors">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-2">
                   <Zap className="w-4 h-4 text-fal-blue-500" />
-                  <h4 className="font-medium text-fal-gray-900">AI Prompt</h4>
+                  <h4 className="font-medium text-fal-gray-900 dark:text-fal-gray-50">AI Prompt</h4>
                 </div>
-                <div className="text-xs text-fal-gray-600">{(data.prompt?.prompts_generated || 0)} total</div>
+                <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400">{(data.prompt?.prompts_generated || 0)} total</div>
               </div>
               
               <div className="space-y-2">
@@ -73,25 +73,25 @@ export default function AIPerformanceBreakdown({ data }: AIPerformanceBreakdownP
                   <div className={`text-2xl font-bold font-mono ${getPerformanceColor((data.prompt?.avg_response_time || 0), 2.0)}`}>
                     {formatTime((data.prompt?.avg_response_time || 0))}
                   </div>
-                  <div className="text-xs text-fal-gray-600">Average</div>
+                  <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400">Average</div>
                 </div>
                 <div className="text-center">
                   <div className={`text-lg font-mono ${getPerformanceColor((data.prompt?.last_generation_time || 0), 2.0)}`}>
                     {formatTime((data.prompt?.last_generation_time || 0))}
                   </div>
-                  <div className="text-xs text-fal-gray-600">Latest</div>
+                  <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400">Latest</div>
                 </div>
               </div>
             </div>
 
             {/* Video Generation */}
-            <div className="bg-fal-gray-50 border border-fal-gray-200 rounded-lg p-4 hover:border-fal-green-500/50 transition-colors">
+            <div className="bg-fal-gray-50 dark:bg-fal-gray-800 border border-fal-gray-200 dark:border-fal-gray-700 rounded-lg p-4 hover:border-fal-green-500/50 transition-colors">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-2">
                   <Video className="w-4 h-4 text-fal-green-500" />
-                  <h4 className="font-medium text-fal-gray-900">Video Gen</h4>
+                  <h4 className="font-medium text-fal-gray-900 dark:text-fal-gray-50">Video Gen</h4>
                 </div>
-                <div className="text-xs text-fal-gray-600">{(data.generator?.videos_generated || 0)} total</div>
+                <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400">{(data.generator?.videos_generated || 0)} total</div>
               </div>
               
               <div className="space-y-2">
@@ -99,25 +99,25 @@ export default function AIPerformanceBreakdown({ data }: AIPerformanceBreakdownP
                   <div className={`text-2xl font-bold font-mono ${getPerformanceColor((data.generator?.avg_generation_time || 0), 10.0)}`}>
                     {formatTime((data.generator?.avg_generation_time || 0))}
                   </div>
-                  <div className="text-xs text-fal-gray-600">Average</div>
+                  <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400">Average</div>
                 </div>
                 <div className="text-center">
                   <div className={`text-lg font-mono ${getPerformanceColor((data.generator?.last_generation_time || 0), 10.0)}`}>
                     {formatTime((data.generator?.last_generation_time || 0))}
                   </div>
-                  <div className="text-xs text-fal-gray-600">Latest</div>
+                  <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400">Latest</div>
                 </div>
               </div>
             </div>
 
             {/* Text Overlay */}
-            <div className="bg-fal-gray-50 border border-fal-gray-200 rounded-lg p-4 hover:border-fal-purple-500/50 transition-colors">
+            <div className="bg-fal-gray-50 dark:bg-fal-gray-800 border border-fal-gray-200 dark:border-fal-gray-700 rounded-lg p-4 hover:border-fal-purple-500/50 transition-colors">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-2">
                   <Type className="w-4 h-4 text-fal-purple-500" />
-                  <h4 className="font-medium text-fal-gray-900">Overlay</h4>
+                  <h4 className="font-medium text-fal-gray-900 dark:text-fal-gray-50">Overlay</h4>
                 </div>
-                <div className="text-xs text-fal-gray-600">{(data.overlay?.frames_processed || 0)} total | {(data.overlay?.last_batch_size || 0)} last batch</div>
+                <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400">{(data.overlay?.frames_processed || 0)} total | {(data.overlay?.last_batch_size || 0)} last batch</div>
               </div>
               
               <div className="space-y-2">
@@ -125,23 +125,23 @@ export default function AIPerformanceBreakdown({ data }: AIPerformanceBreakdownP
                   <div className={`text-2xl font-bold font-mono ${getPerformanceColor((data.overlay?.avg_time_per_frame || 0), 0.01)}`}>
                     {formatTime((data.overlay?.avg_time_per_frame || 0))}
                   </div>
-                  <div className="text-xs text-fal-gray-600">Per Frame</div>
+                  <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400">Per Frame</div>
                 </div>
                 <div className="text-center">
                   <div className={`text-lg font-mono ${getPerformanceColor((data.overlay?.last_batch_avg_per_frame || 0), 0.01)}`}>
                     {formatTime((data.overlay?.last_batch_avg_per_frame || 0))}
                   </div>
-                  <div className="text-xs text-fal-gray-600">Last Batch Avg</div>
+                  <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400">Last Batch Avg</div>
                 </div>
               </div>
             </div>
           </div>
 
           {/* Pipeline Efficiency Bar */}
-          <div className="bg-fal-gray-50 border border-fal-gray-200 rounded-lg p-4">
+          <div className="bg-fal-gray-50 dark:bg-fal-gray-800 border border-fal-gray-200 dark:border-fal-gray-700 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
-              <h4 className="font-medium text-fal-gray-900">Pipeline Efficiency</h4>
-              <div className="text-sm text-fal-gray-600">
+              <h4 className="font-medium text-fal-gray-900 dark:text-fal-gray-50">Pipeline Efficiency</h4>
+              <div className="text-sm text-fal-gray-600 dark:text-fal-gray-400">
                 {(data.video?.is_running || false) ? 'Processing...' : 'Idle'}
               </div>
             </div>
@@ -166,7 +166,7 @@ export default function AIPerformanceBreakdown({ data }: AIPerformanceBreakdownP
                 />
               </div>
               
-              <div className="flex justify-between text-xs text-fal-gray-600">
+              <div className="flex justify-between text-xs text-fal-gray-600 dark:text-fal-gray-400">
                 <span>🤖 AI: {(((data.prompt?.avg_response_time || 0) / totalPipelineTime) * 100).toFixed(1)}%</span>
                 <span>🎬 Video: {(((data.generator?.avg_generation_time || 0) / totalPipelineTime) * 100).toFixed(1)}%</span>
                 <span>📝 Overlay: {((((data.overlay?.avg_time_per_frame || 0) * 240) / totalPipelineTime) * 100).toFixed(1)}%</span>

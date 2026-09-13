@@ -14,7 +14,7 @@ export default function QueueVisualization({ data }: QueueVisualizationProps) {
       <div className="fal-card">
         <div className="fal-card-content">
           <div className="flex items-center justify-center h-32">
-            <div className="text-fal-gray-600">No queue data available</div>
+            <div className="text-fal-gray-600 dark:text-fal-gray-400">No queue data available</div>
           </div>
         </div>
       </div>
@@ -47,7 +47,7 @@ export default function QueueVisualization({ data }: QueueVisualizationProps) {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Activity className="w-5 h-5 text-fal-green-500" />
-            <h3 className="text-lg font-semibold text-fal-gray-900">Queue & Performance</h3>
+            <h3 className="text-lg font-semibold text-fal-gray-900 dark:text-fal-gray-50">Queue & Performance</h3>
           </div>
           <div className={`status-indicator status-${queueStatus.color}`}>
             <StatusIcon className="w-4 h-4 mr-1" />
@@ -59,7 +59,7 @@ export default function QueueVisualization({ data }: QueueVisualizationProps) {
 
         {/* Queue Bar Visualization */}
         <div className="mb-6">
-          <div className="flex justify-between text-sm text-fal-gray-600 mb-3">
+          <div className="flex justify-between text-sm text-fal-gray-600 dark:text-fal-gray-400 mb-3">
             <span>Queue Size</span>
             <span className="font-mono">{(data.rtmp?.queue_size || 0)} frames ({((data.rtmp?.queue_size || 0) / (data.rtmp?.target_fps || 9)).toFixed(1)}s buffer)</span>
           </div>
@@ -69,7 +69,7 @@ export default function QueueVisualization({ data }: QueueVisualizationProps) {
               style={{ width: `${queueFillPercentage}%` }}
             />
           </div>
-          <div className="flex justify-between text-xs text-fal-gray-600 mt-1">
+          <div className="flex justify-between text-xs text-fal-gray-600 dark:text-fal-gray-400 mt-1">
             <span>0</span>
             <span className="font-mono">{(data.rtmp?.queue_size || 0)} / {maxDisplayQueue}</span>
             <span>{maxDisplayQueue}</span>
@@ -78,7 +78,7 @@ export default function QueueVisualization({ data }: QueueVisualizationProps) {
 
         {/* Current FPS Display */}
         <div className="mb-6">
-          <div className="flex justify-between text-sm text-fal-gray-600 mb-3">
+          <div className="flex justify-between text-sm text-fal-gray-600 dark:text-fal-gray-400 mb-3">
             <span>Current FPS</span>
             <span className="font-mono">{(data.rtmp?.current_fps || 0)?.toFixed(1) || '0.0'} / {(data.rtmp?.target_fps || 9) || 9}</span>
           </div>
@@ -91,7 +91,7 @@ export default function QueueVisualization({ data }: QueueVisualizationProps) {
               style={{ width: `${Math.min((((data.rtmp?.current_fps || 0) || 0) / ((data.rtmp?.target_fps || 9) || 9)) * 100, 100)}%` }}
             />
           </div>
-          <div className="flex justify-between text-xs text-fal-gray-600 mt-1">
+          <div className="flex justify-between text-xs text-fal-gray-600 dark:text-fal-gray-400 mt-1">
             <span>0</span>
             <span className="font-mono">{(((data.rtmp?.current_fps || 0) || 0) / ((data.rtmp?.target_fps || 9) || 9) * 100).toFixed(0)}%</span>
             <span>{(data.rtmp?.target_fps || 9) || 9}</span>
@@ -99,19 +99,19 @@ export default function QueueVisualization({ data }: QueueVisualizationProps) {
         </div>
 
         {/* Generation Status */}
-        <div className="mt-6 p-4 bg-fal-gray-50 border border-fal-gray-200 rounded-lg">
+        <div className="mt-6 p-4 bg-fal-gray-50 dark:bg-fal-gray-800 border border-fal-gray-200 dark:border-fal-gray-700 rounded-lg">
           <div className="flex items-center space-x-3">
             <div className={`w-5 h-5 rounded-full flex items-center justify-center ${
               (data.video?.is_running || false) ? 'bg-fal-green-500' : 'bg-fal-gray-300'
             }`}>
               <div className={`w-2 h-2 rounded-full ${
-                (data.video?.is_running || false) ? 'bg-white animate-pulse' : 'bg-fal-gray-600'
+                (data.video?.is_running || false) ? 'bg-white dark:bg-fal-gray-900 animate-pulse' : 'bg-fal-gray-600'
               }`}></div>
             </div>
             <div>
               <div className="metric-label">AI Generation Status</div>
               <div className={`text-lg font-bold ${
-                (data.video?.is_running || false) ? 'text-fal-green-600' : 'text-fal-gray-600'
+                (data.video?.is_running || false) ? 'text-fal-green-600' : 'text-fal-gray-600 dark:text-fal-gray-400'
               }`}>
                 {(data.video?.is_running || false) ? 'ACTIVE' : 'WAITING'}
               </div>

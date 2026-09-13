@@ -71,6 +71,45 @@ body {
   color: var(--foreground);
   font-feature-settings: "rlig" 1, "calt" 1;
   font-weight: 300; /* Use Focal Light by default */
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+/* Dark mode — wzrd.tech chrome theme (class-based, toggled in the header) */
+.dark body {
+  background: #0a0d14;
+  color: #e5e7eb;
+}
+
+.dark * {
+  border-color: #1f2937;
+}
+
+.dark .fal-card {
+  @apply bg-fal-gray-900 border-fal-gray-800;
+}
+
+.dark .fal-card-header {
+  @apply border-fal-gray-800;
+}
+
+.dark .fal-card-title {
+  @apply text-fal-gray-100;
+}
+
+.dark .btn-secondary {
+  @apply bg-fal-gray-800 hover:bg-fal-gray-700 text-fal-gray-100 border-fal-gray-700;
+}
+
+.dark .metric-label {
+  @apply text-fal-gray-400;
+}
+
+.dark .progress-bar {
+  @apply bg-fal-gray-700;
+}
+
+.dark .terminal {
+  @apply bg-black border-fal-gray-800 text-fal-gray-200;
 }
 
 /* FAL Status Indicators */
@@ -95,6 +134,10 @@ body {
 }
 
 /* FAL Cards */
+.fal-card-title {
+  @apply text-base font-semibold text-fal-gray-900;
+}
+
 .fal-card {
   @apply bg-white border border-fal-gray-200 rounded-lg shadow-sm;
 }
@@ -147,12 +190,19 @@ body {
 }
 
 /* FAL Button variants */
-.btn-primary {
-  @apply bg-fal-primary-500 hover:bg-fal-primary-600 text-white font-medium px-4 py-2 rounded-lg transition-colors;
+.btn-primary,
+.fal-button-primary {
+  @apply bg-fal-primary-600 hover:bg-fal-primary-500 text-white font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:pointer-events-none;
 }
 
-.btn-secondary {
-  @apply bg-white hover:bg-fal-gray-50 text-fal-gray-700 border border-fal-gray-300 font-medium px-4 py-2 rounded-lg transition-colors;
+.btn-secondary,
+.fal-button-secondary {
+  @apply bg-white hover:bg-fal-gray-50 text-fal-gray-700 border border-fal-gray-300 font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50 disabled:pointer-events-none;
+}
+
+.dark .btn-secondary,
+.dark .fal-button-secondary {
+  @apply bg-fal-gray-800 hover:bg-fal-gray-700 text-fal-gray-100 border-fal-gray-700;
 }
 
 /* FAL Connection status */

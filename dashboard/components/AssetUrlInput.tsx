@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react'
 import { createFalClient } from '@fal-ai/client'
 import { ImagePlus, Loader2, X } from 'lucide-react'
-import { FAL_SDK_PROXY_URL } from './DirectorPlayer'
+import { FAL_SDK_PROXY_URL } from '../lib/directorProtocol'
 
 interface AssetUrlInputProps {
   value: string
@@ -49,7 +49,7 @@ export default function AssetUrlInput({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder ?? `Paste ${kind} URL`}
           disabled={disabled || uploading}
-          className="flex-1 rounded-md border border-fal-gray-300 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-fal-primary-500 disabled:opacity-50"
+          className="flex-1 rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-fal-primary-500 disabled:opacity-50"
         />
         <input
           ref={fileRef}
@@ -75,7 +75,7 @@ export default function AssetUrlInput({
             type="button"
             onClick={() => onChange('')}
             disabled={disabled}
-            className="p-1 text-fal-gray-400 hover:text-fal-gray-600 disabled:opacity-50"
+            className="p-1 text-fal-gray-400 hover:text-fal-gray-600 dark:text-fal-gray-400 disabled:opacity-50"
             aria-label="Clear"
           >
             <X className="w-3 h-3" />
@@ -84,9 +84,9 @@ export default function AssetUrlInput({
       </div>
       {kind === 'image' && value && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={value} alt="" className="h-12 rounded border border-fal-gray-200 object-cover" />
+        <img src={value} alt="" className="h-12 rounded border border-fal-gray-200 dark:border-fal-gray-700 object-cover" />
       )}
-      {uploadError && <p className="text-xs text-red-600">{uploadError}</p>}
+      {uploadError && <p className="text-xs text-red-600 dark:text-red-400">{uploadError}</p>}
     </div>
   )
 }

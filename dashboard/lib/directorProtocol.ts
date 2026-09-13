@@ -1,6 +1,8 @@
 // Director (minimax/h3-max/director) data-channel protocol.
 // Field names/values mirror the model's AsyncAPI contract (protocol_version 1).
 
+export const FAL_SDK_PROXY_URL = '/api/fal/sdk-proxy'
+
 export type DirectorResolution = '480p' | '768p' | '1080p'
 export type DirectorAspectRatio = '16:9' | '9:16' | '1:1'
 export type DirectorAudioBitrate = 96000 | 128000 | 192000

@@ -42,16 +42,16 @@ export default function ViewerChart({ samples, title = 'Viewers Over Time' }: Vi
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Users className="w-5 h-5 text-fal-purple-500" />
-            <h3 className="text-lg font-semibold text-fal-gray-900">{title}</h3>
+            <h3 className="text-lg font-semibold text-fal-gray-900 dark:text-fal-gray-50">{title}</h3>
           </div>
-          <div className="text-sm text-fal-gray-600 font-mono">
+          <div className="text-sm text-fal-gray-600 dark:text-fal-gray-400 font-mono">
             {span ? `Last ${span}` : `${samples.length} samples`}
           </div>
         </div>
       </div>
       <div className="fal-card-content">
         {chartData.length > 1 ? (
-          <div className="bg-white rounded-lg p-4">
+          <div className="bg-white dark:bg-fal-gray-900 rounded-lg p-4">
             <AreaChart
               data={chartData}
               config={{ viewers: { label: 'Viewers', color: 'blue' } }}
@@ -65,8 +65,8 @@ export default function ViewerChart({ samples, title = 'Viewers Over Time' }: Vi
             </AreaChart>
           </div>
         ) : (
-          <div className="flex items-center justify-center h-48 bg-white rounded-lg">
-            <div className="text-fal-gray-600">Collecting samples…</div>
+          <div className="flex items-center justify-center h-48 bg-white dark:bg-fal-gray-900 rounded-lg">
+            <div className="text-fal-gray-600 dark:text-fal-gray-400">Collecting samples…</div>
           </div>
         )}
       </div>

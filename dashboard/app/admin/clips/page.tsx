@@ -15,15 +15,15 @@ function ClipsList() {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Film className="w-5 h-5 text-fal-blue-500" />
-            <h3 className="text-lg font-semibold text-fal-gray-900">Clips</h3>
+            <h3 className="text-lg font-semibold text-fal-gray-900 dark:text-fal-gray-50">Clips</h3>
           </div>
-          <div className="text-sm text-fal-gray-600">{clips ? `${clips.length} clips` : 'Loading…'}</div>
+          <div className="text-sm text-fal-gray-600 dark:text-fal-gray-400">{clips ? `${clips.length} clips` : 'Loading…'}</div>
         </div>
       </div>
 
       <div className="fal-card-content">
         {clips && clips.length === 0 ? (
-          <div className="text-center py-8 text-fal-gray-600">
+          <div className="text-center py-8 text-fal-gray-600 dark:text-fal-gray-400">
             <Film className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>No clips yet</p>
             <p className="text-sm">Start an LTX stream or a Director session to populate clips</p>
@@ -34,7 +34,7 @@ function ClipsList() {
               <div
                 key={clip._id}
                 className={`border rounded-lg overflow-hidden ${
-                  index === 0 ? 'border-fal-green-500 bg-fal-green-500/10' : 'border-fal-gray-200 bg-fal-gray-50'
+                  index === 0 ? 'border-fal-green-500 bg-fal-green-500/10' : 'border-fal-gray-200 dark:border-fal-gray-700 bg-fal-gray-50 dark:bg-fal-gray-800'
                 }`}
               >
                 <div className="aspect-video bg-black flex items-center justify-center">
@@ -48,7 +48,7 @@ function ClipsList() {
                   )}
                 </div>
                 <div className="p-3 space-y-2">
-                  <div className="flex items-center justify-between text-xs text-fal-gray-600">
+                  <div className="flex items-center justify-between text-xs text-fal-gray-600 dark:text-fal-gray-400">
                     <span className="font-mono">
                       {clip.source} · chunk #{clip.chunkIndex}
                       {clip.promptVersion !== undefined && ` · v${clip.promptVersion}`}
@@ -58,10 +58,10 @@ function ClipsList() {
                       <span>{new Date(clip.createdAt).toLocaleString()}</span>
                     </span>
                   </div>
-                  <div className="text-sm text-fal-gray-900 bg-fal-gray-100 rounded p-2 font-mono line-clamp-3">
+                  <div className="text-sm text-fal-gray-900 dark:text-fal-gray-50 bg-fal-gray-100 dark:bg-fal-gray-800 rounded p-2 font-mono line-clamp-3">
                     {clip.prompt}
                   </div>
-                  <div className="flex items-center justify-between text-xs text-fal-gray-600">
+                  <div className="flex items-center justify-between text-xs text-fal-gray-600 dark:text-fal-gray-400">
                     <span>{clip.durationSeconds.toFixed(1)}s</span>
                     {clip.sessionId && (
                       <span className="flex items-center space-x-1 font-mono" title={clip.sessionId}>
