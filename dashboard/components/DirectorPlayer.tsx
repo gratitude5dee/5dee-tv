@@ -281,19 +281,32 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     appendLog(`Recording started (${recorder.mimeType})`)
   }, [appendLog])
 
+  const clipUnsupportedLoggedRef = useRef(false)
+
   const startClipRecorder = useCallback(() => {
     const stream = streamRef.current
     if (!stream || clipRecorderRef.current) return
-    const mimeType = pickRecorderMimeType()
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
-    clipChunksRef.current = []
-    recorder.ondataavailable = (ev) => {
-      if (ev.data.size > 0) clipChunksRef.current.push(ev.data)
+    if (typeof MediaRecorder === 'undefined') {
+      if (!clipUnsupportedLoggedRef.current) {
+        clipUnsupportedLoggedRef.current = true
+        appendLog('Clip capture unsupported in this browser (no MediaRecorder) — segments will be metadata-only')
+      }
+      return
     }
-    recorder.start(1000)
-    clipRecorderRef.current = recorder
-    clipStartedAtRef.current = Date.now()
-  }, [])
+    try {
+      const mimeType = pickRecorderMimeType()
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+      clipChunksRef.current = []
+      recorder.ondataavailable = (ev) => {
+        if (ev.data.size > 0) clipChunksRef.current.push(ev.data)
+      }
+      recorder.start(1000)
+      clipRecorderRef.current = recorder
+      clipStartedAtRef.current = Date.now()
+    } catch (e) {
+      appendLog(`clip capture: ${e instanceof Error ? e.message : String(e)}`)
+    }
+  }, [appendLog])
 
   const stopClipRecorder = useCallback((): Promise<Blob | null> => {
     const recorder = clipRecorderRef.current
@@ -798,6 +811,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     lastAppliedRef.current = null
     clipSegVersionRef.current = null
     clipClosingRef.current = false
+    clipUnsupportedLoggedRef.current = false
     setPlaybackSeconds(null)
     setSessionAllowance(null)
     setDirections([])
