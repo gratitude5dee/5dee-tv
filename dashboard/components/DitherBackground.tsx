@@ -29,7 +29,6 @@ export default function DitherBackground() {
         backgroundColor={dark ? [0.04, 0.05, 0.08] : [0.96, 0.97, 0.99]}
         colorNum={5}
         pixelSize={2.5}
-        enableMouseInteraction={false}
       />
     </div>
   )

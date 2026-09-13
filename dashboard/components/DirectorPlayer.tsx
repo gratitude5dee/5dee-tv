@@ -106,6 +106,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const lastAppliedRef = useRef<{ version: number; text: string } | null>(null)
   // Serializes recorder boundary changes so rotations can't interleave.
   const clipQueueRef = useRef<Promise<void>>(Promise.resolve())
+  // Set when teardown begins — queued rotations after this start nothing.
+  const clipClosingRef = useRef(false)
   // Monotonic attempt counter: invalidating it aborts an in-flight connect().
   const connectAttemptRef = useRef(0)
   // Lets server-driven teardown (stream_exhausted) reach the cleanup path.
@@ -355,14 +357,17 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           clipIdRef.current = null
           const blob = await stopClipRecorder()
           const stoppedAt = Date.now()
-          if (streamRef.current) startClipRecorder()
+          // A rotation queued after teardown began still delivers the previous
+          // segment's media, but must not start a new recorder or clip row.
+          const closing = clipClosingRef.current
+          if (!closing && streamRef.current) startClipRecorder()
           if (blob && prevClipId) {
             const durationSeconds = prevStartedAt ? (stoppedAt - prevStartedAt) / 1000 : 0
             void prevClipId.then((id) => {
               if (id) void uploadClipSegment(id, blob, durationSeconds)
             })
           }
-          if (!streamRef.current) return
+          if (closing || !streamRef.current) return
           clipIdRef.current = createClip({
             sessionId: convexSessionIdRef.current ?? undefined,
             prompt: text,
@@ -739,7 +744,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     connectAttemptRef.current += 1
     setState('closing')
     // Stop the clip recorder and detach its upload — session teardown below is
-    // never blocked on storage writes.
+    // never blocked on storage writes. The closing marker also prevents any
+    // rotation queued behind this flush from starting a fresh recorder.
+    clipClosingRef.current = true
     await flushClip()
     const blob = await stopRecorder()
     const session = sessionRef.current
@@ -784,6 +791,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     promptsByVersionRef.current = new Map()
     clipIdRef.current = null
     lastAppliedRef.current = null
+    clipClosingRef.current = false
     setPlaybackSeconds(null)
     setSessionAllowance(null)
     setDirections([])
@@ -903,6 +911,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     return () => {
       // Flush the in-flight clip segment too — navigating away mid-session
       // must not strand the last direction's media.
+      clipClosingRef.current = true
       void flushClip()
       recorderRef.current?.stop()
       sessionRef.current?.close()
