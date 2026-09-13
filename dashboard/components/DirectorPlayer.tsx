@@ -128,6 +128,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null)
   const [remixing, setRemixing] = useState(false)
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastPingAtRef = useRef(0)
+  const liveStartedAtRef = useRef<number | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null)
 
   const noop = async () => undefined
   const createSession = persistence?.createSession
@@ -188,7 +191,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         const uploadUrl = await generateUploadUrl()
         const res = await fetch(uploadUrl, {
           method: 'POST',
-          headers: { 'Content-Type': blob.type },
+          headers: { 'Content-Type': blob.type.split(';')[0] || 'video/webm' },
           body: blob,
         })
         if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
@@ -271,8 +274,11 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       const type = msg.type ?? 'message'
       appendLog(`${type}${msg.prompt_version !== undefined ? ` v${msg.prompt_version}` : ''}`)
 
-      if (type === 'pong' && typeof msg.ts === 'number') {
-        setPingMs(Math.max(0, Date.now() - msg.ts))
+      if (type === 'pong') {
+        // ts echo may be absent — fall back to when we last sent a ping.
+        const echoed = typeof msg.ts === 'number' ? msg.ts : Number(msg.ts)
+        const base = Number.isFinite(echoed) ? echoed : lastPingAtRef.current
+        setPingMs(Math.max(0, Date.now() - base))
         return
       }
 
@@ -293,6 +299,10 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           const status: DirectionStatus =
             type === 'prompt_pending' ? 'pending' : type === 'prompt_applied' ? 'applied' : 'rejected'
           setDirections((prev) => prev.map((d) => (d.version === v ? { ...d, status } : d)))
+        }
+        if (type === 'prompt_applied' && typeof v === 'number') {
+          const applied = promptsByVersionRef.current.get(v)
+          if (applied) setActivePrompt(applied)
         }
         if (type === 'prompt_applied' || type === 'prompt_rejected') {
           void persist(() =>
@@ -409,7 +419,6 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         session.send(wire)
       } else {
         const wire: PromptWire = {
-          protocol_version: 1,
           type: 'prompt',
           prompt: text,
           prompt_version: version,
@@ -421,7 +430,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         if (liveEndImage.trim()) setLiveEndImage('')
         if (liveAudioUrl.trim()) setLiveAudioUrl('')
       }
-      setActivePrompt(text)
+      // Active prompt is only set when the server applies it (prompt_applied).
       setDirections((prev) => [...prev, { version, text, status: 'sent' as const }].slice(-8))
       appendLog(`${configure ? 'configure' : 'prompt'} sent (v${version})`)
       void persist(() =>
@@ -447,14 +456,12 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       const version = promptVersionRef.current
       promptsByVersionRef.current.set(version, `[script ×${wireBeats.length}]`)
       const wire: PromptWire = {
-        protocol_version: 1,
         type: 'prompt',
         prompt_version: version,
         script: wireBeats,
         script_mode: mode,
       }
       session.send(wire)
-      setActivePrompt(`script (${wireBeats.length} beats, ${mode})`)
       setDirections((prev) =>
         [...prev, { version, text: `script ×${wireBeats.length} (${mode})`, status: 'sent' as const }].slice(-8),
       )
@@ -522,8 +529,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           'Keep the same character, same outfit, same art style and setting; evolve the shot forward — a new camera angle / next beat of the same scene.'
         const res = (await fal.subscribe('fal-ai/nano-banana-2/edit', {
           input: { prompt: editPrompt, image_urls: [source] },
-        })) as { images?: { url: string }[] }
-        const url = res.images?.[0]?.url
+        })) as { data?: { images?: { url: string }[] }; images?: { url: string }[] }
+        const url = res.data?.images?.[0]?.url ?? res.images?.[0]?.url
         if (!url) throw new Error('nano-banana returned no image')
         setLiveEndImage(url)
         setCapturedFrame(url)
@@ -571,6 +578,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
     setConnectStep(-1)
+    setElapsedSeconds(null)
+    liveStartedAtRef.current = null
     setPingMs(null)
     setBufferDepth(null)
     setGenEstimate(null)
@@ -597,6 +606,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     setSessionAllowance(null)
     setDirections([])
     setCapturedFrame(null)
+    setElapsedSeconds(null)
+    liveStartedAtRef.current = null
     setState('opening')
 
     if (createSession) {
@@ -640,6 +651,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           videoRef.current.play().catch(() => undefined)
         }
         appendLog('media stream attached')
+        liveStartedAtRef.current = Date.now()
         setConnectStep(CONNECT_STEPS.length - 1)
       },
       onData: handleData,
@@ -684,11 +696,17 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   }, [createSession, prompt, appendLog, handleData, persist, setSessionStatus, sendPrompt, settings, scriptBeats])
 
   // Ping the session every 5s while a session object exists; `pong` sets pingMs.
+  // Also keeps a local elapsed clock (the model's playback_seconds restarts per
+  // generation segment, so it can't be used as a session clock).
   useEffect(() => {
     if (state !== 'live' && state !== 'opening') return
     pingTimerRef.current = setInterval(() => {
-      sessionRef.current?.send({ type: 'ping', ts: Date.now() })
-    }, 5000)
+      lastPingAtRef.current = Date.now()
+      sessionRef.current?.send({ type: 'ping', ts: lastPingAtRef.current })
+      if (liveStartedAtRef.current) {
+        setElapsedSeconds((Date.now() - liveStartedAtRef.current) / 1000)
+      }
+    }, 1000)
     return () => {
       if (pingTimerRef.current) clearInterval(pingTimerRef.current)
       pingTimerRef.current = null
@@ -806,7 +824,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
                 <span className="flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
                   Live
-                  {playbackSeconds != null && ` · ${playbackSeconds.toFixed(1)}s`}
+                  {elapsedSeconds != null && ` · ${elapsedSeconds.toFixed(0)}s`}
                 </span>
                 {pingMs != null && <span className="text-yellow-300">Ping · {pingMs} ms</span>}
                 {bufferDepth != null && <span className="text-fal-gray-300">buf {bufferDepth.toFixed(1)}s</span>}
@@ -821,8 +839,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
             {sessionAllowance != null && (
               <p>
                 Session allowance: {Math.floor(sessionAllowance / 60)}:{String(Math.floor(sessionAllowance % 60)).padStart(2, '0')}
-                {playbackSeconds != null &&
-                  ` · about ${Math.max(0, Math.floor((sessionAllowance - playbackSeconds) / 60))}m remaining`}
+                {elapsedSeconds != null &&
+                  ` · about ${Math.max(0, Math.floor((sessionAllowance - elapsedSeconds) / 60))}m remaining`}
               </p>
             )}
             {directions.length > 0 && (
@@ -879,7 +897,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           />
           {activePrompt && (
             <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400 mt-1">
-              Active (v{promptVersionRef.current}): {activePrompt}
+              Applied: {activePrompt}
             </p>
           )}
           {live && (

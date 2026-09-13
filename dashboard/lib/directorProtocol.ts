@@ -78,7 +78,8 @@ export interface ConfigureWire {
 }
 
 export interface PromptWire {
-  protocol_version?: 1
+  // `protocol_version` is only valid on `configure` — the model rejects it on
+  // `prompt` messages ("Extra inputs are not permitted").
   type: 'prompt'
   prompt_version: number
   prompt?: string
