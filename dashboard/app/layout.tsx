@@ -19,28 +19,24 @@ export default function RootLayout({
     <html lang="en">
       <body className={`font-focal ${jetbrainsMono.variable}`}>
         <div className="min-h-screen bg-fal-gray-50">
-          {/* FAL Header */}
-          <header className="bg-white border-b border-fal-gray-200">
+          {/* wzrd.tech header */}
+          <header className="bg-[#0a0d14] border-b border-fal-gray-800">
             <div className="max-w-7xl mx-auto px-6 lg:px-8">
-              <div className="flex justify-between items-center py-6">
+              <div className="flex justify-between items-center py-4">
                 <div className="flex items-center space-x-4">
-                  <div className="flex items-center space-x-3">
-                    <div className="h-8 flex items-center">
-                      <img 
-                        src="https://github.com/fal-ai/fal-assets/blob/main/C1/Logo%20%26%20Text%20Padding%20Transparent%20C1.png?raw=true"
-                        alt="FAL Logo"
-                        className="h-8 w-auto"
-                      />
-                    </div>
-                    <div>
-                      <h1 className="text-xl font-bold text-fal-gray-900">
-                        Realtime Video Streamer — Admin
-                      </h1>
-   
-                    </div>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src="/wzrdtechlogo.png"
+                    alt="WZRD.TECH"
+                    className="h-9 w-auto"
+                  />
+                  <div className="border-l border-fal-gray-700 pl-4">
+                    <h1 className="text-lg font-semibold text-fal-gray-100 tracking-wide">
+                      Stream Admin
+                    </h1>
+                    <p className="text-xs text-fal-gray-500 font-mono">stream.wzrd.tech</p>
                   </div>
                 </div>
-
               </div>
             </div>
           </header>
@@ -56,9 +52,9 @@ export default function RootLayout({
           <footer className="border-t border-fal-gray-200 mt-16">
             <div className="max-w-7xl mx-auto px-6 lg:px-8 py-6">
               <div className="flex justify-between items-center text-sm text-fal-gray-600">
-                <div>FAL Realtime AI Dashboard v1.0</div>
+                <div>stream.wzrd.tech admin</div>
                 <div className="flex items-center space-x-4">
-                  <span>Powered by FAL</span>
+                  <span>Powered by FAL realtime</span>
                   <div className="w-1 h-1 bg-fal-gray-400 rounded-full"></div>
                   <span className="font-mono">{new Date().getFullYear()}</span>
                 </div>

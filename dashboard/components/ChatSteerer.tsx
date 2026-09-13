@@ -8,6 +8,8 @@ interface ChatSteererProps {
   live: boolean
   /** Send a direction to the model. Attributed as chat-sourced. */
   onDirection: (text: string, author: string) => void
+  /** `!frame` / `!snap`: capture the current frame for scene continuity. */
+  onFrameCommand?: (author: string) => void
   channel?: string
 }
 
@@ -22,7 +24,7 @@ interface ChatLine {
  * with `!direct <text>` (configurable); each accepted command becomes a prompt
  * on the open session alongside whatever script is running.
  */
-export default function ChatSteerer({ live, onDirection, channel }: ChatSteererProps) {
+export default function ChatSteerer({ live, onDirection, onFrameCommand, channel }: ChatSteererProps) {
   const ch = channel ?? process.env.NEXT_PUBLIC_TWITCH_CHANNEL ?? ''
   const [connected, setConnected] = useState(false)
   const [steer, setSteer] = useState(true)
@@ -30,6 +32,8 @@ export default function ChatSteerer({ live, onDirection, channel }: ChatSteererP
   const [chatLog, setChatLog] = useState<ChatLine[]>([])
   const [status, setStatus] = useState<string | null>(null)
   const clientRef = useRef<{ disconnect: () => Promise<unknown> } | null>(null)
+  const onFrameCommandRef = useRef(onFrameCommand)
+  onFrameCommandRef.current = onFrameCommand
   const liveRef = useRef(live)
   const steerRef = useRef(steer)
   const commandRef = useRef(command)
@@ -57,8 +61,13 @@ export default function ChatSteerer({ live, onDirection, channel }: ChatSteererP
         const user = String(tags['display-name'] ?? tags.username ?? 'chat')
         const text = message.trim()
         setChatLog((prev) => [...prev.slice(-19), { user, text, ts: Date.now() }])
+        const lower = text.toLowerCase()
+        if (liveRef.current && (lower === '!frame' || lower === '!snap')) {
+          onFrameCommandRef.current?.(user)
+          return
+        }
         const prefix = commandRef.current.trim().toLowerCase()
-        if (steerRef.current && liveRef.current && prefix && text.toLowerCase().startsWith(prefix)) {
+        if (steerRef.current && liveRef.current && prefix && lower.startsWith(prefix)) {
           const direction = text.slice(prefix.length).trim()
           if (direction) onDirection(direction, user)
         }
@@ -100,7 +109,8 @@ export default function ChatSteerer({ live, onDirection, channel }: ChatSteererP
         <p className="text-xs text-fal-gray-500">
           Anonymous read-only IRC on <span className="font-mono">#{ch || '…'}</span>. While the stream is
           live, <span className="font-mono">{command || '!direct'} &lt;text&gt;</span> messages are sent as
-          directions with the chatter&rsquo;s name, steering alongside the script.
+          directions with the chatter&rsquo;s name, and <span className="font-mono">!frame</span> snapshots the
+          current frame for scene continuity — steering alongside the script.
         </p>
         <div className="flex flex-wrap items-center gap-2 text-xs">
           {!connected ? (

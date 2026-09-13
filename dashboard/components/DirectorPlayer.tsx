@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createFalClient } from '@fal-ai/client'
 import { wma, type ManagedRealtimeSession, type RealtimeState, type WmaRealtimeSession } from '@fal-ai/client/realtime'
-import { Circle, Play, Send, Square, Upload, Volume2, VolumeX } from 'lucide-react'
+import { Camera, Circle, Play, Send, Square, Upload, Volume2, VolumeX } from 'lucide-react'
 import type { Id } from '../convex/_generated/dataModel'
 import type { DirectorPersistence } from './useDirectorPersistence'
 import AssetUrlInput from './AssetUrlInput'
@@ -34,12 +34,32 @@ interface DirectorMessage {
   index?: number
   playback_seconds?: number
   playbackSeconds?: number
+  buffer_depth_seconds?: number
+  next_generation_estimate_seconds?: number
   reason?: string
+  ts?: number
   duration?: number
   duration_seconds?: number
   message?: string
   error?: string
+  max_session_seconds?: number | null
   [key: string]: unknown
+}
+
+/** Connect-overlay phases, driven by diagnostics + server messages. */
+const CONNECT_STEPS = [
+  'Network checked',
+  'Finding a machine',
+  'Connecting',
+  'Building world',
+  'Generating first scene',
+] as const
+
+type DirectionStatus = 'sent' | 'pending' | 'applied' | 'rejected'
+interface RoutedDirection {
+  version: number
+  text: string
+  status: DirectionStatus
 }
 
 function pickRecorderMimeType(): string | undefined {
@@ -93,6 +113,16 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   // Live end-frame / target-audio overrides for the next prompt message.
   const [liveEndImage, setLiveEndImage] = useState('')
   const [liveAudioUrl, setLiveAudioUrl] = useState('')
+  // Connection observability.
+  const [connectStep, setConnectStep] = useState(-1)
+  const [pingMs, setPingMs] = useState<number | null>(null)
+  const [bufferDepth, setBufferDepth] = useState<number | null>(null)
+  const [genEstimate, setGenEstimate] = useState<number | null>(null)
+  const [sessionAllowance, setSessionAllowance] = useState<number | null>(null)
+  const [directions, setDirections] = useState<RoutedDirection[]>([])
+  const [capturing, setCapturing] = useState(false)
+  const [capturedFrame, setCapturedFrame] = useState<string | null>(null)
+  const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const noop = async () => undefined
   const createSession = persistence?.createSession
@@ -236,6 +266,37 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       const type = msg.type ?? 'message'
       appendLog(`${type}${msg.prompt_version !== undefined ? ` v${msg.prompt_version}` : ''}`)
 
+      if (type === 'pong' && typeof msg.ts === 'number') {
+        setPingMs(Math.max(0, Date.now() - msg.ts))
+        return
+      }
+
+      if (type === 'configured') {
+        setConnectStep((s) => Math.max(s, 3))
+        appendLog('world configured')
+        return
+      }
+
+      if (type === 'session_info') {
+        if (typeof msg.max_session_seconds === 'number') setSessionAllowance(msg.max_session_seconds)
+        return
+      }
+
+      if (type === 'prompt_pending' || type === 'prompt_applied' || type === 'prompt_rejected') {
+        const v = msg.prompt_version
+        if (typeof v === 'number') {
+          const status: DirectionStatus =
+            type === 'prompt_pending' ? 'pending' : type === 'prompt_applied' ? 'applied' : 'rejected'
+          setDirections((prev) => prev.map((d) => (d.version === v ? { ...d, status } : d)))
+        }
+        if (type === 'prompt_rejected') {
+          const reason = String(msg.reason ?? msg.error ?? 'rejected')
+          setError(`Prompt rejected: ${reason}`)
+          appendLog(`prompt_rejected v${v}: ${reason}`)
+        }
+        return
+      }
+
       if (type === 'error') {
         const detail = msg.error ?? msg.message ?? raw
         setError(String(detail))
@@ -261,13 +322,6 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         return
       }
 
-      if (type === 'prompt_rejected') {
-        const reason = String(msg.reason ?? msg.error ?? 'rejected')
-        setError(`Prompt rejected: ${reason}`)
-        appendLog(`prompt_rejected: ${reason}`)
-        return
-      }
-
       if (type === 'stream_exhausted') {
         appendLog(`stream_exhausted: ${String(msg.reason ?? 'ended')}`)
         setState('idle')
@@ -289,6 +343,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         clipIndexRef.current = chunkIndex + 1
         const played = msg.playback_seconds ?? msg.playbackSeconds
         if (typeof played === 'number') setPlaybackSeconds(played)
+        if (typeof msg.buffer_depth_seconds === 'number') setBufferDepth(msg.buffer_depth_seconds)
+        if (typeof msg.next_generation_estimate_seconds === 'number') setGenEstimate(msg.next_generation_estimate_seconds)
+        setConnectStep((s) => (s >= 0 ? CONNECT_STEPS.length - 1 : s))
         void persist(() =>
           createClip({
             sessionId: convexSessionIdRef.current ?? undefined,
@@ -350,6 +407,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         session.send(wire)
       }
       setActivePrompt(text)
+      setDirections((prev) => [...prev, { version, text, status: 'sent' as const }].slice(-8))
       appendLog(`${configure ? 'configure' : 'prompt'} sent (v${version})`)
       void persist(() =>
         logPromptEvent({
@@ -382,6 +440,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       }
       session.send(wire)
       setActivePrompt(`script (${wireBeats.length} beats, ${mode})`)
+      setDirections((prev) =>
+        [...prev, { version, text: `script ×${wireBeats.length} (${mode})`, status: 'sent' as const }].slice(-8),
+      )
       appendLog(`script ${mode} sent (v${version}, ${wireBeats.length} beats)`)
       void persist(() =>
         logPromptEvent({
@@ -393,6 +454,40 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       )
     },
     [appendLog, persist, logPromptEvent],
+  )
+
+  /**
+   * Snapshot the current video frame, upload it via fal storage, and use it for
+   * continuity: it becomes the next prompt's end frame AND the next session's
+   * first frame. Callable from the admin button or a chat command.
+   */
+  const captureFrame = useCallback(
+    async (source: string) => {
+      const video = videoRef.current
+      if (!video || !video.videoWidth || capturing) return
+      setCapturing(true)
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        canvas.getContext('2d')!.drawImage(video, 0, 0)
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, 'image/png'),
+        )
+        if (!blob) throw new Error('frame capture failed')
+        const fal = createFalClient({ proxyUrl: FAL_SDK_PROXY_URL })
+        const url = await fal.storage.upload(new File([blob], `frame-${Date.now()}.png`, { type: 'image/png' }))
+        setLiveEndImage(url)
+        setCapturedFrame(url)
+        setSettings((s) => ({ ...s, imageUrl: url }))
+        appendLog(`frame captured by ${source} → next end frame + next session's first frame`)
+      } catch (e) {
+        appendLog(`frame capture: ${e instanceof Error ? e.message : String(e)}`)
+      } finally {
+        setCapturing(false)
+      }
+    },
+    [capturing, appendLog],
   )
 
   /** A chat-sourced direction; attributed so the expander and the log show the chatter. */
@@ -411,9 +506,20 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     const blob = await stopRecorder()
     const session = sessionRef.current
     sessionRef.current = null
-    if (session) await session.close()
+    if (session) {
+      try {
+        session.send({ type: 'stop' })
+      } catch {
+        // channel may already be closing
+      }
+      await session.close()
+    }
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
+    setConnectStep(-1)
+    setPingMs(null)
+    setBufferDepth(null)
+    setGenEstimate(null)
     // Capture this session's id before clearing the ref — a new connect() may
     // replace it while the upload below is still running.
     const sessionId = convexSessionIdRef.current
@@ -476,6 +582,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           videoRef.current.play().catch(() => undefined)
         }
         appendLog('media stream attached')
+        setConnectStep(CONNECT_STEPS.length - 1)
       },
       onData: handleData,
       onState: (s) => {
@@ -500,12 +607,35 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         )
       },
       onDiagnostic: (d) => {
-        if (d.kind !== 'progress') appendLog(`${d.kind}: ${d.message}`)
+        if (d.kind === 'progress') {
+          // Map transport phases onto the connect overlay.
+          const phase = d.phase
+          if (phase === 'authenticating' || phase === 'ice-servers' || phase === 'ice-gathering' || phase === 'network-path') {
+            setConnectStep((s) => Math.max(s, 1))
+          } else if (phase === 'connecting' || phase === 'connection-state') {
+            setConnectStep((s) => Math.max(s, 2))
+          }
+        } else {
+          appendLog(`${d.kind}: ${d.message}`)
+        }
       },
     })
     sessionRef.current = session
+    setConnectStep(0)
     sendPrompt(prompt, true)
   }, [createSession, prompt, appendLog, handleData, persist, setSessionStatus, sendPrompt, settings, scriptBeats])
+
+  // Ping the session every 5s while a session object exists; `pong` sets pingMs.
+  useEffect(() => {
+    if (state !== 'live' && state !== 'opening') return
+    pingTimerRef.current = setInterval(() => {
+      sessionRef.current?.send({ type: 'ping', ts: Date.now() })
+    }, 5000)
+    return () => {
+      if (pingTimerRef.current) clearInterval(pingTimerRef.current)
+      pingTimerRef.current = null
+    }
+  }, [state])
 
   useEffect(() => {
     return () => {
@@ -554,20 +684,100 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
           <video ref={videoRef} autoPlay playsInline muted={muted} className="w-full h-full object-contain" />
           {!live && (
-            <div className="absolute inset-0 flex items-center justify-center text-fal-gray-400 text-sm">
-              {state === 'opening' ? 'Negotiating WebRTC session…' : state === 'closing' ? 'Stopping…' : 'Director offline'}
+            <div className="absolute inset-0 flex items-center justify-center">
+              {state === 'opening' || (connectStep >= 0 && state !== 'idle' && state !== 'failed') ? (
+                <div className="rounded-lg bg-black/70 border border-fal-gray-700 px-5 py-4 space-y-2 min-w-[240px]">
+                  {CONNECT_STEPS.map((label, i) => (
+                    <div key={label} className="flex items-center gap-2.5 text-xs font-mono">
+                      {i < connectStep ? (
+                        <Circle className="w-3 h-3 fill-green-400 text-green-400" />
+                      ) : i === connectStep ? (
+                        <Circle className="w-3 h-3 fill-transparent text-fal-gray-300 animate-pulse" />
+                      ) : (
+                        <Circle className="w-3 h-3 fill-transparent text-fal-gray-600" />
+                      )}
+                      <span className={i <= connectStep ? 'text-fal-gray-100' : 'text-fal-gray-500'}>
+                        {label}
+                      </span>
+                    </div>
+                  ))}
+                  <button onClick={disconnect} className="text-xs text-fal-gray-400 hover:text-white mt-1 underline">
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <span className="text-fal-gray-400 text-sm">
+                  {state === 'closing' ? 'Stopping…' : state === 'failed' ? 'Session failed' : 'Director offline'}
+                </span>
+              )}
             </div>
           )}
           {live && (
-            <button
-              onClick={() => setMuted((m) => !m)}
-              className="absolute bottom-3 right-3 p-2 rounded-full bg-black/60 text-white hover:bg-black/80"
-              aria-label={muted ? 'Unmute' : 'Mute'}
-            >
-              {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-            </button>
+            <>
+              <button
+                onClick={() => setMuted((m) => !m)}
+                className="absolute bottom-3 right-3 p-2 rounded-full bg-black/60 text-white hover:bg-black/80"
+                aria-label={muted ? 'Unmute' : 'Mute'}
+              >
+                {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </button>
+              <button
+                onClick={() => void captureFrame('admin')}
+                disabled={capturing}
+                className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2.5 py-2 rounded-md bg-black/60 text-white text-xs hover:bg-black/80 disabled:opacity-50"
+                title="Snapshot this frame → becomes the next end frame + next session's first frame"
+              >
+                <Camera className="w-4 h-4" />
+                {capturing ? 'Capturing…' : 'Capture frame'}
+              </button>
+              <div className="absolute top-3 left-3 flex items-center gap-3 rounded-md bg-black/60 px-3 py-1.5 text-xs font-mono text-white">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  Live
+                  {playbackSeconds != null && ` · ${playbackSeconds.toFixed(1)}s`}
+                </span>
+                {pingMs != null && <span className="text-yellow-300">Ping · {pingMs} ms</span>}
+                {bufferDepth != null && <span className="text-fal-gray-300">buf {bufferDepth.toFixed(1)}s</span>}
+                {genEstimate != null && <span className="text-fal-gray-300">gen {genEstimate.toFixed(1)}s</span>}
+              </div>
+            </>
           )}
         </div>
+
+        {(live || connectStep >= 0) && (
+          <div className="text-xs font-mono text-fal-gray-500 space-y-1">
+            {sessionAllowance != null && (
+              <p>
+                Session allowance: {Math.floor(sessionAllowance / 60)}:{String(Math.floor(sessionAllowance % 60)).padStart(2, '0')}
+                {playbackSeconds != null &&
+                  ` · about ${Math.max(0, Math.floor((sessionAllowance - playbackSeconds) / 60))}m remaining`}
+              </p>
+            )}
+            {directions.length > 0 && (
+              <div className="space-y-0.5">
+                {[...directions].reverse().map((d) => (
+                  <p key={d.version} className="truncate">
+                    <span className={`mr-1 ${
+                      d.status === 'applied'
+                        ? 'text-green-600'
+                        : d.status === 'rejected'
+                          ? 'text-red-600'
+                          : d.status === 'pending'
+                            ? 'text-yellow-600'
+                            : 'text-fal-gray-400'
+                    }`}>
+                      ●
+                    </span>
+                    v{d.version} {d.status} — {d.text.slice(0, 90)}
+                  </p>
+                ))}
+              </div>
+            )}
+            {capturedFrame && (
+              <p className="truncate">Continuity frame set: {capturedFrame}</p>
+            )}
+          </div>
+        )}
 
         {!live && !busy && (
           <details className="rounded-md border border-fal-gray-200">
@@ -678,7 +888,11 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         playbackSeconds={playbackSeconds}
       />
 
-      <ChatSteerer live={live} onDirection={sendChatDirection} />
+      <ChatSteerer
+        live={live}
+        onDirection={sendChatDirection}
+        onFrameCommand={(author) => void captureFrame(`@${author}`)}
+      />
     </div>
   )
 }
