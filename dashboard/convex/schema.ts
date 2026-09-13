@@ -228,7 +228,7 @@ export default defineSchema({
     outputTokens: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index('by_requestId', ['requestId']).index('by_shot', ['shotId', 'createdAt']),
+  }).index('by_requestId', ['requestId']).index('by_shot', ['shotId', 'createdAt']).index('by_sourceHash', ['sourceHash', 'kind', 'sourceRevision']),
 
   // Immutable, validated handoff snapshots. Editing a board after preparation
   // never mutates a transfer that is already loaded in Script preview.
