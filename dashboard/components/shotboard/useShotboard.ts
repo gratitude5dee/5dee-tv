@@ -121,7 +121,13 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
 
   // Hydrate once per board selection from the load query.
   useEffect(() => {
-    if (!mirror || !boardId || !loadQuery?.board || hydratedBoardRef.current === boardId) return
+    if (
+      !mirror ||
+      !boardId ||
+      !loadQuery?.board ||
+      String(loadQuery.board._id) !== boardId ||
+      hydratedBoardRef.current === boardId
+    ) return
     hydratedBoardRef.current = boardId
     setBoard({ id: loadQuery.board._id, title: loadQuery.board.title, description: loadQuery.board.description, aspectRatio: loadQuery.board.aspectRatio })
     setScenes((loadQuery.scenes as unknown as ConvexScene[]).map(toScene))
@@ -133,12 +139,12 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
     (id: string | null) => {
       hydratedBoardRef.current = null
       setBoardId(id)
-      if (!id) {
-        setBoard(null)
-        setScenes([])
-        setShots([])
-        setCharacters([])
-      }
+      // Never leave the previous board editable while the next Convex query is
+      // loading: mutations use the newly selected board id immediately.
+      setBoard(null)
+      setScenes([])
+      setShots([])
+      setCharacters([])
     },
     [setBoardId],
   )
@@ -317,7 +323,7 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
     [shots, patchShot],
   )
 
-  const loading = !!mirror && !!boardId && !loadQuery?.board
+  const loading = !!mirror && !!boardId && String(loadQuery?.board?._id ?? '') !== boardId
 
   return {
     boards,

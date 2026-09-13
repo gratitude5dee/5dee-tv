@@ -83,6 +83,14 @@ export function compileShotsToBeats(
   })
 }
 
+/** Total playable runtime using the same whole-second duration rules as compilation. */
+export function shotboardRuntimeSeconds(scenes: SceneDetails[], shots: ShotDetails[]): number {
+  return orderedShots(scenes, shots).reduce(
+    (total, { shot }) => total + Math.max(1, Math.floor(shot.duration ?? DEFAULT_SHOT_SECONDS)),
+    0,
+  )
+}
+
 /** First shot's keyframe doubles as the session's opening frame. */
 export function firstFrameUrl(scenes: SceneDetails[], shots: ShotDetails[]): string {
   return orderedShots(scenes, shots)[0]?.shot.imageUrl ?? ''

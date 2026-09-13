@@ -160,12 +160,21 @@ const AccordionGallery = ({
   };
 
   const handleKeyDown = (i, e) => {
+    let next;
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
       e.preventDefault();
-      setActive((i + 1) % count);
+      next = (i + 1) % count;
     } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
       e.preventDefault();
-      setActive((i - 1 + count) % count);
+      next = (i - 1 + count) % count;
+    } else if ((e.key === 'Enter' || e.key === ' ') && !e.currentTarget.href) {
+      e.preventDefault();
+      handleClick(i, e);
+      return;
+    }
+    if (next !== undefined) {
+      setActive(next);
+      panelRefs.current[next]?.focus();
     }
   };
 
@@ -198,8 +207,8 @@ const AccordionGallery = ({
             onMouseEnter={() => handleEnter(i)}
             onFocus={() => setActive(i)}
             onKeyDown={e => handleKeyDown(i, e)}
-            role="listitem"
-            tabIndex={0}
+            role={item.link ? 'listitem' : 'button'}
+            tabIndex={isActive ? 0 : -1}
             aria-current={isActive ? 'true' : undefined}
             aria-label={item.label}
           >

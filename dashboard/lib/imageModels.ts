@@ -71,7 +71,7 @@ export function buildImageInput(args: {
   model: ImageModelDef
   mode: 't2i' | 'edit'
   prompt: string
-  /** Reference image URLs for edit calls (gpt-image: ≤16; nano: passed through). */
+  /** Reference image URLs for edit calls (all models: ≤16). */
   refImages?: string[]
   aspectRatio?: string
   quality?: string
@@ -94,7 +94,7 @@ export function buildImageInput(args: {
   if (mode === 'edit') {
     return {
       endpoint,
-      input: { prompt, image_urls: refImages ?? [] },
+      input: { prompt, image_urls: (refImages ?? []).slice(0, 16) },
     }
   }
   return {
