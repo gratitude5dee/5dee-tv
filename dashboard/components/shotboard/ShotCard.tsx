@@ -18,6 +18,7 @@ interface ShotCardProps {
   onMove: (dir: -1 | 1) => void
   onGenerateImage: (shot: ShotDetails) => void
   onToggleCharacter: (characterId: string) => void
+  onExpandPrompt?: (shot: ShotDetails) => Promise<void>
 }
 
 export default function ShotCard({
@@ -29,9 +30,39 @@ export default function ShotCard({
   onMove,
   onGenerateImage,
   onToggleCharacter,
+  onExpandPrompt,
 }: ShotCardProps) {
   const [expanded, setExpanded] = useState(false)
+  const [expanding, setExpanding] = useState(false)
+  const [mentionQuery, setMentionQuery] = useState('')
+  const [mentionOpen, setMentionOpen] = useState(false)
   const assigned = new Set(shot.characterIds ?? [])
+  const displayedPrompt = shot.expandedPrompt || shot.promptIdea || ''
+  const mentionMatches = characters.filter((character) => {
+    const needle = mentionQuery.toLowerCase()
+    return (character.handle || character.name).toLowerCase().replace(/^@/, '').includes(needle)
+  }).slice(0, 6)
+
+  const updatePrompt = (value: string) => {
+    onPatch({ promptIdea: value, expandedPrompt: '' })
+    const match = value.match(/@([a-z0-9_-]*)$/i)
+    setMentionQuery(match?.[1] ?? '')
+    setMentionOpen(Boolean(match))
+  }
+
+  const insertMention = (character: CharacterDetails) => {
+    const handle = (character.handle || character.name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-')).replace(/^@/, '')
+    const next = displayedPrompt.replace(/@[a-z0-9_-]*$/i, `@${handle} `)
+    onPatch({ promptIdea: next, expandedPrompt: '', characterIds: [...new Set([...assigned, character.id])] })
+    setMentionOpen(false)
+    setMentionQuery('')
+  }
+
+  const expandPrompt = async () => {
+    if (!onExpandPrompt || !displayedPrompt.trim()) return
+    setExpanding(true)
+    try { await onExpandPrompt(shot) } finally { setExpanding(false) }
+  }
 
   return (
     <div className="w-64 shrink-0 rounded-lg border border-fal-gray-200 dark:border-fal-gray-700 bg-fal-gray-50/50 dark:bg-fal-gray-900/50 p-2 space-y-2">
@@ -100,13 +131,38 @@ export default function ShotCard({
         <span className="text-[10px] text-fal-gray-400">s</span>
       </div>
 
-      <textarea
-        value={shot.promptIdea ?? ''}
-        onChange={(e) => onPatch({ promptIdea: e.target.value })}
-        rows={2}
-        placeholder="Direction for this shot…"
-        className="w-full rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-fal-primary-500"
-      />
+      <div className="relative">
+        <textarea
+          value={displayedPrompt}
+          onChange={(e) => updatePrompt(e.target.value)}
+          onBlur={() => setTimeout(() => setMentionOpen(false), 120)}
+          rows={3}
+          placeholder="Image prompt or direction for this shot…"
+          className="w-full rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-2 py-1 pr-16 text-xs focus:outline-none focus:ring-2 focus:ring-fal-primary-500"
+          aria-label={`Image prompt for shot ${shot.shotNumber}`}
+        />
+        {mentionOpen && (
+          <div className="absolute left-0 right-0 top-full z-20 mt-1 rounded-md border border-fal-gray-200 bg-white p-1 shadow-lg dark:border-fal-gray-700 dark:bg-fal-gray-900">
+            {mentionMatches.length > 0 ? mentionMatches.map((character) => (
+              <button key={character.id} type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => insertMention(character)} className="block w-full rounded px-2 py-1 text-left text-[10px] hover:bg-fal-gray-100 dark:hover:bg-fal-gray-800">
+                @{(character.handle || character.name).replace(/^@/, '')}
+              </button>
+            )) : <p className="px-2 py-1 text-[10px] text-red-600">Unknown character handle</p>}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => void expandPrompt()}
+          disabled={!onExpandPrompt || expanding || !displayedPrompt.trim()}
+          className="absolute right-1 top-1 rounded border border-fal-primary-300 bg-white/90 px-1.5 py-0.5 text-[10px] font-medium text-fal-primary-700 shadow-sm hover:bg-fal-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-fal-gray-900/90 dark:text-fal-primary-300"
+          title="Expand this prompt with GMI"
+        >
+          {expanding ? 'Expanding…' : 'Expand'}
+        </button>
+        {shot.expandedPrompt && (
+          <button type="button" onClick={() => onPatch({ expandedPrompt: '' })} className="mt-0.5 text-[10px] text-fal-gray-400 hover:text-fal-gray-600 dark:hover:text-fal-gray-300">Undo expansion</button>
+        )}
+      </div>
 
       {characters.length > 0 && (
         <div className="flex flex-wrap items-center gap-1">

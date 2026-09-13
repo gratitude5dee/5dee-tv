@@ -1,8 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useAction, useMutation, useQuery } from 'convex/react'
+import { api } from '../../convex/_generated/api'
+import type { Id } from '../../convex/_generated/dataModel'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Clapperboard, Plus, Send, Trash2 } from 'lucide-react'
 import SceneSection from './SceneSection'
 import SceneSidebar from './SceneSidebar'
@@ -14,7 +16,7 @@ import { useConvexEnabled } from '../ConvexClientProvider'
 import { generateImage } from '../../lib/imageGen'
 import { DEFAULT_IMAGE_MODEL, getImageModel } from '../../lib/imageModels'
 import { compileShotsToBeats, shotboardRuntimeSeconds } from '../../lib/shotboardCompiler'
-import { shotTypeLabel, type CharacterDetails, type SceneDetails, type ShotDetails } from '../../lib/shotboardTypes'
+import { shotTypeLabel, type CharacterDetails, type LocationDetails, type SceneDetails, type ShotDetails, type StyleDetails } from '../../lib/shotboardTypes'
 
 const boardAspect = (aspectRatio?: string) => aspectRatio || '16:9'
 
@@ -27,7 +29,11 @@ export default function ShotboardPage() {
 
 function ConvexShotboard() {
   const params = useSearchParams()
-  return <ShotboardView sb={useConvexShotboard(params.get('board'))} />
+  const expand = useAction(api.promptExpansion.start)
+  const prepare = useMutation(api.director.prepare)
+  const locations = useQuery(api.locations.list, {})
+  const styles = useQuery(api.styles.list, {})
+  return <ShotboardView sb={useConvexShotboard(params.get('board'))} expandPrompt={expand} prepareDirector={prepare} locations={(locations ?? []).filter((l) => !l.archivedAt).map((l) => ({ id: String(l._id), name: l.name, description: l.description, imageUrl: l.imageUrl }))} styles={(styles ?? []).filter((s) => !s.archivedAt).map((s) => ({ id: String(s._id), name: s.name, description: s.description }))} />
 }
 
 function LocalShotboard() {
@@ -35,24 +41,34 @@ function LocalShotboard() {
   return <ShotboardView sb={useLocalShotboard(params.get('board'))} />
 }
 
-function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
+type ExpandPrompt = (args: { kind: 'image' | 'director'; source: string; context?: string; requestId: string; sourceRevision?: number; shotId?: Id<'shots'> }) => Promise<{ prompt: string }>
+type PrepareDirector = (args: { boardId: Id<'shotboards'>; shotIds?: Id<'shots'>[]; expectedRevision?: number }) => Promise<Id<'directorTransfers'>>
 
+function ShotboardView({ sb, expandPrompt, prepareDirector, locations = [], styles = [] }: { sb: ReturnType<typeof useConvexShotboard>; expandPrompt?: ExpandPrompt; prepareDirector?: PrepareDirector; locations?: LocationDetails[]; styles?: StyleDetails[] }) {
+
+  const router = useRouter()
   const [imageModel, setImageModel] = useState(DEFAULT_IMAGE_MODEL)
   const [imageQuality, setImageQuality] = useState<string | undefined>(undefined)
   const [generating, setGenerating] = useState<Set<string>>(new Set())
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
+  const [preparingDirector, setPreparingDirector] = useState(false)
 
   const selectedScene = sb.scenes.find((s) => s.id === selectedSceneId) ?? sb.scenes[0] ?? null
+  const selectedStyle = styles.find((style) => style.id === sb.board?.styleId)
 
   const beatPreview = useMemo(
-    () => compileShotsToBeats(sb.scenes, sb.shots, sb.characters),
-    [sb.scenes, sb.shots, sb.characters],
+    () => compileShotsToBeats(sb.scenes, sb.shots, sb.characters, locations, selectedStyle),
+    [sb.scenes, sb.shots, sb.characters, locations, selectedStyle],
   )
   const runtimeSeconds = useMemo(
     () => shotboardRuntimeSeconds(sb.scenes, sb.shots),
     [sb.scenes, sb.shots],
+  )
+  const staleDirectorShots = useMemo(
+    () => sb.shots.filter((shot) => !shot.directorPrompt?.trim() || shot.directorPromptRevision !== sb.board?.revision).length,
+    [sb.shots, sb.board?.revision],
   )
 
   const setGen = (id: string, on: boolean) =>
@@ -68,23 +84,27 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
       .map((id) => sb.characters.find((c) => c.id === id)?.imageUrl)
       .filter((u): u is string => !!u)
 
+  const locationForScene = (scene?: SceneDetails) =>
+    scene?.locationId ? locations.find((location) => location.id === scene.locationId) : undefined
+
   const generateShotImage = async (shot: ShotDetails) => {
-    const prompt = (shot.visualPrompt || shot.promptIdea || '').trim()
+    const prompt = (shot.expandedPrompt || shot.visualPrompt || shot.promptIdea || '').trim()
     if (!prompt) {
       setStatus('Give the shot a prompt or direction first')
       return
     }
     const model = getImageModel(shot.imageModel ?? imageModel)
     const scene = sb.scenes.find((s) => s.id === shot.sceneId)
-    const refs = [shot.imageUrl, scene?.keyframeUrl, ...characterImageRefs(shot)].filter((u): u is string => !!u)
-    const mode = shot.imageUrl ? 'edit' : 't2i'
+    const location = locationForScene(scene)
+    const refs = [shot.imageUrl, scene?.keyframeUrl, location?.imageUrl, ...characterImageRefs(shot)].filter((u): u is string => !!u)
+    const mode = refs.length ? 'edit' : 't2i'
     setGen(shot.id, true)
     sb.patchShot(shot.id, { imageStatus: 'generating' })
     try {
       const url = await generateImage({
         modelId: shot.imageModel ?? model.id,
         mode: mode === 'edit' && model.kind !== 't2i' ? 'edit' : 't2i',
-        prompt: `${shotTypeLabel(shot.shotType)}: ${prompt}`,
+        prompt: `${selectedStyle?.description ? `Style: ${selectedStyle.description}. ` : ''}${shotTypeLabel(shot.shotType)}: ${prompt}`,
         refImages: refs,
         aspectRatio: boardAspect(sb.board?.aspectRatio),
         quality: imageQuality,
@@ -99,8 +119,25 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
     }
   }
 
+  const expandShotPrompt = async (shot: ShotDetails) => {
+    const source = (shot.expandedPrompt || shot.promptIdea || '').trim()
+    if (!source) return
+    if (!expandPrompt) { setStatus('Prompt expansion requires an authenticated Convex connection'); return }
+    const scene = sb.scenes.find((s) => s.id === shot.sceneId)
+    const characters = (shot.characterIds ?? []).map((id) => sb.characters.find((c) => c.id === id)).filter(Boolean)
+    const location = locationForScene(scene)
+    const context = [selectedStyle?.name, selectedStyle?.description, scene?.title, scene?.description, location?.name, scene?.location, location?.description, ...characters.map((c) => `${c?.handle || c?.name}: ${c?.description || ''}`)].filter(Boolean).join('\n')
+    const sourceRevision = sb.board?.revision
+    try {
+      const result = await expandPrompt({ kind: 'image', source, context, requestId: `${shot.id}-${Date.now()}`, sourceRevision, shotId: shot.id as Id<'shots'> })
+      sb.patchShot(shot.id, { expandedPrompt: result.prompt, expandedPromptRevision: sourceRevision })
+      setStatus(null)
+    } catch (e) { setStatus(`Prompt expansion failed: ${e instanceof Error ? e.message : String(e)}`) }
+  }
+
   const generateSceneKeyframe = async (scene: SceneDetails) => {
-    const prompt = [scene.title, scene.description, scene.location, scene.timeOfDay, scene.weather, scene.atmosphere]
+    const location = locationForScene(scene)
+    const prompt = [selectedStyle?.description ? `Style: ${selectedStyle.description}` : '', scene.title, scene.description, location?.name, scene.location, location?.description, scene.timeOfDay, scene.weather, scene.atmosphere]
       .filter(Boolean)
       .join(' — ')
     if (!prompt.trim()) {
@@ -111,9 +148,9 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
     try {
       const url = await generateImage({
         modelId: imageModel,
-        mode: scene.keyframeUrl ? 'edit' : 't2i',
+        mode: scene.keyframeUrl || location?.imageUrl ? 'edit' : 't2i',
         prompt,
-        refImages: scene.keyframeUrl ? [scene.keyframeUrl] : undefined,
+        refImages: [scene.keyframeUrl, location?.imageUrl].filter((url): url is string => !!url),
         aspectRatio: boardAspect(sb.board?.aspectRatio),
         quality: imageQuality,
       })
@@ -127,7 +164,7 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
   }
 
   const generateCharacterPortrait = async (character: CharacterDetails) => {
-    const prompt = `Character portrait: ${character.name}${character.description ? ` — ${character.description}` : ''}. Clean neutral background, centered.`
+    const prompt = `${selectedStyle?.description ? `Style: ${selectedStyle.description}. ` : ''}Character portrait: ${character.name}${character.description ? ` — ${character.description}` : ''}. Clean neutral background, centered.`
     setGen(character.id, true)
     try {
       const url = await generateImage({
@@ -181,15 +218,55 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
                 <span>New board</span>
               </button>
               <ImageModelSelect modelId={imageModel} quality={imageQuality} onChange={setImageModel} onQualityChange={setImageQuality} />
+              {sb.board && styles.length > 0 && (
+                <select
+                  value={sb.board.styleId ?? ''}
+                  onChange={(e) => sb.patchBoard({ styleId: e.target.value || undefined })}
+                  className="rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-fal-gray-900"
+                  title="Board visual style"
+                  aria-label="Board visual style"
+                >
+                  <option value="">Board style…</option>
+                  {styles.map((style) => <option key={style.id} value={style.id}>{style.name}</option>)}
+                </select>
+              )}
               {sb.boardId && sb.persistent && (
-                <Link
-                  href={`/admin?board=${sb.boardId}`}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreparingDirector(true)
+                    void sb.flush().then(async () => {
+                      if (!prepareDirector || !sb.boardId) throw new Error('Director transfer is unavailable')
+                      const revision = sb.board?.revision
+                      if (expandPrompt && revision != null) {
+                        const pending = sb.shots.filter((shot) => !shot.directorPrompt?.trim() || shot.directorPromptRevision !== revision)
+                        for (let index = 0; index < pending.length; index += 2) {
+                          const batch = pending.slice(index, index + 2)
+                          const expanded = await Promise.all(batch.map(async (shot) => {
+                            const scene = sb.scenes.find((item) => item.id === shot.sceneId)
+                            const stale = shot.directorPromptRevision !== revision
+                            const source = (stale
+                              ? (shot.expandedPrompt || shot.visualPrompt || shot.promptIdea)
+                              : (shot.directorPrompt || shot.expandedPrompt || shot.visualPrompt || shot.promptIdea) || '').trim()
+                            if (!source) return null
+                            const context = [scene?.title, scene?.description, scene?.location, shot.dialogue ? `Dialogue: ${shot.dialogue}` : '', shot.soundEffects ? `SFX: ${shot.soundEffects}` : ''].filter(Boolean).join('\n')
+                            return { shot, result: await expandPrompt({ kind: 'director', source, context, requestId: `director-${shot.id}-${Date.now()}`, sourceRevision: revision, shotId: shot.id as Id<'shots'> }) }
+                          }))
+                          for (const item of expanded) if (item) sb.patchShot(item.shot.id, { directorPrompt: item.result.prompt, directorPromptRevision: revision })
+                        }
+                        await sb.flush()
+                      }
+                      const transferId = await prepareDirector({ boardId: sb.boardId as Id<'shotboards'>, expectedRevision: sb.board?.revision })
+                      router.push(`/admin?transfer=${String(transferId)}`)
+                    }).catch((e) => setStatus(`Could not prepare Director transfer: ${e instanceof Error ? e.message : String(e)}`)).finally(() => setPreparingDirector(false))
+                  }}
+                  disabled={preparingDirector || sb.loading || !sb.board || sb.board.revision == null}
                   className="fal-button-secondary flex items-center gap-1 text-xs !py-1.5"
                   title="Load this board's compiled script in the Director"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Send to Director</span>
-                </Link>
+                  <span>{preparingDirector ? 'Preparing…' : 'Send to Director'}</span>
+                </button>
               )}
               {sb.boardId && sb.persistent && (
                 <button
@@ -208,6 +285,7 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
           <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400">
             Build scenes of shots with generated keyframes — the board compiles to the timed script the
             Director runs. {beatPreview.length > 0 && <span className="font-medium">{beatPreview.length} beats · {runtimeSeconds}s runtime.</span>}
+            {sb.persistent && staleDirectorShots > 0 && <span className="ml-2 text-amber-600 dark:text-amber-400">{staleDirectorShots} shot{staleDirectorShots === 1 ? '' : 's'} need Director expansion before transfer.</span>}
           </p>
           {status && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{status}</p>}
           {!sb.persistent && (
@@ -273,6 +351,8 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
                 onMoveShot={sb.moveShot}
                 onGenerateImage={generateShotImage}
                 onToggleCharacter={sb.toggleShotCharacter}
+                onExpandPrompt={expandShotPrompt}
+                locations={locations}
               />
             ))}
             <button

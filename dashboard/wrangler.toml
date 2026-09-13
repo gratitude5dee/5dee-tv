@@ -23,6 +23,8 @@ TWITCH_CHANNEL = "510coast"
 TWITCH_CLIENT_ID = "wjx7dlnw7o242psisgylakohajg5z2"
 CF_ACCESS_TEAM_DOMAIN = "shrill-cherry-ba30.cloudflareaccess.com"
 CF_ACCESS_AUD = "6ecad68b7fdd6831f29a5c8e622edfb8c827c9e1854401eb480657c7732765dd"
+GMI_COORDINATOR_MODEL = "openai/gpt-6-astra"
+GMI_WORKER_MODEL = "zai-org/GLM-5.3-Flash"
 
 # NEXT_PUBLIC_* values are also inlined into the client bundle at BUILD time, so
 # .env.production carries the same NEXT_PUBLIC_CONVEX_URL — without it a clean
@@ -32,9 +34,16 @@ CF_ACCESS_AUD = "6ecad68b7fdd6831f29a5c8e622edfb8c827c9e1854401eb480657c7732765d
 #   NEXT_PUBLIC_FAL_API_URL   public URL of the deployed fal streaming app
 #                             (add to .env.production too — same build-time inline)
 #
-# Secrets (set in the Pages project, or via `wrangler pages secret put <NAME>`):
+# Cloudflare Pages secrets (set in the Pages project, or via
+# `wrangler pages secret put <NAME>`):
 #   FAL_KEY
 #   TWITCH_CLIENT_SECRET
+#
+# GMI runs in Convex, so its secrets belong in the Convex production
+# deployment, not Pages. Set them without placing values in git or the shell
+# history, for example:
+#   pbpaste | npx convex env set GMI_CLOUD_API_KEY --deployment prod
+#   pbpaste | npx convex env set GMI_CLOUD_ORGANIZATION_ID --deployment prod
 #
 # Auth for /admin and /api (middleware.ts). Production fails closed (401) unless one is set:
 #   a) verify Cloudflare Access JWTs at the origin (recommended): the CF_ACCESS_* vars above

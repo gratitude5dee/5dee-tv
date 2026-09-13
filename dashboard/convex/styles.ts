@@ -1,0 +1,6 @@
+import { mutation, query } from './_generated/server'
+import { v } from 'convex/values'
+const requireIdentity = async (ctx: { auth: { getUserIdentity: () => Promise<unknown> } }) => { if (!(await ctx.auth.getUserIdentity())) throw new Error('Authentication required') }
+export const list = query({ args: {}, handler: async (ctx) => { if (!(await ctx.auth.getUserIdentity())) return []; return (await ctx.db.query('styles').withIndex('by_updatedAt').order('desc').take(100)).filter((style) => !style.archivedAt) } })
+export const create = mutation({ args: { name: v.string(), description: v.optional(v.string()), referenceStorageIds: v.optional(v.array(v.id('_storage'))) }, handler: async (ctx, args) => { await requireIdentity(ctx); const now = Date.now(); return await ctx.db.insert('styles', { ...args, createdAt: now, updatedAt: now }) } })
+export const patch = mutation({ args: { styleId: v.id('styles'), name: v.optional(v.string()), description: v.optional(v.string()), referenceStorageIds: v.optional(v.array(v.id('_storage'))), archivedAt: v.optional(v.number()) }, handler: async (ctx, { styleId, ...args }) => { await requireIdentity(ctx); await ctx.db.patch(styleId, { ...args, updatedAt: Date.now() }) } })

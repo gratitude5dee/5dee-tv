@@ -120,6 +120,13 @@ export default defineSchema({
     title: v.string(),
     description: v.optional(v.string()),
     aspectRatio: v.optional(v.string()),
+    revision: v.optional(v.number()),
+    styleId: v.optional(v.id('styles')),
+    seriesId: v.optional(v.id('series')),
+    soundtrackTrackId: v.optional(v.id('tracks')),
+    soundtrackOffsetSeconds: v.optional(v.number()),
+    soundtrackVolume: v.optional(v.number()),
+    soundtrackLoop: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index('by_createdAt', ['createdAt']),
@@ -136,6 +143,7 @@ export default defineSchema({
     elements: v.optional(v.array(v.string())),
     cameraEnvironment: v.optional(v.string()),
     keyframeUrl: v.optional(v.string()),
+    locationId: v.optional(v.id('locations')),
   }).index('by_board', ['boardId', 'sceneNumber']),
 
   shots: defineTable({
@@ -154,6 +162,12 @@ export default defineSchema({
     audioUrl: v.optional(v.string()),
     characterIds: v.optional(v.array(v.id('characters'))),
     order: v.optional(v.number()),
+    expandedPrompt: v.optional(v.string()),
+    expandedPromptHash: v.optional(v.string()),
+    expandedPromptRevision: v.optional(v.number()),
+    directorPrompt: v.optional(v.string()),
+    directorPromptHash: v.optional(v.string()),
+    directorPromptRevision: v.optional(v.number()),
   })
     .index('by_scene', ['sceneId', 'shotNumber'])
     .index('by_board', ['boardId']),
@@ -165,6 +179,102 @@ export default defineSchema({
     description: v.optional(v.string()),
     imageUrl: v.optional(v.string()),
     traits: v.optional(v.any()),
+    referenceStorageIds: v.optional(v.array(v.id('_storage'))),
+    archivedAt: v.optional(v.number()),
     createdAt: v.number(),
   }).index('by_board', ['boardId']),
+
+  styles: defineTable({
+    name: v.string(),
+    description: v.optional(v.string()),
+    referenceStorageIds: v.optional(v.array(v.id('_storage'))),
+    archivedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_updatedAt', ['updatedAt']),
+
+  locations: defineTable({
+    name: v.string(),
+    description: v.optional(v.string()),
+    styleId: v.optional(v.id('styles')),
+    imageUrl: v.optional(v.string()),
+    referenceStorageIds: v.optional(v.array(v.id('_storage'))),
+    archivedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_updatedAt', ['updatedAt']),
+
+  series: defineTable({
+    name: v.string(),
+    bible: v.optional(v.string()),
+    canonVersion: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_updatedAt', ['updatedAt']),
+
+  promptJobs: defineTable({
+    kind: v.union(v.literal('image'), v.literal('director')),
+    shotId: v.optional(v.id('shots')),
+    status: v.union(v.literal('queued'), v.literal('running'), v.literal('completed'), v.literal('failed')),
+    sourceRevision: v.optional(v.number()),
+    sourceHash: v.string(),
+    requestId: v.string(),
+    result: v.optional(v.string()),
+    error: v.optional(v.string()),
+    coordinatorModel: v.optional(v.string()),
+    workerModel: v.optional(v.string()),
+    templateVersion: v.string(),
+    inputTokens: v.optional(v.number()),
+    outputTokens: v.optional(v.number()),
+    provider: v.optional(v.string()),
+    phase: v.optional(v.string()),
+    durationMs: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_requestId', ['requestId']).index('by_shot', ['shotId', 'createdAt']).index('by_sourceHash', ['sourceHash', 'kind', 'sourceRevision']),
+
+  // Immutable, validated handoff snapshots. Editing a board after preparation
+  // never mutates a transfer that is already loaded in Script preview.
+  directorTransfers: defineTable({
+    boardId: v.id('shotboards'),
+    sourceRevision: v.number(),
+    shotIds: v.array(v.id('shots')),
+    beats: v.array(v.object({
+      offset: v.number(),
+      prompt: v.string(),
+      endImageUrl: v.string(),
+      audioUrl: v.string(),
+    })),
+    firstFrameUrl: v.string(),
+    createdAt: v.number(),
+  }).index('by_board', ['boardId', 'createdAt']),
+
+  // Editable screenplay-generation jobs. A draft never becomes canon until
+  // an explicit episode approval mutation is committed.
+  storyboardJobs: defineTable({
+    premise: v.string(),
+    seriesId: v.optional(v.id('series')),
+    boardId: v.optional(v.id('shotboards')),
+    duration: v.number(),
+    shotCount: v.number(),
+    includeDialogue: v.boolean(),
+    status: v.union(v.literal('queued'), v.literal('completed'), v.literal('failed')),
+    provider: v.string(),
+    error: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_createdAt', ['createdAt']),
+
+  // Versioned episode snapshots and accepted facts for continuity review.
+  episodes: defineTable({
+    seriesId: v.id('series'),
+    title: v.string(),
+    revision: v.number(),
+    status: v.union(v.literal('draft'), v.literal('approved')),
+    draftText: v.optional(v.string()),
+    shotPlan: v.optional(v.any()),
+    acceptedFacts: v.array(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_series', ['seriesId', 'updatedAt']),
 })

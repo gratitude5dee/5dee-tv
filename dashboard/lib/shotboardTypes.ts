@@ -8,6 +8,13 @@ export interface ShotboardDetails {
   title: string
   description?: string
   aspectRatio?: string
+  revision?: number
+  styleId?: string
+  seriesId?: string
+  soundtrackTrackId?: string
+  soundtrackOffsetSeconds?: number
+  soundtrackVolume?: number
+  soundtrackLoop?: boolean
   updatedAt?: number
 }
 
@@ -24,6 +31,21 @@ export interface SceneDetails {
   elements?: string[]
   cameraEnvironment?: string
   keyframeUrl?: string
+  locationId?: string
+}
+
+export interface LocationDetails {
+  id: string
+  name: string
+  description?: string
+  styleId?: string
+  imageUrl?: string
+}
+
+export interface StyleDetails {
+  id: string
+  name: string
+  description?: string
 }
 
 export interface ShotDetails {
@@ -36,6 +58,12 @@ export interface ShotDetails {
   duration?: number
   promptIdea?: string
   visualPrompt?: string
+  expandedPrompt?: string
+  expandedPromptHash?: string
+  expandedPromptRevision?: number
+  directorPrompt?: string
+  directorPromptHash?: string
+  directorPromptRevision?: number
   dialogue?: string
   soundEffects?: string
   imageUrl?: string
