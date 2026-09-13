@@ -68,6 +68,13 @@ export const ChromaGrid = ({
     }
   };
 
+  const handleCardKeyDown = (item, e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      handleCardClick(item);
+    }
+  };
+
   const handleCardMove = e => {
     const card = e.currentTarget;
     const rect = card.getBoundingClientRect();
@@ -95,6 +102,9 @@ export const ChromaGrid = ({
           className={`chroma-card${c.selected ? ' chroma-card--selected' : ''}`}
           onMouseMove={handleCardMove}
           onClick={() => handleCardClick(c)}
+          onKeyDown={e => handleCardKeyDown(c, e)}
+          role={c.url || onSelect ? 'button' : undefined}
+          tabIndex={c.url || onSelect ? 0 : undefined}
           style={{
             '--card-border': c.borderColor || 'transparent',
             '--card-gradient': c.gradient,

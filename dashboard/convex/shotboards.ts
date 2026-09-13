@@ -197,7 +197,7 @@ export const setShotOrder = mutation({
   args: { sceneId: v.id('scenes'), shotIds: v.array(v.id('shots')) },
   handler: async (ctx, { sceneId, shotIds }) => {
     for (let i = 0; i < shotIds.length; i++) {
-      await ctx.db.patch(shotIds[i], { sceneId, order: i, shotNumber: i + 1 })
+      await ctx.db.patch(shotIds[i], { sceneId, order: i + 1, shotNumber: i + 1 })
     }
   },
 })
@@ -234,6 +234,19 @@ export const patchCharacter = mutation({
 export const removeCharacter = mutation({
   args: { characterId: v.id('characters') },
   handler: async (ctx, { characterId }) => {
+    const character = await ctx.db.get(characterId)
+    if (character?.boardId) {
+      const shots = await ctx.db
+        .query('shots')
+        .withIndex('by_board', (q) => q.eq('boardId', character.boardId!))
+        .collect()
+      for (const shot of shots) {
+        const characterIds = shot.characterIds?.filter((id) => id !== characterId)
+        if (characterIds?.length !== shot.characterIds?.length) {
+          await ctx.db.patch(shot._id, { characterIds })
+        }
+      }
+    }
     await ctx.db.delete(characterId)
   },
 })

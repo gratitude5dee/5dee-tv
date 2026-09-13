@@ -13,7 +13,7 @@ import { useConvexShotboard, useLocalShotboard } from './useShotboard'
 import { useConvexEnabled } from '../ConvexClientProvider'
 import { generateImage } from '../../lib/imageGen'
 import { DEFAULT_IMAGE_MODEL, getImageModel } from '../../lib/imageModels'
-import { compileShotsToBeats } from '../../lib/shotboardCompiler'
+import { compileShotsToBeats, shotboardRuntimeSeconds } from '../../lib/shotboardCompiler'
 import { shotTypeLabel, type CharacterDetails, type SceneDetails, type ShotDetails } from '../../lib/shotboardTypes'
 
 const boardAspect = (aspectRatio?: string) => aspectRatio || '16:9'
@@ -49,6 +49,10 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
   const beatPreview = useMemo(
     () => compileShotsToBeats(sb.scenes, sb.shots, sb.characters),
     [sb.scenes, sb.shots, sb.characters],
+  )
+  const runtimeSeconds = useMemo(
+    () => shotboardRuntimeSeconds(sb.scenes, sb.shots),
+    [sb.scenes, sb.shots],
   )
 
   const setGen = (id: string, on: boolean) =>
@@ -177,7 +181,7 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
                 <span>New board</span>
               </button>
               <ImageModelSelect modelId={imageModel} quality={imageQuality} onChange={setImageModel} onQualityChange={setImageQuality} />
-              {sb.boardId && (
+              {sb.boardId && sb.persistent && (
                 <Link
                   href={`/admin?board=${sb.boardId}`}
                   className="fal-button-secondary flex items-center gap-1 text-xs !py-1.5"
@@ -203,16 +207,22 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
         <div className="fal-card-content">
           <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400">
             Build scenes of shots with generated keyframes — the board compiles to the timed script the
-            Director runs. {beatPreview.length > 0 && <span className="font-medium">{beatPreview.length} beats · {Math.max(0, ...beatPreview.map((b) => b.offset))}s+ runtime.</span>}
+            Director runs. {beatPreview.length > 0 && <span className="font-medium">{beatPreview.length} beats · {runtimeSeconds}s runtime.</span>}
           </p>
           {status && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{status}</p>}
           {!sb.persistent && (
-            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Convex not configured — this board lives only in this page&rsquo;s state.</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Convex not configured — this board lives only in this page&rsquo;s state and cannot be sent to Director.</p>
           )}
         </div>
       </div>
 
-      {sb.boardId ? (
+      {sb.loading ? (
+        <div className="fal-card">
+          <div className="fal-card-content text-xs text-fal-gray-500 dark:text-fal-gray-400">
+            Loading shotboard…
+          </div>
+        </div>
+      ) : sb.boardId ? (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">
           <div className="fal-card">
             <div className="fal-card-content space-y-4">
