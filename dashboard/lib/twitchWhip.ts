@@ -39,41 +39,40 @@ export async function startWhipBroadcast(
     if (opus.length) audioTransceiver.setCodecPreferences(opus)
   }
 
-  await pc.setLocalDescription()
-  await new Promise<void>((resolve) => {
-    if (pc.iceGatheringState === 'complete') return resolve()
-    const onChange = () => {
-      if (pc.iceGatheringState === 'complete') {
-        pc.removeEventListener('icegatheringstatechange', onChange)
-        resolve()
+  try {
+    await pc.setLocalDescription()
+    await new Promise<void>((resolve) => {
+      if (pc.iceGatheringState === 'complete') return resolve()
+      const onChange = () => {
+        if (pc.iceGatheringState === 'complete') {
+          pc.removeEventListener('icegatheringstatechange', onChange)
+          resolve()
+        }
       }
-    }
-    pc.addEventListener('icegatheringstatechange', onChange)
-    // Host-candidate gathering is fast; don't hang the UI if it never completes.
-    setTimeout(resolve, 4000)
-  })
+      pc.addEventListener('icegatheringstatechange', onChange)
+      // Host-candidate gathering is fast; don't hang the UI if it never completes.
+      setTimeout(resolve, 4000)
+    })
 
-  const offer = pc.localDescription?.sdp
-  if (!offer) {
+    const offer = pc.localDescription?.sdp
+    if (!offer) throw new Error('No local SDP offer produced')
+
+    const res = await fetch(TWITCH_WHIP_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/sdp',
+        Authorization: `Bearer ${streamKey}`,
+      },
+      body: offer,
+    })
+    if (!res.ok) throw new Error(`Twitch ingest rejected the offer (${res.status})`)
+
+    const answerSdp = await res.text()
+    await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp })
+  } catch (e) {
     pc.close()
-    throw new Error('No local SDP offer produced')
+    throw e
   }
-
-  const res = await fetch(TWITCH_WHIP_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/sdp',
-      Authorization: `Bearer ${streamKey}`,
-    },
-    body: offer,
-  })
-  if (!res.ok) {
-    pc.close()
-    throw new Error(`Twitch ingest rejected the offer (${res.status})`)
-  }
-
-  const answerSdp = await res.text()
-  await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp })
 
   return {
     pc,

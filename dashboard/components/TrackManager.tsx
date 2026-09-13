@@ -25,23 +25,28 @@ function formatBytes(bytes: number) {
  * can fetch), and a selected track feeds audio_url on configure or live prompts.
  * Only mounted when Convex is configured.
  */
-export default function TrackManager({ onUseForSession, onUseLive, live }: TrackManagerProps) {
+export default function TrackManager(props: TrackManagerProps) {
   const convexEnabled = useConvexEnabled()
+  if (!convexEnabled) return null
+  return <TrackManagerInner {...props} />
+}
+
+function TrackManagerInner({ onUseForSession, onUseLive, live }: TrackManagerProps) {
   const tracks = useQuery(api.tracks.list)
   const generateUploadUrl = useMutation(api.tracks.generateUploadUrl)
   const addTrack = useMutation(api.tracks.add)
   const removeTrack = useMutation(api.tracks.remove)
+  const deleteStorage = useMutation(api.recordings.deleteStorage)
 
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [selected, setSelected] = useState<Id<'tracks'> | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  if (!convexEnabled) return null
-
   const upload = async (file: File) => {
     setUploading(true)
     setError(null)
+    let storageId: Id<'_storage'> | null = null
     try {
       const uploadUrl = await generateUploadUrl()
       const res = await fetch(uploadUrl, {
@@ -50,7 +55,7 @@ export default function TrackManager({ onUseForSession, onUseLive, live }: Track
         body: file,
       })
       if (!res.ok) throw new Error(`Upload failed (${res.status})`)
-      const { storageId } = (await res.json()) as { storageId: Id<'_storage'> }
+      storageId = ((await res.json()) as { storageId: Id<'_storage'> }).storageId
       await addTrack({
         name: file.name.replace(/\.[a-z0-9]+$/i, ''),
         storageId,
@@ -58,6 +63,12 @@ export default function TrackManager({ onUseForSession, onUseLive, live }: Track
         sizeBytes: file.size,
       })
     } catch (e) {
+      // Storage was already committed when addTrack fails — delete the orphan.
+      if (storageId) {
+        await deleteStorage({ storageId }).catch(() =>
+          setError('Upload registered a file that could not be cleaned up'),
+        )
+      }
       setError(e instanceof Error ? e.message : String(e))
     } finally {
       setUploading(false)

@@ -32,15 +32,24 @@ export async function POST(request: Request) {
     )
   }
 
-  let body: { code?: string; redirectUri?: string }
+  let body: { code?: string }
   try {
-    body = (await request.json()) as { code?: string; redirectUri?: string }
+    body = (await request.json()) as { code?: string }
   } catch {
     return NextResponse.json({ error: 'Expected a JSON body' }, { status: 400 })
   }
-  if (!body.code || !body.redirectUri) {
-    return NextResponse.json({ error: 'code and redirectUri are required' }, { status: 400 })
+  if (!body.code) {
+    return NextResponse.json({ error: 'code is required' }, { status: 400 })
   }
+
+  // The code only redeems for the redirect_uri it was issued against, so derive
+  // it from the request's own same-origin Origin header — never trust a
+  // client-supplied redirectUri, which could redeem a foreign auth code.
+  const origin = request.headers.get('origin')
+  if (!origin) {
+    return NextResponse.json({ error: 'Missing Origin header' }, { status: 400 })
+  }
+  const redirectUri = `${origin}/admin`
 
   try {
     const tokenRes = await fetch(TOKEN_URL, {
@@ -51,7 +60,7 @@ export async function POST(request: Request) {
         client_secret: clientSecret,
         grant_type: 'authorization_code',
         code: body.code,
-        redirect_uri: body.redirectUri,
+        redirect_uri: redirectUri,
       }),
     })
     if (!tokenRes.ok) {

@@ -10,6 +10,7 @@ interface TwitchAuth {
 }
 
 const AUTH_STORAGE_KEY = 'wzrd_twitch_auth'
+const STATE_STORAGE_KEY = 'wzrd_twitch_oauth_state'
 const OAUTH_SCOPE = 'channel:read:stream_key'
 
 interface TwitchBroadcastProps {
@@ -47,6 +48,8 @@ export default function TwitchBroadcast({ live, getStream, onLog }: TwitchBroadc
   const whipRef = useRef<WhipSession | null>(null)
   const liveRef = useRef(live)
   liveRef.current = live
+  // Bumps on every start/stop so a superseded negotiation can't install a peer.
+  const opRef = useRef(0)
 
   const clientId = process.env.NEXT_PUBLIC_TWITCH_CLIENT_ID ?? ''
 
@@ -57,13 +60,18 @@ export default function TwitchBroadcast({ live, getStream, onLog }: TwitchBroadc
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
     if (!code) return
-    const redirectUri = `${window.location.origin}/admin`
-    setExchanging(true)
+    const expectedState = sessionStorage.getItem(STATE_STORAGE_KEY)
+    sessionStorage.removeItem(STATE_STORAGE_KEY)
     window.history.replaceState({}, '', window.location.pathname)
+    if (!expectedState || params.get('state') !== expectedState) {
+      setConnectError('OAuth state mismatch — try Connect to Twitch again')
+      return
+    }
+    setExchanging(true)
     fetch('/api/twitch/connect', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code, redirectUri }),
+      body: JSON.stringify({ code }),
     })
       .then(async (res) => {
         const data = (await res.json()) as { login?: string; streamKey?: string; error?: string }
@@ -96,11 +104,14 @@ export default function TwitchBroadcast({ live, getStream, onLog }: TwitchBroadc
       setConnectError('NEXT_PUBLIC_TWITCH_CLIENT_ID is not configured — paste a stream key instead')
       return
     }
+    const state = crypto.randomUUID()
+    sessionStorage.setItem(STATE_STORAGE_KEY, state)
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: `${window.location.origin}/admin`,
       response_type: 'code',
       scope: OAUTH_SCOPE,
+      state,
     })
     window.location.href = `https://id.twitch.tv/oauth2/authorize?${params}`
   }, [clientId])
@@ -111,6 +122,7 @@ export default function TwitchBroadcast({ live, getStream, onLog }: TwitchBroadc
   }, [])
 
   const stopBroadcast = useCallback(() => {
+    opRef.current += 1
     whipRef.current?.stop()
     whipRef.current = null
     setBroadcasting(false)
@@ -123,8 +135,16 @@ export default function TwitchBroadcast({ live, getStream, onLog }: TwitchBroadc
     if (!stream || !key) return
     setStarting(true)
     setConnectError(null)
+    const op = ++opRef.current
     try {
-      whipRef.current = await startWhipBroadcast(stream, key)
+      const session = await startWhipBroadcast(stream, key)
+      // The Director session may have ended (or a stop clicked) while the
+      // offer was in flight — don't install a peer for a dead stream.
+      if (!liveRef.current || opRef.current !== op) {
+        session.stop()
+        return
+      }
+      whipRef.current = session
       setBroadcasting(true)
       onLog?.('Broadcasting to Twitch (WHIP H264+Opus)')
     } catch (e) {
