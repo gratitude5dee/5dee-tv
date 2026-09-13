@@ -15,6 +15,9 @@ interface DirectorSettingsFormProps {
   disabled: boolean
   /** Script beats are queued for configure; end image + startup audio can't combine with it. */
   scriptPlanned: boolean
+  /** Generate a character sheet from the first frame via nano-banana-2. */
+  onGenerateSheet?: () => void
+  generatingSheet?: boolean
 }
 
 const selectClass =
@@ -25,6 +28,8 @@ export default function DirectorSettingsForm({
   onChange,
   disabled,
   scriptPlanned,
+  onGenerateSheet,
+  generatingSheet,
 }: DirectorSettingsFormProps) {
   const set = <K extends keyof DirectorSettings>(key: K, value: DirectorSettings[K]) =>
     onChange({ ...settings, [key]: value })
@@ -80,6 +85,47 @@ export default function DirectorSettingsForm({
             onChange={(e) => set('seed', e.target.value === '' ? null : Math.floor(Number(e.target.value)))}
             className={selectClass + ' w-full'}
           />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <label className="block text-xs font-medium text-fal-gray-600 dark:text-fal-gray-400 mb-1">
+            Character name (optional)
+          </label>
+          <input
+            type="text"
+            value={settings.characterName}
+            onChange={(e) => set('characterName', e.target.value)}
+            placeholder="$COAST"
+            className={selectClass + ' w-full'}
+          />
+          <p className="text-xs text-fal-gray-400 mt-1">Prefixed into chat directions + remix prompts.</p>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-fal-gray-600 dark:text-fal-gray-400 mb-1">
+            Character sheet (optional)
+          </label>
+          <AssetUrlInput
+            value={settings.characterSheet}
+            onChange={(u) => set('characterSheet', u)}
+            placeholder="Sheet URL or upload"
+            disabled={disabled}
+          />
+          <p className="text-xs text-fal-gray-400 mt-1">
+            Passed as a consistency reference to every Remix frame.
+            {onGenerateSheet && (
+              <button
+                type="button"
+                onClick={onGenerateSheet}
+                disabled={disabled || generatingSheet || !settings.imageUrl.trim()}
+                className="ml-1 underline text-fal-primary-600 dark:text-fal-primary-400 disabled:opacity-50 disabled:no-underline"
+                title="Generate a turnaround/expressions sheet from the first frame (nano-banana-2)"
+              >
+                {generatingSheet ? 'Generating…' : 'Generate from first frame'}
+              </button>
+            )}
+          </p>
         </div>
       </div>
 

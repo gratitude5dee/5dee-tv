@@ -127,6 +127,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const [capturing, setCapturing] = useState(false)
   const [capturedFrame, setCapturedFrame] = useState<string | null>(null)
   const [remixing, setRemixing] = useState(false)
+  const [generatingSheet, setGeneratingSheet] = useState(false)
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const lastPingAtRef = useRef(0)
   const liveStartedAtRef = useRef<number | null>(null)
@@ -413,10 +414,11 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         // in configure cannot combine with end_image_url/audio_url — the beats
         // carry their own.
         const beats = sendScriptOnConnect ? beatsToWire(scriptBeats) : []
+        const anchor = settings.characterName.trim()
         const wire: ConfigureWire = {
           protocol_version: 1,
           type: 'configure',
-          prompt: text,
+          prompt: anchor && !text.includes(anchor) ? `${anchor} — ${text}` : text,
           prompt_version: version,
           resolution: settings.resolution,
           aspect_ratio: settings.aspectRatio,
@@ -542,8 +544,13 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         const editPrompt =
           directionText?.trim() ||
           'Keep the same character, same outfit, same art style and setting; evolve the shot forward — a new camera angle / next beat of the same scene.'
+        const refs = [source, ...(settings.characterSheet.trim() ? [settings.characterSheet.trim()] : [])]
+        const name = settings.characterName.trim()
         const res = (await fal.subscribe('fal-ai/nano-banana-2/edit', {
-          input: { prompt: editPrompt, image_urls: [source] },
+          input: {
+            prompt: `${editPrompt}${refs.length > 1 ? ` Keep ${name || 'the character'} identical to the character reference sheet — same outfit, proportions, and style.` : ''}`,
+            image_urls: refs,
+          },
         })) as { data?: { images?: { url: string }[] }; images?: { url: string }[] }
         const url = res.data?.images?.[0]?.url ?? res.images?.[0]?.url
         if (!url) throw new Error('nano-banana returned no image')
@@ -557,8 +564,37 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         setRemixing(false)
       }
     },
-    [capturedFrame, settings.imageUrl, remixing, appendLog],
+    [capturedFrame, settings.imageUrl, settings.characterSheet, settings.characterName, remixing, appendLog],
   )
+
+  /**
+   * Generate a character reference sheet from the first frame via
+   * nano-banana-2/edit — a turnaround/expressions sheet used as a consistency
+   * reference on every subsequent remix.
+   */
+  const generateSheet = useCallback(async () => {
+    const source = settings.imageUrl.trim()
+    if (!source || generatingSheet) return
+    setGeneratingSheet(true)
+    try {
+      const fal = createFalClient({ proxyUrl: FAL_SDK_PROXY_URL })
+      const name = settings.characterName.trim() || 'the character'
+      const res = (await fal.subscribe('fal-ai/nano-banana-2/edit', {
+        input: {
+          prompt: `Character reference sheet for ${name}: front view, three-quarter view, and side profile plus a row of expression close-ups — identical outfit, colors, and art style as the reference image. Clean layout on a plain background.`,
+          image_urls: [source],
+        },
+      })) as { data?: { images?: { url: string }[] }; images?: { url: string }[] }
+      const url = res.data?.images?.[0]?.url ?? res.images?.[0]?.url
+      if (!url) throw new Error('nano-banana returned no image')
+      setSettings((s) => ({ ...s, characterSheet: url }))
+      appendLog('character sheet generated → consistency reference for remixes')
+    } catch (e) {
+      appendLog(`character sheet: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setGeneratingSheet(false)
+    }
+  }, [settings.imageUrl, settings.characterName, generatingSheet, appendLog])
 
   /**
    * A chat-sourced direction. Chat text and display names are untrusted —
@@ -899,6 +935,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
                 onChange={setSettings}
                 disabled={live || busy}
                 scriptPlanned={sendScriptOnConnect && beatsToWire(scriptBeats).length > 0}
+                onGenerateSheet={generateSheet}
+                generatingSheet={generatingSheet}
               />
             </div>
           </details>

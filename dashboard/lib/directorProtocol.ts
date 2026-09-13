@@ -21,6 +21,10 @@ export interface DirectorSettings {
   endImageUrl: string
   /** Startup FL2VA target audio. Mutually exclusive with script in configure. */
   audioUrl: string
+  /** Character reference sheet — extra reference for remixes, not sent to the model. */
+  characterSheet: string
+  /** Character/show name used to anchor prompts (e.g. "$COAST"). */
+  characterName: string
 }
 
 export const DEFAULT_DIRECTOR_SETTINGS: DirectorSettings = {
@@ -32,6 +36,8 @@ export const DEFAULT_DIRECTOR_SETTINGS: DirectorSettings = {
   imageUrl: '',
   endImageUrl: '',
   audioUrl: '',
+  characterSheet: '',
+  characterName: '',
 }
 
 /** A timed direction on the video clock (whole seconds from script start). */
