@@ -7,6 +7,15 @@ export const dynamic = 'force-dynamic'
 const TOKEN_URL = 'https://id.twitch.tv/oauth2/token'
 const HELIX = 'https://api.twitch.tv/helix'
 
+// Origins that may complete the Twitch connect flow — the production site, Pages
+// preview deployments, and local dev.
+const ALLOWED_ORIGIN =
+  /^https:\/\/(stream\.wzrd\.tech|[a-z0-9-]+\.5dee-tv-admin\.pages\.dev)$|^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/
+
+function isAllowedOrigin(origin: string): boolean {
+  return ALLOWED_ORIGIN.test(origin)
+}
+
 async function helix<T>(path: string, clientId: string, token: string): Promise<T> {
   const res = await fetch(`${HELIX}${path}`, {
     headers: { 'Client-Id': clientId, Authorization: `Bearer ${token}` },
@@ -43,11 +52,11 @@ export async function POST(request: Request) {
   }
 
   // The code only redeems for the redirect_uri it was issued against, so derive
-  // it from the request's own same-origin Origin header — never trust a
-  // client-supplied redirectUri, which could redeem a foreign auth code.
+  // it from the request Origin — but only for origins we serve, so a forged
+  // Origin pointing at another registered redirect can't redeem a foreign code.
   const origin = request.headers.get('origin')
-  if (!origin) {
-    return NextResponse.json({ error: 'Missing Origin header' }, { status: 400 })
+  if (!origin || !isAllowedOrigin(origin)) {
+    return NextResponse.json({ error: 'Origin is not an allowed admin host' }, { status: 403 })
   }
   const redirectUri = `${origin}/admin`
 

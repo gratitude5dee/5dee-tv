@@ -64,12 +64,14 @@ function TrackManagerInner({ onUseForSession, onUseLive, live }: TrackManagerPro
       })
     } catch (e) {
       // Storage was already committed when addTrack fails — delete the orphan.
+      let message = e instanceof Error ? e.message : String(e)
       if (storageId) {
-        await deleteStorage({ storageId }).catch(() =>
-          setError('Upload registered a file that could not be cleaned up'),
-        )
+        const cleaned = await deleteStorage({ storageId })
+          .then(() => true)
+          .catch(() => false)
+        if (!cleaned) message += ' — and the uploaded file could not be cleaned up'
       }
-      setError(e instanceof Error ? e.message : String(e))
+      setError(message)
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''

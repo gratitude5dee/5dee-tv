@@ -89,13 +89,18 @@ export default function TwitchBroadcast({ live, getStream, onLog }: TwitchBroadc
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // A session ending mid-broadcast tears the WHIP peer down with it.
+  // Session ending mid-broadcast tears the WHIP peer down; ending mid-negotiate
+  // invalidates the in-flight start so its late answer is discarded, not
+  // installed for a different (newer) session.
   useEffect(() => {
-    if (!live && whipRef.current) {
-      whipRef.current.stop()
-      whipRef.current = null
-      setBroadcasting(false)
-      onLog?.('Twitch broadcast stopped (session ended)')
+    if (!live) {
+      opRef.current += 1
+      if (whipRef.current) {
+        whipRef.current.stop()
+        whipRef.current = null
+        setBroadcasting(false)
+        onLog?.('Twitch broadcast stopped (session ended)')
+      }
     }
   }, [live, onLog])
 
