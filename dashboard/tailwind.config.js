@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  darkMode: 'class',
   content: [
     './pages/**/*.{js,ts,jsx,tsx,mdx}',
     './components/**/*.{js,ts,jsx,tsx,mdx}',
@@ -22,11 +23,12 @@ module.exports = {
           900: '#111827',
           950: '#030712'
         },
+        // wzrd.tech chrome blue (from the wordmark)
         'fal-primary': {
-          400: '#8b5cf6',
-          500: '#6d28d9',
-          600: '#5b21b6',
-          700: '#4c1d95'
+          400: '#7aa5e0',
+          500: '#4f83cc',
+          600: '#3a6ab0',
+          700: '#2d5488'
         },
         'fal-green': {
           400: '#4ade80',

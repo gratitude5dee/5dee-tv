@@ -3,12 +3,26 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { createFalClient } from '@fal-ai/client'
 import { wma, type ManagedRealtimeSession, type RealtimeState, type WmaRealtimeSession } from '@fal-ai/client/realtime'
-import { Circle, Play, Send, Square, Upload, Volume2, VolumeX } from 'lucide-react'
+import { Camera, Circle, Play, Send, Sparkles, Square, Upload, Volume2, VolumeX } from 'lucide-react'
 import type { Id } from '../convex/_generated/dataModel'
 import type { DirectorPersistence } from './useDirectorPersistence'
+import AssetUrlInput from './AssetUrlInput'
+import ChatSteerer from './ChatSteerer'
+import DirectorSettingsForm from './DirectorSettingsForm'
+import ScriptEditor from './ScriptEditor'
+import { DitherButton } from './dither-kit/button'
+import { DitherGradient } from './dither-kit/gradient'
+import {
+  beatsToWire,
+  FAL_SDK_PROXY_URL,
+  DEFAULT_DIRECTOR_SETTINGS,
+  type ConfigureWire,
+  type DirectorSettings,
+  type PromptWire,
+  type ScriptBeat,
+} from '../lib/directorProtocol'
 
 export const DIRECTOR_MODEL = 'minimax/h3-max/director'
-export const FAL_SDK_PROXY_URL = '/api/fal/sdk-proxy'
 
 const DEFAULT_PROMPT =
   'A continuous original live-action stream following a group of friends as they explore a new city.'
@@ -19,11 +33,35 @@ interface DirectorMessage {
   type?: string
   prompt_version?: number
   chunk_index?: number
+  index?: number
+  playback_seconds?: number
+  playbackSeconds?: number
+  buffer_depth_seconds?: number
+  next_generation_estimate_seconds?: number
+  reason?: string
+  ts?: number
   duration?: number
   duration_seconds?: number
   message?: string
   error?: string
+  max_session_seconds?: number | null
   [key: string]: unknown
+}
+
+/** Connect-overlay phases, driven by diagnostics + server messages. */
+const CONNECT_STEPS = [
+  'Network checked',
+  'Finding a machine',
+  'Connecting',
+  'Building world',
+  'Generating first scene',
+] as const
+
+type DirectionStatus = 'sent' | 'pending' | 'applied' | 'rejected'
+interface RoutedDirection {
+  version: number
+  text: string
+  status: DirectionStatus
 }
 
 function pickRecorderMimeType(): string | undefined {
@@ -58,6 +96,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const clipIndexRef = useRef(0)
   // Monotonic attempt counter: invalidating it aborts an in-flight connect().
   const connectAttemptRef = useRef(0)
+  // Lets server-driven teardown (stream_exhausted) reach the cleanup path.
+  const disconnectRef = useRef<(() => Promise<void>) | null>(null)
 
   const [state, setState] = useState<RealtimeState | 'idle' | 'closing'>('idle')
   const [error, setError] = useState<string | null>(null)
@@ -69,6 +109,29 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const [uploading, setUploading] = useState(false)
   const [recordedBytes, setRecordedBytes] = useState(0)
   const [lastUpload, setLastUpload] = useState<string | null>(null)
+  const [settings, setSettings] = useState<DirectorSettings>(DEFAULT_DIRECTOR_SETTINGS)
+  const [scriptBeats, setScriptBeats] = useState<ScriptBeat[]>([])
+  const [sendScriptOnConnect, setSendScriptOnConnect] = useState(true)
+  // Playback clock under the running script, from `chunk` messages.
+  const [playbackSeconds, setPlaybackSeconds] = useState<number | null>(null)
+  // Live end-frame / target-audio overrides for the next prompt message.
+  const [liveEndImage, setLiveEndImage] = useState('')
+  const [liveAudioUrl, setLiveAudioUrl] = useState('')
+  // Connection observability.
+  const [connectStep, setConnectStep] = useState(-1)
+  const [pingMs, setPingMs] = useState<number | null>(null)
+  const [bufferDepth, setBufferDepth] = useState<number | null>(null)
+  const [genEstimate, setGenEstimate] = useState<number | null>(null)
+  const [sessionAllowance, setSessionAllowance] = useState<number | null>(null)
+  const [directions, setDirections] = useState<RoutedDirection[]>([])
+  const [capturing, setCapturing] = useState(false)
+  const [capturedFrame, setCapturedFrame] = useState<string | null>(null)
+  const [remixing, setRemixing] = useState(false)
+  const [generatingSheet, setGeneratingSheet] = useState(false)
+  const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const lastPingAtRef = useRef(0)
+  const liveStartedAtRef = useRef<number | null>(null)
+  const [elapsedSeconds, setElapsedSeconds] = useState<number | null>(null)
 
   const noop = async () => undefined
   const createSession = persistence?.createSession
@@ -129,7 +192,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         const uploadUrl = await generateUploadUrl()
         const res = await fetch(uploadUrl, {
           method: 'POST',
-          headers: { 'Content-Type': blob.type },
+          headers: { 'Content-Type': blob.type.split(';')[0] || 'video/webm' },
           body: blob,
         })
         if (!res.ok) throw new Error(`Upload failed: ${res.status}`)
@@ -212,6 +275,69 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       const type = msg.type ?? 'message'
       appendLog(`${type}${msg.prompt_version !== undefined ? ` v${msg.prompt_version}` : ''}`)
 
+      if (type === 'pong') {
+        // ts echo may be absent — fall back to when we last sent a ping.
+        const echoed = typeof msg.ts === 'number' ? msg.ts : Number(msg.ts)
+        const base = Number.isFinite(echoed) ? echoed : lastPingAtRef.current
+        setPingMs(Math.max(0, Date.now() - base))
+        return
+      }
+
+      if (type === 'configured') {
+        setConnectStep((s) => Math.max(s, 3))
+        // `configured` is the applied ack for the opening configure prompt.
+        const v = msg.prompt_version
+        if (typeof v === 'number') {
+          setDirections((prev) => prev.map((d) => (d.version === v ? { ...d, status: 'applied' } : d)))
+          const applied = promptsByVersionRef.current.get(v)
+          if (applied) setActivePrompt(applied)
+        }
+        void persist(() =>
+          logPromptEvent({
+            sessionId: convexSessionIdRef.current!,
+            kind: 'prompt_applied',
+            promptVersion: typeof v === 'number' ? v : undefined,
+            detail: raw.slice(0, 2000),
+          }),
+        )
+        appendLog('world configured')
+        return
+      }
+
+      if (type === 'session_info') {
+        if (typeof msg.max_session_seconds === 'number') setSessionAllowance(msg.max_session_seconds)
+        return
+      }
+
+      if (type === 'prompt_pending' || type === 'prompt_applied' || type === 'prompt_rejected') {
+        const v = msg.prompt_version
+        if (typeof v === 'number') {
+          const status: DirectionStatus =
+            type === 'prompt_pending' ? 'pending' : type === 'prompt_applied' ? 'applied' : 'rejected'
+          setDirections((prev) => prev.map((d) => (d.version === v ? { ...d, status } : d)))
+        }
+        if (type === 'prompt_applied' && typeof v === 'number') {
+          const applied = promptsByVersionRef.current.get(v)
+          if (applied) setActivePrompt(applied)
+        }
+        if (type === 'prompt_applied' || type === 'prompt_rejected') {
+          void persist(() =>
+            logPromptEvent({
+              sessionId: convexSessionIdRef.current!,
+              kind: type === 'prompt_applied' ? 'prompt_applied' : 'error',
+              promptVersion: typeof v === 'number' ? v : undefined,
+              detail: raw.slice(0, 2000),
+            }),
+          )
+        }
+        if (type === 'prompt_rejected') {
+          const reason = String(msg.reason ?? msg.error ?? 'rejected')
+          setError(`Prompt rejected: ${reason}`)
+          appendLog(`prompt_rejected v${v}: ${reason}`)
+        }
+        return
+      }
+
       if (type === 'error') {
         const detail = msg.error ?? msg.message ?? raw
         setError(String(detail))
@@ -237,9 +363,27 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         return
       }
 
-      if (/chunk|segment/.test(type) && /(complete|done|finished|end)/.test(type)) {
-        const chunkIndex = typeof msg.chunk_index === 'number' ? msg.chunk_index : clipIndexRef.current
+      if (type === 'stream_exhausted') {
+        appendLog(`stream_exhausted: ${String(msg.reason ?? 'ended')}`)
+        // Full cleanup path (recorder, session close, Convex finalize) so the
+        // exhausted session can't keep running after the UI goes idle.
+        void disconnectRef.current?.()
+        return
+      }
+
+      if (type === 'chunk' || (/chunk|segment/.test(type) && /(complete|done|finished|end)/.test(type))) {
+        const chunkIndex =
+          typeof msg.chunk_index === 'number'
+            ? msg.chunk_index
+            : typeof msg.index === 'number'
+              ? msg.index
+              : clipIndexRef.current
         clipIndexRef.current = chunkIndex + 1
+        const played = msg.playback_seconds ?? msg.playbackSeconds
+        if (typeof played === 'number') setPlaybackSeconds(played)
+        if (typeof msg.buffer_depth_seconds === 'number') setBufferDepth(msg.buffer_depth_seconds)
+        if (typeof msg.next_generation_estimate_seconds === 'number') setGenEstimate(msg.next_generation_estimate_seconds)
+        setConnectStep((s) => (s >= 0 ? CONNECT_STEPS.length - 1 : s))
         void persist(() =>
           createClip({
             sessionId: convexSessionIdRef.current ?? undefined,
@@ -255,7 +399,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         )
       }
     },
-    [appendLog, persist, logPromptEvent, createClip],
+    [appendLog, persist, logPromptEvent, createClip, setSessionStatus],
   )
 
   const sendPrompt = useCallback(
@@ -264,25 +408,208 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       if (!session) return
       promptVersionRef.current += 1
       const version = promptVersionRef.current
-      promptsByVersionRef.current.set(version, text)
-      session.send({
-        protocol_version: 1,
-        type: configure ? 'configure' : 'prompt',
-        prompt: text,
-        prompt_version: version,
-      })
-      setActivePrompt(text)
+      const anchor = configure ? settings.characterName.trim() : ''
+      const wireText = anchor && !text.includes(anchor) ? `${anchor} — ${text}` : text
+      promptsByVersionRef.current.set(version, wireText)
+      if (configure) {
+        // Full configure message: world prompt + every locked setting. A script
+        // in configure cannot combine with end_image_url/audio_url — the beats
+        // carry their own.
+        const beats = sendScriptOnConnect ? beatsToWire(scriptBeats) : []
+        const wire: ConfigureWire = {
+          protocol_version: 1,
+          type: 'configure',
+          prompt: wireText,
+          prompt_version: version,
+          resolution: settings.resolution,
+          aspect_ratio: settings.aspectRatio,
+          memory: settings.memory,
+          audio_bitrate: settings.audioBitrate,
+          ...(settings.seed != null ? { seed: settings.seed } : {}),
+          ...(settings.imageUrl.trim() ? { image_url: settings.imageUrl.trim() } : {}),
+          ...(beats.length
+            ? { script: beats }
+            : {
+                ...(settings.endImageUrl.trim() ? { end_image_url: settings.endImageUrl.trim() } : {}),
+                ...(settings.audioUrl.trim() ? { audio_url: settings.audioUrl.trim() } : {}),
+              }),
+        }
+        session.send(wire)
+      } else {
+        const wire: PromptWire = {
+          type: 'prompt',
+          prompt: wireText,
+          prompt_version: version,
+          ...(liveEndImage.trim() ? { end_image_url: liveEndImage.trim() } : {}),
+          ...(liveAudioUrl.trim() ? { audio_url: liveAudioUrl.trim(), audio_behavior: 'replace' } : {}),
+        }
+        session.send(wire)
+        // End-frame/audio are one-shot per the model contract — clear after use.
+        if (liveEndImage.trim()) setLiveEndImage('')
+        if (liveAudioUrl.trim()) setLiveAudioUrl('')
+      }
+      // Active prompt is only set when the server applies it (prompt_applied).
+      setDirections((prev) => [...prev, { version, text: wireText, status: 'sent' as const }].slice(-8))
       appendLog(`${configure ? 'configure' : 'prompt'} sent (v${version})`)
       void persist(() =>
         logPromptEvent({
           sessionId: convexSessionIdRef.current!,
           kind: configure ? 'configure' : 'prompt',
-          prompt: text,
+          prompt: wireText,
+          promptVersion: version,
+        }),
+      )
+    },
+    [appendLog, persist, logPromptEvent, settings, scriptBeats, sendScriptOnConnect, liveEndImage, liveAudioUrl],
+  )
+
+  /** Push a script mid-session: 'replace' cuts at the next chunk, 'append' queues it. */
+  const sendScript = useCallback(
+    (beats: ScriptBeat[], mode: 'replace' | 'append') => {
+      const session = sessionRef.current
+      if (!session) return
+      const wireBeats = beatsToWire(beats)
+      if (!wireBeats.length) return
+      promptVersionRef.current += 1
+      const version = promptVersionRef.current
+      promptsByVersionRef.current.set(version, `[script ×${wireBeats.length}]`)
+      const wire: PromptWire = {
+        type: 'prompt',
+        prompt_version: version,
+        script: wireBeats,
+        script_mode: mode,
+      }
+      session.send(wire)
+      setDirections((prev) =>
+        [...prev, { version, text: `script ×${wireBeats.length} (${mode})`, status: 'sent' as const }].slice(-8),
+      )
+      appendLog(`script ${mode} sent (v${version}, ${wireBeats.length} beats)`)
+      void persist(() =>
+        logPromptEvent({
+          sessionId: convexSessionIdRef.current!,
+          kind: 'prompt',
+          prompt: `[script ${mode}] ${wireBeats.map((b) => `@${b.offset}s ${b.prompt ?? ''}`.trim()).join(' | ')}`,
           promptVersion: version,
         }),
       )
     },
     [appendLog, persist, logPromptEvent],
+  )
+
+  /**
+   * Snapshot the current video frame, upload it via fal storage, and use it for
+   * continuity: it becomes the next prompt's end frame AND the next session's
+   * first frame. Callable from the admin button or a chat command.
+   */
+  const captureFrame = useCallback(
+    async (source: string) => {
+      const video = videoRef.current
+      if (!video || !video.videoWidth || capturing) return
+      setCapturing(true)
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        canvas.getContext('2d')!.drawImage(video, 0, 0)
+        const blob = await new Promise<Blob | null>((resolve) =>
+          canvas.toBlob(resolve, 'image/png'),
+        )
+        if (!blob) throw new Error('frame capture failed')
+        const fal = createFalClient({ proxyUrl: FAL_SDK_PROXY_URL })
+        const url = await fal.storage.upload(new File([blob], `frame-${Date.now()}.png`, { type: 'image/png' }))
+        setLiveEndImage(url)
+        setCapturedFrame(url)
+        setSettings((s) => ({ ...s, imageUrl: url }))
+        appendLog(`frame captured by ${source} → next end frame + next session's first frame`)
+      } catch (e) {
+        appendLog(`frame capture: ${e instanceof Error ? e.message : String(e)}`)
+      } finally {
+        setCapturing(false)
+      }
+    },
+    [capturing, appendLog],
+  )
+
+  /**
+   * Reroll the captured frame through nano-banana-2/edit (Gemini 3.1 Flash
+   * Image) — keeps the character/scene intact, produces a fresh continuity
+   * frame. Replaces the pending end frame + next session's first frame.
+   */
+  const remixFrame = useCallback(
+    async (directionText?: string) => {
+      const source = capturedFrame ?? settings.imageUrl.trim()
+      if (!source || remixing) return
+      setRemixing(true)
+      try {
+        const fal = createFalClient({ proxyUrl: FAL_SDK_PROXY_URL })
+        const editPrompt =
+          directionText?.trim() ||
+          'Keep the same character, same outfit, same art style and setting; evolve the shot forward — a new camera angle / next beat of the same scene.'
+        const refs = [source, ...(settings.characterSheet.trim() ? [settings.characterSheet.trim()] : [])]
+        const name = settings.characterName.trim()
+        const res = (await fal.subscribe('fal-ai/nano-banana-2/edit', {
+          input: {
+            prompt: `${editPrompt}${refs.length > 1 ? ` Keep ${name || 'the character'} identical to the character reference sheet — same outfit, proportions, and style.` : ''}`,
+            image_urls: refs,
+          },
+        })) as { data?: { images?: { url: string }[] }; images?: { url: string }[] }
+        const url = res.data?.images?.[0]?.url ?? res.images?.[0]?.url
+        if (!url) throw new Error('nano-banana returned no image')
+        setLiveEndImage(url)
+        setCapturedFrame(url)
+        setSettings((s) => ({ ...s, imageUrl: url }))
+        appendLog('frame remixed via nano-banana-2 → next end frame')
+      } catch (e) {
+        appendLog(`frame remix: ${e instanceof Error ? e.message : String(e)}`)
+      } finally {
+        setRemixing(false)
+      }
+    },
+    [capturedFrame, settings.imageUrl, settings.characterSheet, settings.characterName, remixing, appendLog],
+  )
+
+  /**
+   * Generate a character reference sheet from the first frame via
+   * nano-banana-2/edit — a turnaround/expressions sheet used as a consistency
+   * reference on every subsequent remix.
+   */
+  const generateSheet = useCallback(async () => {
+    const source = settings.imageUrl.trim()
+    if (!source || generatingSheet) return
+    setGeneratingSheet(true)
+    try {
+      const fal = createFalClient({ proxyUrl: FAL_SDK_PROXY_URL })
+      const name = settings.characterName.trim() || 'the character'
+      const res = (await fal.subscribe('fal-ai/nano-banana-2/edit', {
+        input: {
+          prompt: `Character reference sheet for ${name}: front view, three-quarter view, and side profile plus a row of expression close-ups — identical outfit, colors, and art style as the reference image. Clean layout on a plain background.`,
+          image_urls: [source],
+        },
+      })) as { data?: { images?: { url: string }[] }; images?: { url: string }[] }
+      const url = res.data?.images?.[0]?.url ?? res.images?.[0]?.url
+      if (!url) throw new Error('nano-banana returned no image')
+      setSettings((s) => ({ ...s, characterSheet: url }))
+      appendLog('character sheet generated → consistency reference for remixes')
+    } catch (e) {
+      appendLog(`character sheet: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setGeneratingSheet(false)
+    }
+  }, [settings.imageUrl, settings.characterName, generatingSheet, appendLog])
+
+  /**
+   * A chat-sourced direction. Chat text and display names are untrusted —
+   * strip brackets/control chars/newlines and cap lengths before splicing.
+   */
+  const sendChatDirection = useCallback(
+    (text: string, author: string) => {
+      const safeAuthor = author.replace(/[\[\]<>\n\r@]/g, '').slice(0, 32) || 'chat'
+      const safeText = text.replace(/[\n\r<>]/g, ' ').trim().slice(0, 300)
+      if (!safeText) return
+      sendPrompt(`[chat @${safeAuthor}] ${safeText}`, false)
+      appendLog(`chat @${safeAuthor}: ${safeText.slice(0, 80)}`)
+    },
+    [sendPrompt, appendLog],
   )
 
   const disconnect = useCallback(async () => {
@@ -292,9 +619,25 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     const blob = await stopRecorder()
     const session = sessionRef.current
     sessionRef.current = null
-    if (session) await session.close()
+    let closeError: string | null = null
+    if (session) {
+      try {
+        session.send({ type: 'stop' })
+        await session.close()
+      } catch (e) {
+        // A failed close must not strand the recording or leave us in 'closing'.
+        closeError = e instanceof Error ? e.message : String(e)
+        appendLog(`close: ${closeError}`)
+      }
+    }
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
+    setConnectStep(-1)
+    setElapsedSeconds(null)
+    liveStartedAtRef.current = null
+    setPingMs(null)
+    setBufferDepth(null)
+    setGenEstimate(null)
     // Capture this session's id before clearing the ref — a new connect() may
     // replace it while the upload below is still running.
     const sessionId = convexSessionIdRef.current
@@ -303,8 +646,10 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     await persist(() =>
       sessionId ? setSessionStatus({ sessionId, status: 'ended' }) : Promise.resolve(),
     )
+    if (closeError) setError(`Session close: ${closeError}`)
     setState('idle')
   }, [stopRecorder, uploadRecording, persist, setSessionStatus])
+  disconnectRef.current = disconnect
 
   const connect = useCallback(async () => {
     const attempt = ++connectAttemptRef.current
@@ -313,6 +658,12 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     promptVersionRef.current = 0
     promptsByVersionRef.current = new Map()
     clipIndexRef.current = 0
+    setPlaybackSeconds(null)
+    setSessionAllowance(null)
+    setDirections([])
+    setCapturedFrame(null)
+    setElapsedSeconds(null)
+    liveStartedAtRef.current = null
     setState('opening')
 
     if (createSession) {
@@ -323,7 +674,15 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         sessionId = await createSession({
           model: 'director',
           outputMode: 'webrtc',
-          config: { model: DIRECTOR_MODEL, prompt },
+          config: {
+            model: DIRECTOR_MODEL,
+            prompt,
+            resolution: settings.resolution,
+            aspectRatio: settings.aspectRatio,
+            memory: settings.memory,
+            seed: settings.seed ?? undefined,
+            scriptBeats: beatsToWire(scriptBeats).length,
+          },
         })
       } catch (e) {
         appendLog(`convex: ${e instanceof Error ? e.message : String(e)}`)
@@ -348,6 +707,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           videoRef.current.play().catch(() => undefined)
         }
         appendLog('media stream attached')
+        liveStartedAtRef.current = Date.now()
+        setConnectStep(CONNECT_STEPS.length - 1)
       },
       onData: handleData,
       onState: (s) => {
@@ -372,12 +733,41 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         )
       },
       onDiagnostic: (d) => {
-        if (d.kind !== 'progress') appendLog(`${d.kind}: ${d.message}`)
+        if (d.kind === 'progress') {
+          // Map transport phases onto the connect overlay.
+          const phase = d.phase
+          if (phase === 'authenticating' || phase === 'ice-servers' || phase === 'ice-gathering' || phase === 'network-path') {
+            setConnectStep((s) => Math.max(s, 1))
+          } else if (phase === 'connecting' || phase === 'connection-state') {
+            setConnectStep((s) => Math.max(s, 2))
+          }
+        } else {
+          appendLog(`${d.kind}: ${d.message}`)
+        }
       },
     })
     sessionRef.current = session
+    setConnectStep(0)
     sendPrompt(prompt, true)
-  }, [createSession, prompt, appendLog, handleData, persist, setSessionStatus, sendPrompt])
+  }, [createSession, prompt, appendLog, handleData, persist, setSessionStatus, sendPrompt, settings, scriptBeats])
+
+  // Ping the session every 5s while a session object exists; `pong` sets pingMs.
+  // Also keeps a local elapsed clock (the model's playback_seconds restarts per
+  // generation segment, so it can't be used as a session clock).
+  useEffect(() => {
+    if (state !== 'live' && state !== 'opening') return
+    pingTimerRef.current = setInterval(() => {
+      lastPingAtRef.current = Date.now()
+      sessionRef.current?.send({ type: 'ping', ts: lastPingAtRef.current })
+      if (liveStartedAtRef.current) {
+        setElapsedSeconds((Date.now() - liveStartedAtRef.current) / 1000)
+      }
+    }, 1000)
+    return () => {
+      if (pingTimerRef.current) clearInterval(pingTimerRef.current)
+      pingTimerRef.current = null
+    }
+  }, [state])
 
   useEffect(() => {
     return () => {
@@ -390,29 +780,30 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const busy = state === 'opening' || state === 'closing'
 
   return (
-    <div className="fal-card">
-      <div className="fal-card-header">
+    <div>
+      <div className="fal-card">
+        <div className="fal-card-header">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="fal-card-title">Director (realtime WebRTC)</h3>
-            <p className="text-xs text-fal-gray-500 font-mono">{DIRECTOR_MODEL}</p>
+            <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400 font-mono">{DIRECTOR_MODEL}</p>
           </div>
           <div className="flex items-center space-x-2 text-xs">
             <span
               className={`inline-flex items-center px-2 py-1 rounded-full font-medium ${
                 live
-                  ? 'bg-green-100 text-green-700'
+                  ? 'bg-green-100 dark:bg-green-500/15 text-green-700 dark:text-green-400'
                   : busy
-                    ? 'bg-yellow-100 text-yellow-700'
+                    ? 'bg-yellow-100 dark:bg-yellow-500/15 text-yellow-700 dark:text-yellow-400'
                     : state === 'failed'
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-fal-gray-100 text-fal-gray-600'
+                      ? 'bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400'
+                      : 'bg-fal-gray-100 dark:bg-fal-gray-800 text-fal-gray-600 dark:text-fal-gray-400'
               }`}
             >
               {state}
             </span>
             {recording && (
-              <span className="inline-flex items-center space-x-1 px-2 py-1 rounded-full bg-red-100 text-red-700 font-medium">
+              <span className="inline-flex items-center space-x-1 px-2 py-1 rounded-full bg-red-100 dark:bg-red-500/15 text-red-700 dark:text-red-400 font-medium">
                 <Circle className="w-3 h-3 fill-current animate-pulse" />
                 <span>REC {formatBytes(recordedBytes)}</span>
               </span>
@@ -421,46 +812,178 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         </div>
       </div>
 
-      <div className="fal-card-content space-y-4">
+        <div className="fal-card-content space-y-4">
         <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
-          <video ref={videoRef} autoPlay playsInline muted={muted} className="w-full h-full object-contain" />
+          <DitherGradient from="blue" direction="up" className="absolute inset-0" />
+          <video ref={videoRef} autoPlay playsInline muted={muted} className="relative w-full h-full object-contain" />
           {!live && (
-            <div className="absolute inset-0 flex items-center justify-center text-fal-gray-400 text-sm">
-              {state === 'opening' ? 'Negotiating WebRTC session…' : state === 'closing' ? 'Stopping…' : 'Director offline'}
+            <div className="absolute inset-0 flex items-center justify-center">
+              {state === 'opening' || (connectStep >= 0 && state !== 'idle' && state !== 'failed') ? (
+                <div className="rounded-lg bg-black/70 border border-fal-gray-700 px-5 py-4 space-y-2 min-w-[240px]">
+                  {CONNECT_STEPS.map((label, i) => (
+                    <div key={label} className="flex items-center gap-2.5 text-xs font-mono">
+                      {i < connectStep ? (
+                        <Circle className="w-3 h-3 fill-green-400 text-green-400" />
+                      ) : i === connectStep ? (
+                        <Circle className="w-3 h-3 fill-transparent text-fal-gray-300 animate-pulse" />
+                      ) : (
+                        <Circle className="w-3 h-3 fill-transparent text-fal-gray-600 dark:text-fal-gray-400" />
+                      )}
+                      <span className={i <= connectStep ? 'text-fal-gray-100' : 'text-fal-gray-500 dark:text-fal-gray-400'}>
+                        {label}
+                      </span>
+                    </div>
+                  ))}
+                  <button onClick={disconnect} className="text-xs text-fal-gray-400 hover:text-white mt-1 underline">
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <span className="relative text-fal-gray-400 text-sm">
+                  {state === 'closing' ? 'Stopping…' : state === 'failed' ? 'Session failed' : 'Director offline'}
+                </span>
+              )}
             </div>
           )}
           {live && (
-            <button
-              onClick={() => setMuted((m) => !m)}
-              className="absolute bottom-3 right-3 p-2 rounded-full bg-black/60 text-white hover:bg-black/80"
-              aria-label={muted ? 'Unmute' : 'Mute'}
-            >
-              {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
-            </button>
+            <>
+              <button
+                onClick={() => setMuted((m) => !m)}
+                className="absolute bottom-3 right-3 p-2 rounded-full bg-black/60 text-white hover:bg-black/80"
+                aria-label={muted ? 'Unmute' : 'Mute'}
+              >
+                {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+              </button>
+              <div className="absolute bottom-3 left-3 flex items-center gap-1.5">
+                <button
+                  onClick={() => void captureFrame('admin')}
+                  disabled={capturing}
+                  className="flex items-center gap-1.5 px-2.5 py-2 rounded-md bg-black/60 text-white text-xs hover:bg-black/80 disabled:opacity-50"
+                  title="Snapshot this frame → becomes the next end frame + next session's first frame"
+                >
+                  <Camera className="w-4 h-4" />
+                  {capturing ? 'Capturing…' : 'Capture frame'}
+                </button>
+                {capturedFrame && (
+                  <button
+                    onClick={() => void remixFrame()}
+                    disabled={remixing}
+                    className="flex items-center gap-1.5 px-2.5 py-2 rounded-md bg-black/60 text-white text-xs hover:bg-black/80 disabled:opacity-50"
+                    title="Evolve the captured frame with nano-banana-2 (same character, new shot)"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {remixing ? 'Remixing…' : 'Remix frame'}
+                  </button>
+                )}
+              </div>
+              <div className="absolute top-3 left-3 flex items-center gap-3 rounded-md bg-black/60 px-3 py-1.5 text-xs font-mono text-white">
+                <span className="flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                  Live
+                  {elapsedSeconds != null && ` · ${elapsedSeconds.toFixed(0)}s`}
+                </span>
+                {pingMs != null && <span className="text-yellow-300">Ping · {pingMs} ms</span>}
+                {bufferDepth != null && <span className="text-fal-gray-300">buf {bufferDepth.toFixed(1)}s</span>}
+                {genEstimate != null && <span className="text-fal-gray-300">gen {genEstimate.toFixed(1)}s</span>}
+              </div>
+            </>
           )}
         </div>
 
+        {(live || connectStep >= 0) && (
+          <div className="text-xs font-mono text-fal-gray-500 dark:text-fal-gray-400 space-y-1">
+            {sessionAllowance != null && (
+              <p>
+                Session allowance: {Math.floor(sessionAllowance / 60)}:{String(Math.floor(sessionAllowance % 60)).padStart(2, '0')}
+                {elapsedSeconds != null &&
+                  ` · about ${Math.max(0, Math.floor((sessionAllowance - elapsedSeconds) / 60))}m remaining`}
+              </p>
+            )}
+            {directions.length > 0 && (
+              <div className="space-y-0.5">
+                {[...directions].reverse().map((d) => (
+                  <p key={d.version} className="truncate">
+                    <span className={`mr-1 ${
+                      d.status === 'applied'
+                        ? 'text-green-600'
+                        : d.status === 'rejected'
+                          ? 'text-red-600 dark:text-red-400'
+                          : d.status === 'pending'
+                            ? 'text-yellow-600'
+                            : 'text-fal-gray-400'
+                    }`}>
+                      ●
+                    </span>
+                    v{d.version} {d.status} — {d.text.slice(0, 90)}
+                  </p>
+                ))}
+              </div>
+            )}
+            {capturedFrame && (
+              <p className="truncate">Continuity frame set: {capturedFrame}</p>
+            )}
+          </div>
+        )}
+
+        {!live && !busy && (
+          <details className="rounded-md border border-fal-gray-200 dark:border-fal-gray-700">
+            <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-fal-gray-700 dark:text-fal-gray-300 select-none">
+              Session settings <span className="text-xs text-fal-gray-400 font-normal">(locked once connected)</span>
+            </summary>
+            <div className="px-3 pb-3">
+              <DirectorSettingsForm
+                settings={settings}
+                onChange={setSettings}
+                disabled={live || busy}
+                scriptPlanned={sendScriptOnConnect && beatsToWire(scriptBeats).length > 0}
+                onGenerateSheet={generateSheet}
+                generatingSheet={generatingSheet}
+              />
+            </div>
+          </details>
+        )}
+
         <div>
-          <label className="block text-sm font-medium text-fal-gray-700 mb-1">Prompt</label>
+          <label className="block text-sm font-medium text-fal-gray-700 dark:text-fal-gray-300 mb-1">
+            {live ? 'Next direction' : 'Opening prompt (the series premise)'}
+          </label>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             rows={3}
-            className="w-full rounded-md border border-fal-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fal-primary-500"
+            className="w-full rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-fal-primary-500"
           />
           {activePrompt && (
-            <p className="text-xs text-fal-gray-500 mt-1">
-              Active (v{promptVersionRef.current}): {activePrompt}
+            <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400 mt-1">
+              Applied: {activePrompt}
             </p>
+          )}
+          {live && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 mt-2">
+              <div>
+                <label className="block text-xs text-fal-gray-500 dark:text-fal-gray-400 mb-1">End frame for next scene (optional)</label>
+                <AssetUrlInput value={liveEndImage} onChange={setLiveEndImage} placeholder="Image URL or upload" />
+              </div>
+              <div>
+                <label className="block text-xs text-fal-gray-500 dark:text-fal-gray-400 mb-1">Replace audio track (optional)</label>
+                <AssetUrlInput value={liveAudioUrl} onChange={setLiveAudioUrl} kind="audio" placeholder="Audio URL or upload" />
+              </div>
+            </div>
           )}
         </div>
 
         <div className="flex flex-wrap gap-2">
           {!live && !busy ? (
-            <button onClick={connect} className="fal-button-primary flex items-center space-x-2">
+            <DitherButton
+              onClick={connect}
+              color="blue"
+              variant="gradient"
+              bloom="low"
+              className="flex items-center space-x-2 px-4 py-2 text-sm font-medium"
+            >
               <Play className="w-4 h-4" />
               <span>Start Director</span>
-            </button>
+            </DitherButton>
           ) : (
             <button onClick={disconnect} className="fal-button-secondary flex items-center space-x-2">
               <Square className="w-4 h-4" />
@@ -473,11 +996,11 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
             className="fal-button-secondary flex items-center space-x-2 disabled:opacity-50"
           >
             <Send className="w-4 h-4" />
-            <span>Update prompt</span>
+            <span>Send direction</span>
           </button>
           {live && !recording && (
             <button onClick={startRecorder} className="fal-button-secondary flex items-center space-x-2">
-              <Circle className="w-4 h-4 text-red-600" />
+              <Circle className="w-4 h-4 text-red-600 dark:text-red-400" />
               <span>Record</span>
             </button>
           )}
@@ -493,20 +1016,37 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
               <span>Stop & save recording</span>
             </button>
           )}
-          {uploading && <span className="text-sm text-fal-gray-500 self-center">Uploading…</span>}
-          {lastUpload && !uploading && <span className="text-sm text-green-700 self-center">{lastUpload}</span>}
+          {uploading && <span className="text-sm text-fal-gray-500 dark:text-fal-gray-400 self-center">Uploading…</span>}
+          {lastUpload && !uploading && <span className="text-sm text-green-700 dark:text-green-400 self-center">{lastUpload}</span>}
         </div>
 
         {error && (
-          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</div>
+          <div className="text-sm text-red-700 dark:text-red-400 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</div>
         )}
 
         {log.length > 0 && (
-          <pre className="text-xs font-mono bg-fal-gray-50 border border-fal-gray-200 rounded-md p-3 max-h-40 overflow-auto">
+          <pre className="text-xs font-mono bg-fal-gray-50 dark:bg-fal-gray-800 border border-fal-gray-200 dark:border-fal-gray-700 rounded-md p-3 max-h-40 overflow-auto">
             {log.join('\n')}
           </pre>
         )}
+        </div>
       </div>
+
+      <ScriptEditor
+        beats={scriptBeats}
+        onChange={setScriptBeats}
+        sendOnConnect={sendScriptOnConnect}
+        onSendOnConnectChange={setSendScriptOnConnect}
+        onSendLive={sendScript}
+        live={live}
+        playbackSeconds={playbackSeconds}
+      />
+
+      <ChatSteerer
+        live={live}
+        onDirection={sendChatDirection}
+        onFrameCommand={(author) => void captureFrame(`@${author}`)}
+      />
     </div>
   )
 }

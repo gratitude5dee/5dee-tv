@@ -15,9 +15,9 @@ export default function GenerationHistory({ generationHistory = [] }: Generation
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Video className="w-5 h-5 text-fal-blue-500" />
-            <h3 className="text-lg font-semibold text-fal-gray-900">Generation History</h3>
+            <h3 className="text-lg font-semibold text-fal-gray-900 dark:text-fal-gray-50">Generation History</h3>
           </div>
-          <div className="text-sm text-fal-gray-600">
+          <div className="text-sm text-fal-gray-600 dark:text-fal-gray-400">
             Last {generationHistory.length} generations
           </div>
         </div>
@@ -25,7 +25,7 @@ export default function GenerationHistory({ generationHistory = [] }: Generation
       
       <div className="fal-card-content">
         {generationHistory.length === 0 ? (
-          <div className="text-center py-8 text-fal-gray-600">
+          <div className="text-center py-8 text-fal-gray-600 dark:text-fal-gray-400">
             <Video className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>No generations yet</p>
             <p className="text-sm">Start streaming to see generation parameters</p>
@@ -38,14 +38,14 @@ export default function GenerationHistory({ generationHistory = [] }: Generation
                 className={`border rounded-lg p-4 ${
                   index === 0 
                     ? 'border-fal-green-500 bg-fal-green-500/10' 
-                    : 'border-fal-gray-200 bg-fal-gray-50'
+                    : 'border-fal-gray-200 dark:border-fal-gray-700 bg-fal-gray-50 dark:bg-fal-gray-800'
                 }`}
               >
                 {/* Header */}
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center space-x-2">
                     <div className="flex items-center space-x-2">
-                      <span className="text-sm font-mono text-fal-gray-700">
+                      <span className="text-sm font-mono text-fal-gray-700 dark:text-fal-gray-300">
                         #{generation.generation_id}
                       </span>
                       {index === 0 && (
@@ -55,7 +55,7 @@ export default function GenerationHistory({ generationHistory = [] }: Generation
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center space-x-1 text-xs text-fal-gray-600">
+                  <div className="flex items-center space-x-1 text-xs text-fal-gray-600 dark:text-fal-gray-400">
                     <Clock className="w-3 h-3" />
                     <span>{formatTimestamp(generation.timestamp)}</span>
                   </div>
@@ -63,8 +63,8 @@ export default function GenerationHistory({ generationHistory = [] }: Generation
 
                 {/* Prompt */}
                 <div className="mb-3">
-                  <div className="text-sm font-medium text-fal-gray-700 mb-1">Prompt</div>
-                  <div className="text-sm text-fal-gray-900 bg-fal-gray-100 rounded p-2 font-mono">
+                  <div className="text-sm font-medium text-fal-gray-700 dark:text-fal-gray-300 mb-1">Prompt</div>
+                  <div className="text-sm text-fal-gray-900 dark:text-fal-gray-50 bg-fal-gray-100 dark:bg-fal-gray-800 rounded p-2 font-mono">
                     {generation.prompt}
                   </div>
                 </div>
@@ -72,41 +72,41 @@ export default function GenerationHistory({ generationHistory = [] }: Generation
                 {/* Parameters Grid */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                   <div className="space-y-1">
-                    <div className="text-fal-gray-600 flex items-center space-x-1">
+                    <div className="text-fal-gray-600 dark:text-fal-gray-400 flex items-center space-x-1">
                       <Image className="w-3 h-3" />
                       <span>Dimensions</span>
                     </div>
-                    <div className="text-fal-gray-900 font-mono">
+                    <div className="text-fal-gray-900 dark:text-fal-gray-50 font-mono">
                       {generation.width}×{generation.height}
                     </div>
                   </div>
                   
                   <div className="space-y-1">
-                    <div className="text-fal-gray-600 flex items-center space-x-1">
+                    <div className="text-fal-gray-600 dark:text-fal-gray-400 flex items-center space-x-1">
                       <Video className="w-3 h-3" />
                       <span>Frames</span>
                     </div>
-                    <div className="text-fal-gray-900 font-mono">
+                    <div className="text-fal-gray-900 dark:text-fal-gray-50 font-mono">
                       {generation.num_frames}
                     </div>
                   </div>
                   
                   <div className="space-y-1">
-                    <div className="text-fal-gray-600 flex items-center space-x-1">
+                    <div className="text-fal-gray-600 dark:text-fal-gray-400 flex items-center space-x-1">
                       <Settings className="w-3 h-3" />
                       <span>Strength</span>
                     </div>
-                    <div className="text-fal-gray-900 font-mono">
+                    <div className="text-fal-gray-900 dark:text-fal-gray-50 font-mono">
                       {generation.strength}
                     </div>
                   </div>
                   
                   <div className="space-y-1">
-                    <div className="text-fal-gray-600 flex items-center space-x-1">
+                    <div className="text-fal-gray-600 dark:text-fal-gray-400 flex items-center space-x-1">
                       <Settings className="w-3 h-3" />
                       <span>Guidance</span>
                     </div>
-                    <div className="text-fal-gray-900 font-mono">
+                    <div className="text-fal-gray-900 dark:text-fal-gray-50 font-mono">
                       {generation.guidance_scale}
                     </div>
                   </div>
@@ -115,8 +115,8 @@ export default function GenerationHistory({ generationHistory = [] }: Generation
                 {/* Timesteps (if space allows) */}
                 {generation.timesteps && generation.timesteps.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-fal-gray-700">
-                    <div className="text-xs text-fal-gray-600 mb-1">Timesteps</div>
-                    <div className="text-xs text-fal-gray-900 font-mono truncate">
+                    <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400 mb-1">Timesteps</div>
+                    <div className="text-xs text-fal-gray-900 dark:text-fal-gray-50 font-mono truncate">
                       [{generation.timesteps.join(', ')}]
                     </div>
                   </div>

@@ -218,21 +218,21 @@ export default function RealtimeChart({ data, title, type }: RealtimeChartProps)
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <ChartIcon className={`w-5 h-5 ${getChartColor()}`} />
-            <h3 className="text-lg font-semibold text-fal-gray-900">{title}</h3>
+            <h3 className="text-lg font-semibold text-fal-gray-900 dark:text-fal-gray-50">{title}</h3>
           </div>
-          <div className="text-sm text-fal-gray-600 font-mono">
+          <div className="text-sm text-fal-gray-600 dark:text-fal-gray-400 font-mono">
             Last {Math.min(chartData.length, 60)}s
           </div>
         </div>
       </div>
       <div className="fal-card-content">
         {chartData.length > 0 ? (
-          <div className="bg-white rounded-lg p-4">
+          <div className="bg-white dark:bg-fal-gray-900 rounded-lg p-4">
             {renderChart()}
           </div>
         ) : (
-          <div className="flex items-center justify-center h-48 bg-white rounded-lg">
-            <div className="text-fal-gray-600">No data available</div>
+          <div className="flex items-center justify-center h-48 bg-white dark:bg-fal-gray-900 rounded-lg">
+            <div className="text-fal-gray-600 dark:text-fal-gray-400">No data available</div>
           </div>
         )}
       </div>

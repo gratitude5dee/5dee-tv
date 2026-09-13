@@ -38,8 +38,8 @@ function StatCard({
             <Icon className="w-5 h-5" />
           </div>
           <div>
-            <div className="text-xs text-fal-gray-600">{label}</div>
-            <div className="text-xl font-semibold text-fal-gray-900 font-mono">{value}</div>
+            <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400">{label}</div>
+            <div className="text-xl font-semibold text-fal-gray-900 dark:text-fal-gray-50 font-mono">{value}</div>
           </div>
         </div>
       </div>
@@ -130,13 +130,13 @@ export default function AnalyticsPage() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={data.user.profileImageUrl} alt="" className="w-12 h-12 rounded-full" />
               ) : (
-                <div className="w-12 h-12 rounded-full bg-fal-gray-200" />
+                <div className="w-12 h-12 rounded-full bg-fal-gray-200 dark:bg-fal-gray-800" />
               )}
               <div>
-                <div className="text-lg font-semibold text-fal-gray-900">
+                <div className="text-lg font-semibold text-fal-gray-900 dark:text-fal-gray-50">
                   {data?.user?.displayName ?? data?.channel ?? 'Twitch'}
                 </div>
-                <div className="text-xs text-fal-gray-600 font-mono">
+                <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400 font-mono">
                   {data ? `twitch.tv/${data.channel}` : loading ? 'Loading…' : 'Not configured'}
                 </div>
               </div>
@@ -152,7 +152,7 @@ export default function AnalyticsPage() {
               </div>
               <button
                 onClick={poll}
-                className="bg-fal-gray-100 hover:bg-fal-gray-200 text-fal-gray-700 font-medium px-3 py-1 rounded text-xs transition-colors flex items-center space-x-1"
+                className="bg-fal-gray-100 dark:bg-fal-gray-800 hover:bg-fal-gray-200 dark:bg-fal-gray-800 text-fal-gray-700 dark:text-fal-gray-300 font-medium px-3 py-1 rounded text-xs transition-colors flex items-center space-x-1"
               >
                 <RefreshCw className="w-3 h-3" />
                 <span>Refresh</span>
@@ -209,9 +209,9 @@ export default function AnalyticsPage() {
               />
             )}
             <div className="lg:col-span-2">
-              <div className="text-sm font-medium text-fal-gray-700 mb-1">Stream title</div>
-              <div className="text-sm text-fal-gray-900 bg-fal-gray-100 rounded p-2 font-mono">{data.title}</div>
-              <div className="text-xs text-fal-gray-600 mt-2">
+              <div className="text-sm font-medium text-fal-gray-700 dark:text-fal-gray-300 mb-1">Stream title</div>
+              <div className="text-sm text-fal-gray-900 dark:text-fal-gray-50 bg-fal-gray-100 dark:bg-fal-gray-800 rounded p-2 font-mono">{data.title}</div>
+              <div className="text-xs text-fal-gray-600 dark:text-fal-gray-400 mt-2">
                 Started {data.startedAt ? new Date(data.startedAt).toLocaleString() : '—'}
               </div>
             </div>

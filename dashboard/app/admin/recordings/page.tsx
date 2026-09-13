@@ -30,9 +30,9 @@ function RecordingsList() {
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
             <Video className="w-5 h-5 text-fal-blue-500" />
-            <h3 className="text-lg font-semibold text-fal-gray-900">Recordings</h3>
+            <h3 className="text-lg font-semibold text-fal-gray-900 dark:text-fal-gray-50">Recordings</h3>
           </div>
-          <div className="text-sm text-fal-gray-600">
+          <div className="text-sm text-fal-gray-600 dark:text-fal-gray-400">
             {recordings ? `${recordings.length} recordings` : 'Loading…'}
           </div>
         </div>
@@ -40,7 +40,7 @@ function RecordingsList() {
 
       <div className="fal-card-content">
         {recordings && recordings.length === 0 ? (
-          <div className="text-center py-8 text-fal-gray-600">
+          <div className="text-center py-8 text-fal-gray-600 dark:text-fal-gray-400">
             <Video className="w-12 h-12 mx-auto mb-3 opacity-50" />
             <p>No recordings yet</p>
             <p className="text-sm">Use “Record” on the Director player, then “Stop &amp; save recording”</p>
@@ -51,7 +51,7 @@ function RecordingsList() {
               <div
                 key={recording._id}
                 className={`border rounded-lg p-4 grid grid-cols-1 lg:grid-cols-3 gap-4 ${
-                  index === 0 ? 'border-fal-green-500 bg-fal-green-500/10' : 'border-fal-gray-200 bg-fal-gray-50'
+                  index === 0 ? 'border-fal-green-500 bg-fal-green-500/10' : 'border-fal-gray-200 dark:border-fal-gray-700 bg-fal-gray-50 dark:bg-fal-gray-800'
                 }`}
               >
                 <div className="aspect-video bg-black rounded overflow-hidden">
@@ -66,32 +66,32 @@ function RecordingsList() {
                 <div className="lg:col-span-2 flex flex-col justify-between space-y-3">
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-fal-gray-900">
+                      <span className="text-sm font-medium text-fal-gray-900 dark:text-fal-gray-50">
                         {recording.title ?? `${recording.model} recording`}
                       </span>
-                      <span className="flex items-center space-x-1 text-xs text-fal-gray-600">
+                      <span className="flex items-center space-x-1 text-xs text-fal-gray-600 dark:text-fal-gray-400">
                         <Clock className="w-3 h-3" />
                         <span>{new Date(recording.createdAt).toLocaleString()}</span>
                       </span>
                     </div>
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                       <div>
-                        <div className="text-fal-gray-600">Duration</div>
-                        <div className="font-mono text-fal-gray-900">{formatDuration(recording.durationSeconds)}</div>
+                        <div className="text-fal-gray-600 dark:text-fal-gray-400">Duration</div>
+                        <div className="font-mono text-fal-gray-900 dark:text-fal-gray-50">{formatDuration(recording.durationSeconds)}</div>
                       </div>
                       <div>
-                        <div className="text-fal-gray-600">Size</div>
-                        <div className="font-mono text-fal-gray-900">{formatBytes(recording.sizeBytes)}</div>
+                        <div className="text-fal-gray-600 dark:text-fal-gray-400">Size</div>
+                        <div className="font-mono text-fal-gray-900 dark:text-fal-gray-50">{formatBytes(recording.sizeBytes)}</div>
                       </div>
                       <div>
-                        <div className="text-fal-gray-600">Type</div>
-                        <div className="font-mono text-fal-gray-900 truncate" title={recording.mimeType}>
+                        <div className="text-fal-gray-600 dark:text-fal-gray-400">Type</div>
+                        <div className="font-mono text-fal-gray-900 dark:text-fal-gray-50 truncate" title={recording.mimeType}>
                           {recording.mimeType}
                         </div>
                       </div>
                       <div>
-                        <div className="text-fal-gray-600">Session</div>
-                        <div className="font-mono text-fal-gray-900 truncate" title={recording.sessionId}>
+                        <div className="text-fal-gray-600 dark:text-fal-gray-400">Session</div>
+                        <div className="font-mono text-fal-gray-900 dark:text-fal-gray-50 truncate" title={recording.sessionId}>
                           {recording.sessionId ? `${recording.sessionId.slice(0, 8)}…` : '—'}
                         </div>
                       </div>
