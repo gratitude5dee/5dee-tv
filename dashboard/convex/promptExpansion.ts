@@ -22,6 +22,9 @@ async function completion(model: string, messages: Message[], timeoutMs = 45_000
     if (choice?.finish_reason === 'length') throw new Error('GMI response was truncated')
     if (choice?.finish_reason === 'content_filter') throw new Error('GMI response was blocked by the provider')
     const text = choice?.message?.content?.trim(); if (!text) throw new Error('GMI returned an empty expansion'); return { text, usage: payload.usage }
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(`GMI request timed out after ${Math.round(timeoutMs / 1_000)} seconds`)
+    throw error
   } finally { clearTimeout(timer) }
 }
 
