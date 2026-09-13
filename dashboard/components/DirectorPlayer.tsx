@@ -100,10 +100,12 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const clipRecorderRef = useRef<MediaRecorder | null>(null)
   const clipChunksRef = useRef<Blob[]>([])
   const clipStartedAtRef = useRef<number | null>(null)
-  const clipIdRef = useRef<Id<'clips'> | null>(null)
+  // The active segment's clip row as a promise: a rotation that is superseded
+  // while its `create` mutation is still in flight still gets its media attached.
+  const clipIdRef = useRef<Promise<Id<'clips'> | null> | null>(null)
   const lastAppliedRef = useRef<{ version: number; text: string } | null>(null)
-  // Rotation counter: only the newest rotate may claim clipIdRef.
-  const clipRotateRef = useRef(0)
+  // Serializes recorder boundary changes so rotations can't interleave.
+  const clipQueueRef = useRef<Promise<void>>(Promise.resolve())
   // Monotonic attempt counter: invalidating it aborts an in-flight connect().
   const connectAttemptRef = useRef(0)
   // Lets server-driven teardown (stream_exhausted) reach the cleanup path.
@@ -304,7 +306,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   }, [])
 
   const uploadClipSegment = useCallback(
-    async (clipId: Id<'clips'>, blob: Blob, startedAt: number | null) => {
+    async (clipId: Id<'clips'>, blob: Blob, durationSeconds: number) => {
       if (!generateUploadUrl || !attachClipMedia) return
       let storageId: Id<'_storage'> | null = null
       try {
@@ -321,7 +323,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           storageId,
           mimeType: blob.type.split(';')[0] || 'video/webm',
           sizeBytes: blob.size,
-          durationSeconds: startedAt ? (Date.now() - startedAt) / 1000 : 0,
+          durationSeconds,
         })
         appendLog(`Clip segment saved (${formatBytes(blob.size)})`)
       } catch (e) {
@@ -338,42 +340,68 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     [generateUploadUrl, attachClipMedia, deleteStorage, appendLog],
   )
 
-  /** Rotate the clip boundary on a newly applied direction: upload the outgoing
-   * segment's media, then open a clip row + recorder for the new one. */
+  /** Rotate the clip boundary on a newly applied direction: the outgoing
+   * recorder stops and the next starts back-to-back (millisecond gap), while
+   * the outgoing segment's upload detaches so it can never delay the next
+   * recorder or session teardown. */
   const rotateClip = useCallback(
     (version: number, text: string) => {
       if (!convexEnabled) return
       lastAppliedRef.current = { version, text }
-      const rot = ++clipRotateRef.current
-      const prevClipId = clipIdRef.current
-      const prevStartedAt = clipStartedAtRef.current
-      clipIdRef.current = null
-      void (async () => {
-        if (prevClipId) {
+      clipQueueRef.current = clipQueueRef.current
+        .then(async () => {
+          const prevClipId = clipIdRef.current
+          const prevStartedAt = clipStartedAtRef.current
+          clipIdRef.current = null
           const blob = await stopClipRecorder()
-          if (blob) await uploadClipSegment(prevClipId, blob, prevStartedAt)
-        }
-        if (!streamRef.current || rot !== clipRotateRef.current) return
-        try {
-          const id = await createClip({
+          const stoppedAt = Date.now()
+          if (streamRef.current) startClipRecorder()
+          if (blob && prevClipId) {
+            const durationSeconds = prevStartedAt ? (stoppedAt - prevStartedAt) / 1000 : 0
+            void prevClipId.then((id) => {
+              if (id) void uploadClipSegment(id, blob, durationSeconds)
+            })
+          }
+          if (!streamRef.current) return
+          clipIdRef.current = createClip({
             sessionId: convexSessionIdRef.current ?? undefined,
             prompt: text,
             promptVersion: version,
             chunkIndex: version,
             durationSeconds: 0,
             source: 'director',
-          })
-          if (rot === clipRotateRef.current) {
-            clipIdRef.current = id
-            startClipRecorder()
-          }
-        } catch (e) {
-          appendLog(`convex: ${e instanceof Error ? e.message : String(e)}`)
-        }
-      })()
+          }).then(
+            (id) => id,
+            (e) => {
+              appendLog(`convex: ${e instanceof Error ? e.message : String(e)}`)
+              return null
+            },
+          )
+        })
+        .catch(() => undefined)
     },
     [convexEnabled, createClip, startClipRecorder, stopClipRecorder, uploadClipSegment, appendLog],
   )
+
+  /** Queue the final segment flush (disconnect + unmount paths). */
+  const flushClip = useCallback((): Promise<void> => {
+    clipQueueRef.current = clipQueueRef.current
+      .then(async () => {
+        const pending = clipIdRef.current
+        const startedAt = clipStartedAtRef.current
+        clipIdRef.current = null
+        lastAppliedRef.current = null
+        const blob = await stopClipRecorder()
+        const stoppedAt = Date.now()
+        const id = pending ? await pending : null
+        if (blob && id) {
+          const durationSeconds = startedAt ? (stoppedAt - startedAt) / 1000 : 0
+          void uploadClipSegment(id, blob, durationSeconds)
+        }
+      })
+      .catch(() => undefined)
+    return clipQueueRef.current
+  }, [stopClipRecorder, uploadClipSegment])
 
   const handleData = useCallback(
     (raw: string) => {
@@ -710,14 +738,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     // Invalidate any in-flight connect() so a cancelled startup can't open a session.
     connectAttemptRef.current += 1
     setState('closing')
-    // Flush the in-flight clip segment before tearing the session down.
-    const lastClipId = clipIdRef.current
-    const lastClipStartedAt = clipStartedAtRef.current
-    clipIdRef.current = null
-    clipRotateRef.current += 1
-    lastAppliedRef.current = null
-    const clipBlob = await stopClipRecorder()
-    if (clipBlob && lastClipId) await uploadClipSegment(lastClipId, clipBlob, lastClipStartedAt)
+    // Stop the clip recorder and detach its upload — session teardown below is
+    // never blocked on storage writes.
+    await flushClip()
     const blob = await stopRecorder()
     const session = sessionRef.current
     sessionRef.current = null
@@ -750,7 +773,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     )
     if (closeError) setError(`Session close: ${closeError}`)
     setState('idle')
-  }, [stopRecorder, stopClipRecorder, uploadClipSegment, uploadRecording, persist, setSessionStatus, appendLog])
+  }, [stopRecorder, flushClip, uploadRecording, persist, setSessionStatus, appendLog])
   disconnectRef.current = disconnect
 
   const connect = useCallback(async () => {
@@ -878,10 +901,13 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
 
   useEffect(() => {
     return () => {
+      // Flush the in-flight clip segment too — navigating away mid-session
+      // must not strand the last direction's media.
+      void flushClip()
       recorderRef.current?.stop()
       sessionRef.current?.close()
     }
-  }, [])
+  }, [flushClip])
 
   const live = state === 'live'
   const busy = state === 'opening' || state === 'closing'
