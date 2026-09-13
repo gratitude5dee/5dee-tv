@@ -88,6 +88,12 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const sessionRef = useRef<DirectorSession | null>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const rawStreamRef = useRef<MediaStream | null>(null)
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const audioDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null)
+  const directorSourceRef = useRef<MediaStreamAudioSourceNode | null>(null)
+  const musicSourceRef = useRef<MediaElementAudioSourceNode | null>(null)
+  const musicElementRef = useRef<HTMLAudioElement | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
   const recordingStartedAtRef = useRef<number | null>(null)
@@ -134,6 +140,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   // Live end-frame / target-audio overrides for the next prompt message.
   const [liveEndImage, setLiveEndImage] = useState('')
   const [liveAudioUrl, setLiveAudioUrl] = useState('')
+  const [musicConfig, setMusicConfig] = useState({ url: '', volume: 0.25, offsetSeconds: 0, loop: false })
   // Connection observability.
   const [connectStep, setConnectStep] = useState(-1)
   const [pingMs, setPingMs] = useState<number | null>(null)
@@ -162,6 +169,62 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
 
   const appendLog = useCallback((line: string) => {
     setLog((prev) => [`${new Date().toLocaleTimeString()}  ${line}`, ...prev].slice(0, 50))
+  }, [])
+
+  // Build one output stream so preview, MediaRecorder, clips, and Twitch all
+  // receive identical Director audio plus the optional original song.
+  const attachOutputStream = useCallback((raw: MediaStream) => {
+    rawStreamRef.current = raw
+    if (!musicConfig.url || typeof AudioContext === 'undefined' || raw.getAudioTracks().length === 0) {
+      streamRef.current = raw
+      return raw
+    }
+    try {
+      const context = audioContextRef.current ?? new AudioContext()
+      audioContextRef.current = context
+      const destination = audioDestinationRef.current ?? context.createMediaStreamDestination()
+      audioDestinationRef.current = destination
+      directorSourceRef.current?.disconnect()
+      const directorSource = context.createMediaStreamSource(new MediaStream(raw.getAudioTracks()))
+      const directorGain = context.createGain()
+      directorGain.gain.value = 1
+      directorSource.connect(directorGain).connect(destination)
+      directorSourceRef.current = directorSource
+      musicSourceRef.current?.disconnect()
+      musicElementRef.current?.pause()
+      const music = new Audio(musicConfig.url)
+      music.crossOrigin = 'anonymous'
+      music.loop = musicConfig.loop
+      music.currentTime = Math.max(0, musicConfig.offsetSeconds)
+      const musicSource = context.createMediaElementSource(music)
+      const musicGain = context.createGain()
+      musicGain.gain.value = Math.min(1, Math.max(0, musicConfig.volume))
+      musicSource.connect(musicGain).connect(destination)
+      musicSourceRef.current = musicSource
+      musicElementRef.current = music
+      void music.play().catch(() => appendLog('music: press Mix in output again after a user gesture'))
+      const mixed = new MediaStream([...raw.getVideoTracks(), ...destination.stream.getAudioTracks()])
+      streamRef.current = mixed
+      return mixed
+    } catch (e) {
+      appendLog(`music mixer unavailable: ${e instanceof Error ? e.message : String(e)}`)
+      streamRef.current = raw
+      return raw
+    }
+  }, [musicConfig, appendLog])
+
+  useEffect(() => {
+    if (rawStreamRef.current && state !== 'idle' && state !== 'closing') {
+      const output = attachOutputStream(rawStreamRef.current)
+      if (videoRef.current && videoRef.current.srcObject !== output) videoRef.current.srcObject = output
+    }
+  }, [musicConfig, state, attachOutputStream])
+
+  useEffect(() => () => {
+    musicElementRef.current?.pause()
+    musicSourceRef.current?.disconnect()
+    directorSourceRef.current?.disconnect()
+    void audioContextRef.current?.close()
   }, [])
 
   const persist = useCallback(
@@ -780,6 +843,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         appendLog(`close: ${closeError}`)
       }
     }
+    musicElementRef.current?.pause()
+    rawStreamRef.current = null
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
     setConnectStep(-1)
@@ -855,9 +920,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     const session = fal.realtime.open(wma(DIRECTOR_MODEL), {
       receive: ['video', 'audio'],
       onMedia: (stream) => {
-        streamRef.current = stream
+        const output = attachOutputStream(stream)
         if (videoRef.current) {
-          videoRef.current.srcObject = stream
+          videoRef.current.srcObject = output
           videoRef.current.play().catch(() => undefined)
         }
         appendLog('media stream attached')
@@ -907,7 +972,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     sessionRef.current = session
     setConnectStep(0)
     sendPrompt(prompt, true)
-  }, [createSession, prompt, appendLog, handleData, persist, rotateClip, setSessionStatus, sendPrompt, settings, scriptBeats])
+  }, [createSession, prompt, appendLog, handleData, persist, rotateClip, setSessionStatus, sendPrompt, settings, scriptBeats, attachOutputStream])
 
   // Ping the session every 5s while a session object exists; `pong` sets pingMs.
   // Also keeps a local elapsed clock (the model's playback_seconds restarts per
@@ -1225,6 +1290,10 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         live={live}
         onUseForSession={(url) => setSettings((s) => ({ ...s, audioUrl: url }))}
         onUseLive={setLiveAudioUrl}
+        onUseForMix={(config) => {
+          setMusicConfig(config)
+          appendLog(`original song mixed with Director output at ${Math.round(config.volume * 100)}% music gain`)
+        }}
       />
     </div>
   )

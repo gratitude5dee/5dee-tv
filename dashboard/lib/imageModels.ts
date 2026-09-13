@@ -86,15 +86,19 @@ export function buildImageInput(args: {
       image_size: gptImageSize(aspectRatio),
       quality: quality ?? model.defaultQuality ?? 'high',
     }
-    if (mode === 'edit') input.image_urls = (refImages ?? []).slice(0, 16)
+    if (mode === 'edit') {
+      if ((refImages ?? []).length > 16) throw new Error(`${model.label} supports at most 16 reference images; remove some references first`)
+      input.image_urls = refImages ?? []
+    }
     return { endpoint, input }
   }
 
   // nano-banana-2
   if (mode === 'edit') {
+    if ((refImages ?? []).length > 16) throw new Error(`${model.label} supports at most 16 reference images; remove some references first`)
     return {
       endpoint,
-      input: { prompt, image_urls: (refImages ?? []).slice(0, 16) },
+      input: { prompt, image_urls: refImages ?? [], aspect_ratio: aspectRatio ?? '16:9', resolution: '1K', num_images: 1, output_format: 'jpeg' },
     }
   }
   return {

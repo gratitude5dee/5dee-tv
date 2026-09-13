@@ -32,8 +32,13 @@ interface ScriptTemplatePickerProps {
  */
 export default function ScriptTemplatePicker({ onApply }: ScriptTemplatePickerProps) {
   const [templateId, setTemplateId] = useState('')
+  const [transferId, setTransferId] = useState('')
   const [applied, setApplied] = useState<string | null>(null)
   const boards = useQuery(api.shotboards.list, {})
+  const transfer = useQuery(
+    api.director.get,
+    transferId ? { transferId: transferId as Id<'directorTransfers'> } : 'skip',
+  )
   const template = useQuery(
     api.shotboards.load,
     templateId ? { boardId: templateId as Id<'shotboards'> } : 'skip',
@@ -42,8 +47,27 @@ export default function ScriptTemplatePicker({ onApply }: ScriptTemplatePickerPr
   // ?board=<id> (from the shotboard page) pre-selects the template.
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('board')
+    const transfer = new URLSearchParams(window.location.search).get('transfer')
     if (id) setTemplateId(id)
+    if (transfer) setTransferId(transfer)
   }, [])
+
+  useEffect(() => {
+    if (!transfer || !transferId || applied === `transfer:${transferId}`) return
+    const beats = transfer.beats.map((item) => ({
+      offset: item.offset,
+      prompt: item.prompt,
+      endImageUrl: item.endImageUrl,
+      audioUrl: item.audioUrl,
+    }))
+    onApply(beats, {
+      title: 'Prepared Director transfer',
+      firstFrame: transfer.firstFrameUrl,
+      characterName: '',
+      characterSheet: '',
+    })
+    setApplied(`transfer:${transferId}`)
+  }, [transfer, transferId, applied, onApply])
 
   useEffect(() => {
     if (!template?.board || applied === templateId || !templateId) return

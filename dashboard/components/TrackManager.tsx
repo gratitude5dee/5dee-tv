@@ -12,6 +12,8 @@ interface TrackManagerProps {
   onUseForSession: (url: string) => void
   /** Use the track on the next live prompt (one-shot audio_url). */
   onUseLive: (url: string) => void
+  /** Mix the original song locally with the Director stream output. */
+  onUseForMix?: (config: { url: string; volume: number; offsetSeconds: number; loop: boolean }) => void
   live: boolean
 }
 
@@ -31,7 +33,7 @@ export default function TrackManager(props: TrackManagerProps) {
   return <TrackManagerInner {...props} />
 }
 
-function TrackManagerInner({ onUseForSession, onUseLive, live }: TrackManagerProps) {
+function TrackManagerInner({ onUseForSession, onUseLive, onUseForMix, live }: TrackManagerProps) {
   const tracks = useQuery(api.tracks.list)
   const generateUploadUrl = useMutation(api.tracks.generateUploadUrl)
   const addTrack = useMutation(api.tracks.add)
@@ -41,6 +43,9 @@ function TrackManagerInner({ onUseForSession, onUseLive, live }: TrackManagerPro
   const fileRef = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [selected, setSelected] = useState<Id<'tracks'> | null>(null)
+  const [mixVolume, setMixVolume] = useState(0.25)
+  const [mixOffset, setMixOffset] = useState(0)
+  const [mixLoop, setMixLoop] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const upload = async (file: File) => {
@@ -150,6 +155,15 @@ function TrackManagerInner({ onUseForSession, onUseLive, live }: TrackManagerPro
         </ul>
         {selectedTrack?.url && (
           <div className="flex flex-wrap items-center gap-2 pt-1">
+            <audio controls preload="metadata" src={selectedTrack.url} className="h-8 max-w-full" aria-label={`Preview ${selectedTrack.name}`} />
+            <label className="flex items-center gap-1 text-[10px] text-fal-gray-500">Volume
+              <input type="range" min="0" max="1" step="0.05" value={mixVolume} onChange={(e) => setMixVolume(Number(e.target.value))} aria-label="Music mix volume" />
+              <span>{Math.round(mixVolume * 100)}%</span>
+            </label>
+            <label className="flex items-center gap-1 text-[10px] text-fal-gray-500">Start (s)
+              <input type="number" min="0" step="1" value={mixOffset} onChange={(e) => setMixOffset(Math.max(0, Number(e.target.value) || 0))} className="w-14 rounded border px-1 py-0.5" aria-label="Music start offset" />
+            </label>
+            <label className="flex items-center gap-1 text-[10px] text-fal-gray-500"><input type="checkbox" checked={mixLoop} onChange={(e) => setMixLoop(e.target.checked)} /> Loop</label>
             <button
               onClick={() => onUseForSession(selectedTrack.url!)}
               className="fal-button-secondary flex items-center gap-1 text-xs !py-1.5"
@@ -165,6 +179,15 @@ function TrackManagerInner({ onUseForSession, onUseLive, live }: TrackManagerPro
             >
               <Play className="w-3 h-3" /> Queue on next direction
             </button>
+            {onUseForMix && (
+              <button
+                onClick={() => onUseForMix({ url: selectedTrack.url!, volume: mixVolume, offsetSeconds: mixOffset, loop: mixLoop })}
+                className="fal-button-secondary flex items-center gap-1 text-xs !py-1.5"
+                title="Mix the song with Director speech and effects in preview, recordings, clips, and Twitch"
+              >
+                <Music className="w-3 h-3" /> Mix in output
+              </button>
+            )}
           </div>
         )}
         {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}

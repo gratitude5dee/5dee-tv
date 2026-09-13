@@ -1,8 +1,10 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import Link from 'next/link'
-import { useSearchParams } from 'next/navigation'
+import { useAction, useMutation, useQuery } from 'convex/react'
+import { api } from '../../convex/_generated/api'
+import type { Id } from '../../convex/_generated/dataModel'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Clapperboard, Plus, Send, Trash2 } from 'lucide-react'
 import SceneSection from './SceneSection'
 import SceneSidebar from './SceneSidebar'
@@ -14,7 +16,7 @@ import { useConvexEnabled } from '../ConvexClientProvider'
 import { generateImage } from '../../lib/imageGen'
 import { DEFAULT_IMAGE_MODEL, getImageModel } from '../../lib/imageModels'
 import { compileShotsToBeats, shotboardRuntimeSeconds } from '../../lib/shotboardCompiler'
-import { shotTypeLabel, type CharacterDetails, type SceneDetails, type ShotDetails } from '../../lib/shotboardTypes'
+import { shotTypeLabel, type CharacterDetails, type LocationDetails, type SceneDetails, type ShotDetails } from '../../lib/shotboardTypes'
 
 const boardAspect = (aspectRatio?: string) => aspectRatio || '16:9'
 
@@ -27,7 +29,10 @@ export default function ShotboardPage() {
 
 function ConvexShotboard() {
   const params = useSearchParams()
-  return <ShotboardView sb={useConvexShotboard(params.get('board'))} />
+  const expand = useAction(api.promptExpansion.start)
+  const prepare = useMutation(api.director.prepare)
+  const locations = useQuery(api.locations.list, {})
+  return <ShotboardView sb={useConvexShotboard(params.get('board'))} expandPrompt={expand} prepareDirector={prepare} locations={(locations ?? []).filter((l) => !l.archivedAt).map((l) => ({ id: String(l._id), name: l.name, description: l.description, imageUrl: l.imageUrl }))} />
 }
 
 function LocalShotboard() {
@@ -35,14 +40,19 @@ function LocalShotboard() {
   return <ShotboardView sb={useLocalShotboard(params.get('board'))} />
 }
 
-function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
+type ExpandPrompt = (args: { kind: 'image' | 'director'; source: string; context?: string; requestId: string; sourceRevision?: number; shotId?: Id<'shots'> }) => Promise<{ prompt: string }>
+type PrepareDirector = (args: { boardId: Id<'shotboards'>; shotIds?: Id<'shots'>[]; expectedRevision?: number }) => Promise<Id<'directorTransfers'>>
 
+function ShotboardView({ sb, expandPrompt, prepareDirector, locations = [] }: { sb: ReturnType<typeof useConvexShotboard>; expandPrompt?: ExpandPrompt; prepareDirector?: PrepareDirector; locations?: LocationDetails[] }) {
+
+  const router = useRouter()
   const [imageModel, setImageModel] = useState(DEFAULT_IMAGE_MODEL)
   const [imageQuality, setImageQuality] = useState<string | undefined>(undefined)
   const [generating, setGenerating] = useState<Set<string>>(new Set())
   const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
   const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
+  const [preparingDirector, setPreparingDirector] = useState(false)
 
   const selectedScene = sb.scenes.find((s) => s.id === selectedSceneId) ?? sb.scenes[0] ?? null
 
@@ -69,7 +79,7 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
       .filter((u): u is string => !!u)
 
   const generateShotImage = async (shot: ShotDetails) => {
-    const prompt = (shot.visualPrompt || shot.promptIdea || '').trim()
+    const prompt = (shot.expandedPrompt || shot.visualPrompt || shot.promptIdea || '').trim()
     if (!prompt) {
       setStatus('Give the shot a prompt or direction first')
       return
@@ -77,7 +87,7 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
     const model = getImageModel(shot.imageModel ?? imageModel)
     const scene = sb.scenes.find((s) => s.id === shot.sceneId)
     const refs = [shot.imageUrl, scene?.keyframeUrl, ...characterImageRefs(shot)].filter((u): u is string => !!u)
-    const mode = shot.imageUrl ? 'edit' : 't2i'
+    const mode = refs.length ? 'edit' : 't2i'
     setGen(shot.id, true)
     sb.patchShot(shot.id, { imageStatus: 'generating' })
     try {
@@ -97,6 +107,21 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
     } finally {
       setGen(shot.id, false)
     }
+  }
+
+  const expandShotPrompt = async (shot: ShotDetails) => {
+    const source = (shot.expandedPrompt || shot.promptIdea || '').trim()
+    if (!source) return
+    if (!expandPrompt) { setStatus('Prompt expansion requires an authenticated Convex connection'); return }
+    const scene = sb.scenes.find((s) => s.id === shot.sceneId)
+    const characters = (shot.characterIds ?? []).map((id) => sb.characters.find((c) => c.id === id)).filter(Boolean)
+    const context = [scene?.title, scene?.description, scene?.location, ...characters.map((c) => `${c?.handle || c?.name}: ${c?.description || ''}`)].filter(Boolean).join('\n')
+    const sourceRevision = sb.board?.updatedAt
+    try {
+      const result = await expandPrompt({ kind: 'image', source, context, requestId: `${shot.id}-${Date.now()}`, sourceRevision, shotId: shot.id as Id<'shots'> })
+      sb.patchShot(shot.id, { expandedPrompt: result.prompt, expandedPromptRevision: sourceRevision })
+      setStatus(null)
+    } catch (e) { setStatus(`Prompt expansion failed: ${e instanceof Error ? e.message : String(e)}`) }
   }
 
   const generateSceneKeyframe = async (scene: SceneDetails) => {
@@ -182,14 +207,23 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
               </button>
               <ImageModelSelect modelId={imageModel} quality={imageQuality} onChange={setImageModel} onQualityChange={setImageQuality} />
               {sb.boardId && sb.persistent && (
-                <Link
-                  href={`/admin?board=${sb.boardId}`}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPreparingDirector(true)
+                    void sb.flush().then(async () => {
+                      if (!prepareDirector || !sb.boardId) throw new Error('Director transfer is unavailable')
+                      const transferId = await prepareDirector({ boardId: sb.boardId as Id<'shotboards'>, expectedRevision: sb.board?.revision })
+                      router.push(`/admin?transfer=${String(transferId)}`)
+                    }).catch((e) => setStatus(`Could not prepare Director transfer: ${e instanceof Error ? e.message : String(e)}`)).finally(() => setPreparingDirector(false))
+                  }}
+                  disabled={preparingDirector}
                   className="fal-button-secondary flex items-center gap-1 text-xs !py-1.5"
                   title="Load this board's compiled script in the Director"
                 >
                   <Send className="w-3.5 h-3.5" />
-                  <span>Send to Director</span>
-                </Link>
+                  <span>{preparingDirector ? 'Preparing…' : 'Send to Director'}</span>
+                </button>
               )}
               {sb.boardId && sb.persistent && (
                 <button
@@ -273,6 +307,8 @@ function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
                 onMoveShot={sb.moveShot}
                 onGenerateImage={generateShotImage}
                 onToggleCharacter={sb.toggleShotCharacter}
+                onExpandPrompt={expandShotPrompt}
+                locations={locations}
               />
             ))}
             <button

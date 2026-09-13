@@ -2,7 +2,7 @@
 
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import ShotCard from './ShotCard'
-import type { CharacterDetails, SceneDetails, ShotDetails } from '../../lib/shotboardTypes'
+import type { CharacterDetails, LocationDetails, SceneDetails, ShotDetails } from '../../lib/shotboardTypes'
 
 interface SceneSectionProps {
   scene: SceneDetails
@@ -20,6 +20,8 @@ interface SceneSectionProps {
   onMoveShot: (shotId: string, dir: -1 | 1) => void
   onGenerateImage: (shot: ShotDetails) => void
   onToggleCharacter: (shotId: string, characterId: string) => void
+  onExpandPrompt?: (shot: ShotDetails) => Promise<void>
+  locations?: LocationDetails[]
 }
 
 export default function SceneSection({
@@ -38,6 +40,8 @@ export default function SceneSection({
   onMoveShot,
   onGenerateImage,
   onToggleCharacter,
+  onExpandPrompt,
+  locations = [],
 }: SceneSectionProps) {
   const ordered = [...shots].sort((a, b) => (a.order ?? a.shotNumber) - (b.order ?? b.shotNumber))
 
@@ -61,6 +65,7 @@ export default function SceneSection({
           placeholder={`Scene ${scene.sceneNumber}`}
           className="flex-1 min-w-0 rounded-md border border-transparent hover:border-fal-gray-300 dark:hover:border-fal-gray-700 px-2 py-1 text-sm font-medium bg-transparent focus:outline-none focus:ring-1 focus:ring-fal-primary-500"
         />
+        {locations.length > 0 && <select value={scene.locationId ?? ''} onChange={(e) => onPatchScene({ locationId: e.target.value || undefined })} className="max-w-40 rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-2 py-1 text-xs bg-white dark:bg-fal-gray-900" aria-label="Scene location"><option value="">Location</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>}
         <button
           type="button"
           onClick={() => onMoveScene(-1)}
@@ -98,6 +103,7 @@ export default function SceneSection({
             onMove={(dir) => onMoveShot(shot.id, dir)}
             onGenerateImage={onGenerateImage}
             onToggleCharacter={(cid) => onToggleCharacter(shot.id, cid)}
+            onExpandPrompt={onExpandPrompt}
           />
         ))}
         {ordered.length === 0 && (

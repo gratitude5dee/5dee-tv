@@ -40,6 +40,8 @@ export interface ShotboardState {
   patchCharacter: (characterId: string, patch: Partial<CharacterDetails>) => void
   deleteCharacter: (characterId: string) => void
   toggleShotCharacter: (shotId: string, characterId: string) => void
+  /** Resolves after all optimistic writes issued by this editor are persisted. */
+  flush: () => Promise<void>
 }
 
 type ConvexScene = Omit<SceneDetails, 'id' | 'boardId'> & { _id: Id<'scenes'>; boardId: Id<'shotboards'> }
@@ -51,8 +53,8 @@ const toShot = (s: ConvexShot): ShotDetails => ({ ...s, id: String(s._id), scene
 const toCharacter = (c: ConvexCharacter): CharacterDetails => ({ ...c, id: String(c._id), boardId: c.boardId ? String(c.boardId) : undefined })
 
 // Keep only mutation-valid fields; Convex rejects unknown args and undefined.
-const SCENE_PATCH_KEYS = ['sceneNumber', 'title', 'description', 'location', 'timeOfDay', 'weather', 'atmosphere', 'elements', 'cameraEnvironment', 'keyframeUrl'] as const
-const SHOT_PATCH_KEYS = ['shotNumber', 'shotType', 'duration', 'promptIdea', 'visualPrompt', 'dialogue', 'soundEffects', 'imageUrl', 'imageStatus', 'imageModel', 'audioUrl', 'characterIds', 'order'] as const
+const SCENE_PATCH_KEYS = ['sceneNumber', 'title', 'description', 'location', 'locationId', 'timeOfDay', 'weather', 'atmosphere', 'elements', 'cameraEnvironment', 'keyframeUrl'] as const
+const SHOT_PATCH_KEYS = ['shotNumber', 'shotType', 'duration', 'promptIdea', 'visualPrompt', 'expandedPrompt', 'expandedPromptHash', 'expandedPromptRevision', 'directorPrompt', 'directorPromptHash', 'directorPromptRevision', 'dialogue', 'soundEffects', 'imageUrl', 'imageStatus', 'imageModel', 'audioUrl', 'characterIds', 'order'] as const
 const CHARACTER_PATCH_KEYS = ['name', 'handle', 'description', 'imageUrl', 'traits'] as const
 
 function pickDefined<T extends object>(obj: T, keys: readonly (keyof T)[]): Record<string, unknown> {
@@ -108,6 +110,13 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
         title: b.title,
         description: b.description,
         aspectRatio: b.aspectRatio,
+        revision: b.revision,
+        styleId: b.styleId ? String(b.styleId) : undefined,
+        seriesId: b.seriesId ? String(b.seriesId) : undefined,
+        soundtrackTrackId: b.soundtrackTrackId ? String(b.soundtrackTrackId) : undefined,
+        soundtrackOffsetSeconds: b.soundtrackOffsetSeconds,
+        soundtrackVolume: b.soundtrackVolume,
+        soundtrackLoop: b.soundtrackLoop,
         updatedAt: b.updatedAt,
       })),
     [boardsQuery],
@@ -118,18 +127,35 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
   const [shots, setShots] = useState<ShotDetails[]>([])
   const [characters, setCharacters] = useState<CharacterDetails[]>([])
   const hydratedBoardRef = useRef<string | null>(null)
+  const hydratedRevisionRef = useRef<number | undefined>(undefined)
+  const pendingWritesRef = useRef<Set<Promise<unknown>>>(new Set())
+  const trackWrite = useCallback((promise: Promise<unknown>) => {
+    pendingWritesRef.current.add(promise)
+    void promise.then(
+      () => pendingWritesRef.current.delete(promise),
+      () => pendingWritesRef.current.delete(promise),
+    )
+    return promise
+  }, [])
+  const flush = useCallback(async () => {
+    while (pendingWritesRef.current.size) await Promise.all([...pendingWritesRef.current])
+  }, [])
 
-  // Hydrate once per board selection from the load query.
+  // Hydrate on first selection and on later server revisions. Optimistic
+  // writes stay authoritative while a mutation is in flight; once it settles,
+  // the reactive query can reconcile edits made in another tab/operator.
   useEffect(() => {
     if (
       !mirror ||
       !boardId ||
       !loadQuery?.board ||
       String(loadQuery.board._id) !== boardId ||
-      hydratedBoardRef.current === boardId
+      hydratedBoardRef.current === boardId && hydratedRevisionRef.current === (loadQuery.board.revision ?? loadQuery.board.updatedAt)
     ) return
+    if (pendingWritesRef.current.size > 0) return
     hydratedBoardRef.current = boardId
-    setBoard({ id: loadQuery.board._id, title: loadQuery.board.title, description: loadQuery.board.description, aspectRatio: loadQuery.board.aspectRatio })
+    hydratedRevisionRef.current = loadQuery.board.revision ?? loadQuery.board.updatedAt
+    setBoard({ id: loadQuery.board._id, title: loadQuery.board.title, description: loadQuery.board.description, aspectRatio: loadQuery.board.aspectRatio, revision: loadQuery.board.revision, styleId: loadQuery.board.styleId ? String(loadQuery.board.styleId) : undefined, seriesId: loadQuery.board.seriesId ? String(loadQuery.board.seriesId) : undefined, soundtrackTrackId: loadQuery.board.soundtrackTrackId ? String(loadQuery.board.soundtrackTrackId) : undefined, soundtrackOffsetSeconds: loadQuery.board.soundtrackOffsetSeconds, soundtrackVolume: loadQuery.board.soundtrackVolume, soundtrackLoop: loadQuery.board.soundtrackLoop, updatedAt: loadQuery.board.updatedAt })
     setScenes((loadQuery.scenes as unknown as ConvexScene[]).map(toScene))
     setShots((loadQuery.shots as unknown as ConvexShot[]).map(toShot))
     setCharacters((loadQuery.characters as unknown as ConvexCharacter[]).map(toCharacter))
@@ -138,6 +164,7 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
   const selectBoard = useCallback(
     (id: string | null) => {
       hydratedBoardRef.current = null
+      hydratedRevisionRef.current = undefined
       setBoardId(id)
       // Never leave the previous board editable while the next Convex query is
       // loading: mutations use the newly selected board id immediately.
@@ -171,45 +198,48 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
     (patch: Partial<ShotboardDetails>) => {
       setBoard((b) => (b ? { ...b, ...patch } : b))
       if (mirror && boardId) {
-        const args = pickDefined(patch, ['title', 'description', 'aspectRatio'])
-        void mirror.patchBoard({ boardId: boardId as Id<'shotboards'>, ...args })
+        const args = pickDefined(patch, ['title', 'description', 'aspectRatio', 'styleId', 'seriesId', 'soundtrackTrackId', 'soundtrackOffsetSeconds', 'soundtrackVolume', 'soundtrackLoop'])
+        if (args.styleId) args.styleId = args.styleId as Id<'styles'>
+        if (args.seriesId) args.seriesId = args.seriesId as Id<'series'>
+        if (args.soundtrackTrackId) args.soundtrackTrackId = args.soundtrackTrackId as Id<'tracks'>
+        trackWrite(mirror.patchBoard({ boardId: boardId as Id<'shotboards'>, ...args }))
       }
     },
-    [mirror, boardId],
+    [mirror, boardId, trackWrite],
   )
 
   const deleteBoard = useCallback(() => {
     const id = boardId
     selectBoard(null)
-    if (mirror && id) void mirror.removeBoard({ boardId: id as Id<'shotboards'> })
-  }, [mirror, boardId, selectBoard])
+    if (mirror && id) trackWrite(mirror.removeBoard({ boardId: id as Id<'shotboards'> }))
+  }, [mirror, boardId, selectBoard, trackWrite])
 
   const addScene = useCallback(() => {
     const sceneNumber = scenes.length ? Math.max(...scenes.map((s) => s.sceneNumber)) + 1 : 1
     if (mirror && boardId) {
-      void mirror.createScene({ boardId: boardId as Id<'shotboards'>, sceneNumber, title: `Scene ${sceneNumber}` }).then((id) =>
+      trackWrite(mirror.createScene({ boardId: boardId as Id<'shotboards'>, sceneNumber, title: `Scene ${sceneNumber}` }).then((id) =>
         setScenes((prev) => [...prev, { id: String(id), boardId, sceneNumber, title: `Scene ${sceneNumber}` }]),
-      )
+      ))
     } else if (boardId) {
       setScenes((prev) => [...prev, { id: uid(), boardId, sceneNumber, title: `Scene ${sceneNumber}` }])
     }
-  }, [mirror, boardId, scenes])
+  }, [mirror, boardId, scenes, trackWrite])
 
   const patchScene = useCallback(
     (sceneId: string, patch: Partial<SceneDetails>) => {
       setScenes((prev) => prev.map((s) => (s.id === sceneId ? { ...s, ...patch } : s)))
-      if (mirror) void mirror.patchScene({ sceneId: sceneId as Id<'scenes'>, ...pickDefined(patch, SCENE_PATCH_KEYS) })
+      if (mirror) trackWrite(mirror.patchScene({ sceneId: sceneId as Id<'scenes'>, ...pickDefined(patch, SCENE_PATCH_KEYS) }))
     },
-    [mirror],
+    [mirror, trackWrite],
   )
 
   const deleteScene = useCallback(
     (sceneId: string) => {
       setScenes((prev) => prev.filter((s) => s.id !== sceneId))
       setShots((prev) => prev.filter((s) => s.sceneId !== sceneId))
-      if (mirror) void mirror.removeScene({ sceneId: sceneId as Id<'scenes'> })
+      if (mirror) trackWrite(mirror.removeScene({ sceneId: sceneId as Id<'scenes'> }))
     },
-    [mirror],
+    [mirror, trackWrite],
   )
 
   const moveScene = useCallback(
@@ -221,11 +251,11 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
         if (i < 0 || j < 0 || j >= sorted.length) return prev
         ;[sorted[i], sorted[j]] = [sorted[j], sorted[i]]
         const renumbered = sorted.map((s, k) => ({ ...s, sceneNumber: k + 1 }))
-        if (mirror) for (const s of renumbered) void mirror.patchScene({ sceneId: s.id as Id<'scenes'>, sceneNumber: s.sceneNumber })
+        if (mirror) for (const s of renumbered) trackWrite(mirror.patchScene({ sceneId: s.id as Id<'scenes'>, sceneNumber: s.sceneNumber }))
         return renumbered
       })
     },
-    [mirror],
+    [mirror, trackWrite],
   )
 
   const addShot = useCallback(
@@ -234,14 +264,14 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
       const shotNumber = sceneShots.length ? Math.max(...sceneShots.map((s) => s.shotNumber)) + 1 : 1
       const order = sceneShots.length ? Math.max(...sceneShots.map((s) => s.order ?? s.shotNumber)) + 1 : 1
       if (mirror && boardId) {
-        void mirror.createShot({ sceneId: sceneId as Id<'scenes'>, boardId: boardId as Id<'shotboards'>, shotNumber, shotType: 'medium', duration: 8, order }).then(
+        trackWrite(mirror.createShot({ sceneId: sceneId as Id<'scenes'>, boardId: boardId as Id<'shotboards'>, shotNumber, shotType: 'medium', duration: 8, order }).then(
           (id) => setShots((prev) => [...prev, { id: String(id), sceneId, boardId, shotNumber, shotType: 'medium', duration: 8, order }]),
-        )
+        ))
       } else if (boardId) {
         setShots((prev) => [...prev, { id: uid(), sceneId, boardId, shotNumber, shotType: 'medium', duration: 8, order }])
       }
     },
-    [mirror, boardId, shots],
+    [mirror, boardId, shots, trackWrite],
   )
 
   const patchShot = useCallback(
@@ -250,18 +280,18 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
       if (mirror) {
         const args = pickDefined(patch, SHOT_PATCH_KEYS)
         if (args.characterIds) args.characterIds = (args.characterIds as string[]).map((id) => id as Id<'characters'>)
-        void mirror.patchShot({ shotId: shotId as Id<'shots'>, ...args })
+        trackWrite(mirror.patchShot({ shotId: shotId as Id<'shots'>, ...args }))
       }
     },
-    [mirror],
+    [mirror, trackWrite],
   )
 
   const deleteShot = useCallback(
     (shotId: string) => {
       setShots((prev) => prev.filter((s) => s.id !== shotId))
-      if (mirror) void mirror.removeShot({ shotId: shotId as Id<'shots'> })
+      if (mirror) trackWrite(mirror.removeShot({ shotId: shotId as Id<'shots'> }))
     },
-    [mirror],
+    [mirror, trackWrite],
   )
 
   const moveShot = useCallback(
@@ -276,39 +306,39 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
         ;[siblings[i], siblings[j]] = [siblings[j], siblings[i]]
         const renumbered = siblings.map((s, k) => ({ ...s, order: k + 1, shotNumber: k + 1 }))
         const rest = prev.filter((s) => s.sceneId !== shot.sceneId)
-        if (mirror) void mirror.setShotOrder({ sceneId: shot.sceneId as Id<'scenes'>, shotIds: renumbered.map((s) => s.id as Id<'shots'>) })
+        if (mirror) trackWrite(mirror.setShotOrder({ sceneId: shot.sceneId as Id<'scenes'>, shotIds: renumbered.map((s) => s.id as Id<'shots'>) }))
         return [...rest, ...renumbered]
       })
     },
-    [mirror],
+    [mirror, trackWrite],
   )
 
   const addCharacter = useCallback(() => {
     const name = `Character ${characters.length + 1}`
     if (mirror && boardId) {
-      void mirror.createCharacter({ boardId: boardId as Id<'shotboards'>, name }).then((id) =>
+      trackWrite(mirror.createCharacter({ boardId: boardId as Id<'shotboards'>, name }).then((id) =>
         setCharacters((prev) => [...prev, { id: String(id), boardId, name }]),
-      )
+      ))
     } else {
       setCharacters((prev) => [...prev, { id: uid(), boardId: boardId ?? undefined, name }])
     }
-  }, [mirror, boardId, characters.length])
+  }, [mirror, boardId, characters.length, trackWrite])
 
   const patchCharacter = useCallback(
     (characterId: string, patch: Partial<CharacterDetails>) => {
       setCharacters((prev) => prev.map((c) => (c.id === characterId ? { ...c, ...patch } : c)))
-      if (mirror) void mirror.patchCharacter({ characterId: characterId as Id<'characters'>, ...pickDefined(patch, CHARACTER_PATCH_KEYS) })
+      if (mirror) trackWrite(mirror.patchCharacter({ characterId: characterId as Id<'characters'>, ...pickDefined(patch, CHARACTER_PATCH_KEYS) }))
     },
-    [mirror],
+    [mirror, trackWrite],
   )
 
   const deleteCharacter = useCallback(
     (characterId: string) => {
       setCharacters((prev) => prev.filter((c) => c.id !== characterId))
       setShots((prev) => prev.map((s) => ({ ...s, characterIds: s.characterIds?.filter((id) => id !== characterId) })))
-      if (mirror) void mirror.removeCharacter({ characterId: characterId as Id<'characters'> })
+      if (mirror) trackWrite(mirror.removeCharacter({ characterId: characterId as Id<'characters'> }))
     },
-    [mirror],
+    [mirror, trackWrite],
   )
 
   const toggleShotCharacter = useCallback(
@@ -350,6 +380,7 @@ function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery 
     patchCharacter,
     deleteCharacter,
     toggleShotCharacter,
+    flush,
   }
 }
 
