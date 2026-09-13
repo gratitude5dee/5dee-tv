@@ -39,6 +39,8 @@ export default function ChatSteerer({ live, onDirection, onFrameCommand, channel
   const lastDirectionByUserRef = useRef(new Map<string, number>())
   const onFrameCommandRef = useRef(onFrameCommand)
   onFrameCommandRef.current = onFrameCommand
+  const onDirectionRef = useRef(onDirection)
+  onDirectionRef.current = onDirection
   const liveRef = useRef(live)
   const steerRef = useRef(steer)
   const commandRef = useRef(command)
@@ -96,7 +98,7 @@ export default function ChatSteerer({ live, onDirection, onFrameCommand, channel
           if (now - lastByUser < 8000) return
           lastDirectionAtRef.current = now
           lastDirectionByUserRef.current.set(user, now)
-          onDirection(direction, user)
+          onDirectionRef.current(direction, user)
         }
       })
       c.on('connected', () => setConnected(true))
@@ -116,7 +118,7 @@ export default function ChatSteerer({ live, onDirection, onFrameCommand, channel
       connectingRef.current = false
       setConnecting(false)
     }
-  }, [ch, onDirection])
+  }, [ch])
 
   useEffect(() => {
     return () => {

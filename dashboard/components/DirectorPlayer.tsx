@@ -284,6 +284,21 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
 
       if (type === 'configured') {
         setConnectStep((s) => Math.max(s, 3))
+        // `configured` is the applied ack for the opening configure prompt.
+        const v = msg.prompt_version
+        if (typeof v === 'number') {
+          setDirections((prev) => prev.map((d) => (d.version === v ? { ...d, status: 'applied' } : d)))
+          const applied = promptsByVersionRef.current.get(v)
+          if (applied) setActivePrompt(applied)
+        }
+        void persist(() =>
+          logPromptEvent({
+            sessionId: convexSessionIdRef.current!,
+            kind: 'prompt_applied',
+            promptVersion: typeof v === 'number' ? v : undefined,
+            detail: raw.slice(0, 2000),
+          }),
+        )
         appendLog('world configured')
         return
       }
@@ -567,13 +582,16 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     const blob = await stopRecorder()
     const session = sessionRef.current
     sessionRef.current = null
+    let closeError: string | null = null
     if (session) {
       try {
         session.send({ type: 'stop' })
-      } catch {
-        // channel may already be closing
+        await session.close()
+      } catch (e) {
+        // A failed close must not strand the recording or leave us in 'closing'.
+        closeError = e instanceof Error ? e.message : String(e)
+        appendLog(`close: ${closeError}`)
       }
-      await session.close()
     }
     streamRef.current = null
     if (videoRef.current) videoRef.current.srcObject = null
@@ -591,6 +609,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     await persist(() =>
       sessionId ? setSessionStatus({ sessionId, status: 'ended' }) : Promise.resolve(),
     )
+    if (closeError) setError(`Session close: ${closeError}`)
     setState('idle')
   }, [stopRecorder, uploadRecording, persist, setSessionStatus])
   disconnectRef.current = disconnect

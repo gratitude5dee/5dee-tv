@@ -41,12 +41,11 @@ export function computeBands(
     return { bands, max: flat ? 1 : max, min }
   }
 
-  const series = d3Stack<Row>()
+  const stack = d3Stack<Row>()
     .keys(keys)
     .value((row, key) => num(row[key]))
-    .offset(stackType === "percent" ? stackOffsetExpand : (undefined as never))(
-    data
-  )
+  if (stackType === "percent") stack.offset(stackOffsetExpand)
+  const series = stack(data)
 
   const bands: Record<string, [number, number][]> = {}
   let max = 0
