@@ -8,20 +8,21 @@
  * @module
  */
 
+import type * as assets from "../assets.js";
 import type * as clips from "../clips.js";
 import type * as director from "../director.js";
-import type * as storyboards from "../storyboards.js";
 import type * as generations from "../generations.js";
+import type * as locations from "../locations.js";
 import type * as promptEvents from "../promptEvents.js";
+import type * as promptExpansion from "../promptExpansion.js";
 import type * as recordings from "../recordings.js";
+import type * as series from "../series.js";
 import type * as sessions from "../sessions.js";
 import type * as shotboards from "../shotboards.js";
+import type * as storyboards from "../storyboards.js";
+import type * as styles from "../styles.js";
 import type * as tracks from "../tracks.js";
 import type * as twitchStats from "../twitchStats.js";
-import type * as locations from "../locations.js";
-import type * as promptExpansion from "../promptExpansion.js";
-import type * as series from "../series.js";
-import type * as styles from "../styles.js";
 
 import type {
   ApiFromModules,
@@ -30,20 +31,21 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  assets: typeof assets;
   clips: typeof clips;
   director: typeof director;
-  storyboards: typeof storyboards;
   generations: typeof generations;
+  locations: typeof locations;
   promptEvents: typeof promptEvents;
+  promptExpansion: typeof promptExpansion;
   recordings: typeof recordings;
+  series: typeof series;
   sessions: typeof sessions;
   shotboards: typeof shotboards;
+  storyboards: typeof storyboards;
+  styles: typeof styles;
   tracks: typeof tracks;
   twitchStats: typeof twitchStats;
-  locations: typeof locations;
-  promptExpansion: typeof promptExpansion;
-  series: typeof series;
-  styles: typeof styles;
 }>;
 
 /**
