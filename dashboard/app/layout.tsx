@@ -35,7 +35,7 @@ export default function RootLayout({
       </head>
       <body className={`font-focal ${jetbrainsMono.variable}`}>
         <DitherBackground />
-        <div className="min-h-screen bg-fal-gray-50/80 dark:bg-[#0a0d14]/80">
+        <div className="min-h-screen bg-fal-gray-50/60 dark:bg-[#0a0d14]/45">
           {/* wzrd.tech header */}
           <header className="bg-[#0a0d14] border-b border-fal-gray-800">
             <div className="max-w-7xl mx-auto px-6 lg:px-8">

@@ -22,13 +22,13 @@ export default function DitherBackground() {
   return (
     <div className="fixed inset-0 -z-10 pointer-events-none" aria-hidden>
       <Dither
-        waveSpeed={0.03}
-        waveFrequency={3}
-        waveAmplitude={0.25}
-        waveColor={dark ? [0.13, 0.2, 0.36] : [0.8, 0.87, 0.95]}
-        backgroundColor={dark ? [0.04, 0.05, 0.08] : [0.96, 0.97, 0.99]}
-        colorNum={5}
-        pixelSize={2.5}
+        waveSpeed={0.04}
+        waveFrequency={2.6}
+        waveAmplitude={0.4}
+        waveColor={dark ? [0.2, 0.34, 0.66] : [0.5, 0.63, 0.86]}
+        backgroundColor={dark ? [0.02, 0.03, 0.06] : [0.98, 0.98, 1.0]}
+        colorNum={4}
+        pixelSize={2}
       />
     </div>
   )

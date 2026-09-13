@@ -962,7 +962,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
 
         <div className="fal-card-content space-y-4">
         <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
-          <DitherGradient from="blue" direction="up" className="absolute inset-0" />
+          <DitherGradient from="blue" direction="up" opacity={0.55} cell={4} className="absolute inset-0" />
           <video ref={videoRef} autoPlay playsInline muted={muted} className="relative w-full h-full object-contain" />
           {!live && (
             <div className="absolute inset-0 flex items-center justify-center">

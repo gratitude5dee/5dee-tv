@@ -59,8 +59,8 @@ function ClipsList() {
                       <span>{new Date(clip.createdAt).toLocaleString()}</span>
                     </span>
                   </div>
-                  <div className="text-sm text-fal-gray-900 dark:text-fal-gray-50 bg-fal-gray-100 dark:bg-fal-gray-800 rounded p-2 font-mono line-clamp-3">
-                    {clip.prompt}
+                  <div className="text-sm text-fal-gray-900 dark:text-fal-gray-50 bg-fal-gray-100 dark:bg-fal-gray-800 rounded p-2 font-mono">
+                    <p className="line-clamp-3">{clip.prompt}</p>
                   </div>
                   <div className="flex items-center justify-between text-xs text-fal-gray-600 dark:text-fal-gray-400">
                     <span>{clip.durationSeconds.toFixed(1)}s</span>
