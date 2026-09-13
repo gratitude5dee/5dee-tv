@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Component, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Clapperboard, ListPlus, Play, Plus, Send, Trash2 } from 'lucide-react'
 import AssetUrlInput from './AssetUrlInput'
 import ScriptTemplatePicker, { type TemplateAppliedMeta } from './ScriptTemplatePicker'
@@ -21,6 +21,21 @@ interface ScriptEditorProps {
   /** Fired after a saved shotboard template fills the beats — carries session-level
    * extras (first frame, lead character) to sync into Director settings. */
   onTemplateApplied?: (meta: TemplateAppliedMeta) => void
+}
+
+/** Hides the template picker when the Convex deployment can't serve the
+ * shotboards queries (e.g. functions not yet pushed to that deployment). */
+class TemplatePickerBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  componentDidCatch(error: unknown) {
+    console.warn('shotboard template picker unavailable:', error)
+  }
+  render() {
+    return this.state.failed ? null : this.props.children
+  }
 }
 
 const newBeat = (beats: ScriptBeat[]): ScriptBeat => ({
@@ -74,12 +89,14 @@ export default function ScriptEditor({
 
         {convexEnabled && (
           <div className="flex flex-wrap items-center gap-2">
-            <ScriptTemplatePicker
-              onApply={(compiled, meta) => {
-                onChange(compiled)
-                onTemplateApplied?.(meta)
-              }}
-            />
+            <TemplatePickerBoundary>
+              <ScriptTemplatePicker
+                onApply={(compiled, meta) => {
+                  onChange(compiled)
+                  onTemplateApplied?.(meta)
+                }}
+              />
+            </TemplatePickerBoundary>
           </div>
         )}
 

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { api } from '../../convex/_generated/api'
 import type { Id } from '../../convex/_generated/dataModel'
-import { useConvexEnabled } from '../ConvexClientProvider'
+import type { FunctionReference, FunctionReturnType } from 'convex/server'
 import type {
   CharacterDetails,
   SceneDetails,
@@ -64,36 +64,43 @@ function pickDefined<T extends object>(obj: T, keys: readonly (keyof T)[]): Reco
   return out
 }
 
+type Mut<T extends FunctionReference<'mutation'>> = (args: T['_args']) => Promise<T['_returnType']>
+
+/** The set of Convex mutations the shotboard mirrors local edits to. */
+interface ShotboardMirror {
+  createBoard: Mut<typeof api.shotboards.create>
+  patchBoard: Mut<typeof api.shotboards.patch>
+  removeBoard: Mut<typeof api.shotboards.remove>
+  createScene: Mut<typeof api.shotboards.createScene>
+  patchScene: Mut<typeof api.shotboards.patchScene>
+  removeScene: Mut<typeof api.shotboards.removeScene>
+  createShot: Mut<typeof api.shotboards.createShot>
+  patchShot: Mut<typeof api.shotboards.patchShot>
+  removeShot: Mut<typeof api.shotboards.removeShot>
+  setShotOrder: Mut<typeof api.shotboards.setShotOrder>
+  createCharacter: Mut<typeof api.shotboards.createCharacter>
+  patchCharacter: Mut<typeof api.shotboards.patchCharacter>
+  removeCharacter: Mut<typeof api.shotboards.removeCharacter>
+}
+
+type BoardsResult = FunctionReturnType<typeof api.shotboards.list> | undefined
+type LoadResult = FunctionReturnType<typeof api.shotboards.load> | undefined
+
+interface ImplArgs {
+  boardId: string | null
+  setBoardId: (id: string | null) => void
+  /** Convex mutations — null in local-only mode (no ConvexProvider mounted). */
+  mirror: ShotboardMirror | null
+  boardsQuery: BoardsResult
+  loadQuery: LoadResult
+}
+
 /**
- * Board data lives in local React state for instant edits; every mutation is
- * mirrored to Convex when configured. Convex changes made elsewhere are pulled
- * in on board selection only (single-operator admin tool).
+ * Board data lives in local React state for instant edits; when `mirror` is
+ * provided every mutation is mirrored to Convex. Convex changes made
+ * elsewhere are pulled in on board selection only (single-operator admin tool).
  */
-export function useShotboard(initialBoardId?: string | null): ShotboardState {
-  const convexEnabled = useConvexEnabled()
-
-  // ---- Convex hooks (always mounted; skipped via "skip" when off/disabled)
-  const boardsQuery = useQuery(api.shotboards.list, convexEnabled ? {} : 'skip')
-  const [boardId, setBoardId] = useState<string | null>(initialBoardId ?? null)
-  const loadQuery = useQuery(
-    api.shotboards.load,
-    convexEnabled && boardId ? { boardId: boardId as Id<'shotboards'> } : 'skip',
-  )
-
-  const mCreateBoard = useMutation(api.shotboards.create)
-  const mPatchBoard = useMutation(api.shotboards.patch)
-  const mRemoveBoard = useMutation(api.shotboards.remove)
-  const mCreateScene = useMutation(api.shotboards.createScene)
-  const mPatchScene = useMutation(api.shotboards.patchScene)
-  const mRemoveScene = useMutation(api.shotboards.removeScene)
-  const mCreateShot = useMutation(api.shotboards.createShot)
-  const mPatchShot = useMutation(api.shotboards.patchShot)
-  const mRemoveShot = useMutation(api.shotboards.removeShot)
-  const mSetShotOrder = useMutation(api.shotboards.setShotOrder)
-  const mCreateCharacter = useMutation(api.shotboards.createCharacter)
-  const mPatchCharacter = useMutation(api.shotboards.patchCharacter)
-  const mRemoveCharacter = useMutation(api.shotboards.removeCharacter)
-
+function useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery }: ImplArgs): ShotboardState {
   const boards: ShotboardDetails[] = useMemo(
     () =>
       (boardsQuery ?? []).map((b) => ({
@@ -114,29 +121,32 @@ export function useShotboard(initialBoardId?: string | null): ShotboardState {
 
   // Hydrate once per board selection from the load query.
   useEffect(() => {
-    if (!convexEnabled || !boardId || !loadQuery?.board || hydratedBoardRef.current === boardId) return
+    if (!mirror || !boardId || !loadQuery?.board || hydratedBoardRef.current === boardId) return
     hydratedBoardRef.current = boardId
     setBoard({ id: loadQuery.board._id, title: loadQuery.board.title, description: loadQuery.board.description, aspectRatio: loadQuery.board.aspectRatio })
     setScenes((loadQuery.scenes as unknown as ConvexScene[]).map(toScene))
     setShots((loadQuery.shots as unknown as ConvexShot[]).map(toShot))
     setCharacters((loadQuery.characters as unknown as ConvexCharacter[]).map(toCharacter))
-  }, [convexEnabled, boardId, loadQuery])
+  }, [mirror, boardId, loadQuery])
 
-  const selectBoard = useCallback((id: string | null) => {
-    hydratedBoardRef.current = null
-    setBoardId(id)
-    if (!id) {
-      setBoard(null)
-      setScenes([])
-      setShots([])
-      setCharacters([])
-    }
-  }, [])
+  const selectBoard = useCallback(
+    (id: string | null) => {
+      hydratedBoardRef.current = null
+      setBoardId(id)
+      if (!id) {
+        setBoard(null)
+        setScenes([])
+        setShots([])
+        setCharacters([])
+      }
+    },
+    [setBoardId],
+  )
 
   const createBoard = useCallback(
     async (title: string) => {
-      if (convexEnabled) {
-        const id = String(await mCreateBoard({ title }))
+      if (mirror) {
+        const id = String(await mirror.createBoard({ title }))
         selectBoard(id)
         return id
       }
@@ -148,52 +158,52 @@ export function useShotboard(initialBoardId?: string | null): ShotboardState {
       setCharacters([])
       return id
     },
-    [convexEnabled, mCreateBoard, selectBoard],
+    [mirror, selectBoard, setBoardId],
   )
 
   const patchBoard = useCallback(
     (patch: Partial<ShotboardDetails>) => {
       setBoard((b) => (b ? { ...b, ...patch } : b))
-      if (convexEnabled && boardId) {
+      if (mirror && boardId) {
         const args = pickDefined(patch, ['title', 'description', 'aspectRatio'])
-        void mPatchBoard({ boardId: boardId as Id<'shotboards'>, ...args })
+        void mirror.patchBoard({ boardId: boardId as Id<'shotboards'>, ...args })
       }
     },
-    [convexEnabled, boardId, mPatchBoard],
+    [mirror, boardId],
   )
 
   const deleteBoard = useCallback(() => {
     const id = boardId
     selectBoard(null)
-    if (convexEnabled && id) void mRemoveBoard({ boardId: id as Id<'shotboards'> })
-  }, [convexEnabled, boardId, selectBoard, mRemoveBoard])
+    if (mirror && id) void mirror.removeBoard({ boardId: id as Id<'shotboards'> })
+  }, [mirror, boardId, selectBoard])
 
   const addScene = useCallback(() => {
     const sceneNumber = scenes.length ? Math.max(...scenes.map((s) => s.sceneNumber)) + 1 : 1
-    if (convexEnabled && boardId) {
-      void mCreateScene({ boardId: boardId as Id<'shotboards'>, sceneNumber, title: `Scene ${sceneNumber}` }).then((id) =>
+    if (mirror && boardId) {
+      void mirror.createScene({ boardId: boardId as Id<'shotboards'>, sceneNumber, title: `Scene ${sceneNumber}` }).then((id) =>
         setScenes((prev) => [...prev, { id: String(id), boardId, sceneNumber, title: `Scene ${sceneNumber}` }]),
       )
     } else if (boardId) {
       setScenes((prev) => [...prev, { id: uid(), boardId, sceneNumber, title: `Scene ${sceneNumber}` }])
     }
-  }, [convexEnabled, boardId, scenes, mCreateScene])
+  }, [mirror, boardId, scenes])
 
   const patchScene = useCallback(
     (sceneId: string, patch: Partial<SceneDetails>) => {
       setScenes((prev) => prev.map((s) => (s.id === sceneId ? { ...s, ...patch } : s)))
-      if (convexEnabled) void mPatchScene({ sceneId: sceneId as Id<'scenes'>, ...pickDefined(patch, SCENE_PATCH_KEYS) })
+      if (mirror) void mirror.patchScene({ sceneId: sceneId as Id<'scenes'>, ...pickDefined(patch, SCENE_PATCH_KEYS) })
     },
-    [convexEnabled, mPatchScene],
+    [mirror],
   )
 
   const deleteScene = useCallback(
     (sceneId: string) => {
       setScenes((prev) => prev.filter((s) => s.id !== sceneId))
       setShots((prev) => prev.filter((s) => s.sceneId !== sceneId))
-      if (convexEnabled) void mRemoveScene({ sceneId: sceneId as Id<'scenes'>, })
+      if (mirror) void mirror.removeScene({ sceneId: sceneId as Id<'scenes'> })
     },
-    [convexEnabled, mRemoveScene],
+    [mirror],
   )
 
   const moveScene = useCallback(
@@ -205,11 +215,11 @@ export function useShotboard(initialBoardId?: string | null): ShotboardState {
         if (i < 0 || j < 0 || j >= sorted.length) return prev
         ;[sorted[i], sorted[j]] = [sorted[j], sorted[i]]
         const renumbered = sorted.map((s, k) => ({ ...s, sceneNumber: k + 1 }))
-        if (convexEnabled) for (const s of renumbered) void mPatchScene({ sceneId: s.id as Id<'scenes'>, sceneNumber: s.sceneNumber })
+        if (mirror) for (const s of renumbered) void mirror.patchScene({ sceneId: s.id as Id<'scenes'>, sceneNumber: s.sceneNumber })
         return renumbered
       })
     },
-    [convexEnabled, mPatchScene],
+    [mirror],
   )
 
   const addShot = useCallback(
@@ -217,35 +227,35 @@ export function useShotboard(initialBoardId?: string | null): ShotboardState {
       const sceneShots = shots.filter((s) => s.sceneId === sceneId)
       const shotNumber = sceneShots.length ? Math.max(...sceneShots.map((s) => s.shotNumber)) + 1 : 1
       const order = sceneShots.length ? Math.max(...sceneShots.map((s) => s.order ?? s.shotNumber)) + 1 : 1
-      if (convexEnabled && boardId) {
-        void mCreateShot({ sceneId: sceneId as Id<'scenes'>, boardId: boardId as Id<'shotboards'>, shotNumber, shotType: 'medium', duration: 8, order }).then(
+      if (mirror && boardId) {
+        void mirror.createShot({ sceneId: sceneId as Id<'scenes'>, boardId: boardId as Id<'shotboards'>, shotNumber, shotType: 'medium', duration: 8, order }).then(
           (id) => setShots((prev) => [...prev, { id: String(id), sceneId, boardId, shotNumber, shotType: 'medium', duration: 8, order }]),
         )
       } else if (boardId) {
         setShots((prev) => [...prev, { id: uid(), sceneId, boardId, shotNumber, shotType: 'medium', duration: 8, order }])
       }
     },
-    [convexEnabled, boardId, shots, mCreateShot],
+    [mirror, boardId, shots],
   )
 
   const patchShot = useCallback(
     (shotId: string, patch: Partial<ShotDetails>) => {
       setShots((prev) => prev.map((s) => (s.id === shotId ? { ...s, ...patch } : s)))
-      if (convexEnabled) {
+      if (mirror) {
         const args = pickDefined(patch, SHOT_PATCH_KEYS)
         if (args.characterIds) args.characterIds = (args.characterIds as string[]).map((id) => id as Id<'characters'>)
-        void mPatchShot({ shotId: shotId as Id<'shots'>, ...args })
+        void mirror.patchShot({ shotId: shotId as Id<'shots'>, ...args })
       }
     },
-    [convexEnabled, mPatchShot],
+    [mirror],
   )
 
   const deleteShot = useCallback(
     (shotId: string) => {
       setShots((prev) => prev.filter((s) => s.id !== shotId))
-      if (convexEnabled) void mRemoveShot({ shotId: shotId as Id<'shots'> })
+      if (mirror) void mirror.removeShot({ shotId: shotId as Id<'shots'> })
     },
-    [convexEnabled, mRemoveShot],
+    [mirror],
   )
 
   const moveShot = useCallback(
@@ -260,39 +270,39 @@ export function useShotboard(initialBoardId?: string | null): ShotboardState {
         ;[siblings[i], siblings[j]] = [siblings[j], siblings[i]]
         const renumbered = siblings.map((s, k) => ({ ...s, order: k + 1, shotNumber: k + 1 }))
         const rest = prev.filter((s) => s.sceneId !== shot.sceneId)
-        if (convexEnabled) void mSetShotOrder({ sceneId: shot.sceneId as Id<'scenes'>, shotIds: renumbered.map((s) => s.id as Id<'shots'>) })
+        if (mirror) void mirror.setShotOrder({ sceneId: shot.sceneId as Id<'scenes'>, shotIds: renumbered.map((s) => s.id as Id<'shots'>) })
         return [...rest, ...renumbered]
       })
     },
-    [convexEnabled, mSetShotOrder],
+    [mirror],
   )
 
   const addCharacter = useCallback(() => {
     const name = `Character ${characters.length + 1}`
-    if (convexEnabled && boardId) {
-      void mCreateCharacter({ boardId: boardId as Id<'shotboards'>, name }).then((id) =>
+    if (mirror && boardId) {
+      void mirror.createCharacter({ boardId: boardId as Id<'shotboards'>, name }).then((id) =>
         setCharacters((prev) => [...prev, { id: String(id), boardId, name }]),
       )
     } else {
       setCharacters((prev) => [...prev, { id: uid(), boardId: boardId ?? undefined, name }])
     }
-  }, [convexEnabled, boardId, characters.length, mCreateCharacter])
+  }, [mirror, boardId, characters.length])
 
   const patchCharacter = useCallback(
     (characterId: string, patch: Partial<CharacterDetails>) => {
       setCharacters((prev) => prev.map((c) => (c.id === characterId ? { ...c, ...patch } : c)))
-      if (convexEnabled) void mPatchCharacter({ characterId: characterId as Id<'characters'>, ...pickDefined(patch, CHARACTER_PATCH_KEYS) })
+      if (mirror) void mirror.patchCharacter({ characterId: characterId as Id<'characters'>, ...pickDefined(patch, CHARACTER_PATCH_KEYS) })
     },
-    [convexEnabled, mPatchCharacter],
+    [mirror],
   )
 
   const deleteCharacter = useCallback(
     (characterId: string) => {
       setCharacters((prev) => prev.filter((c) => c.id !== characterId))
       setShots((prev) => prev.map((s) => ({ ...s, characterIds: s.characterIds?.filter((id) => id !== characterId) })))
-      if (convexEnabled) void mRemoveCharacter({ characterId: characterId as Id<'characters'> })
+      if (mirror) void mirror.removeCharacter({ characterId: characterId as Id<'characters'> })
     },
-    [convexEnabled, mRemoveCharacter],
+    [mirror],
   )
 
   const toggleShotCharacter = useCallback(
@@ -307,7 +317,7 @@ export function useShotboard(initialBoardId?: string | null): ShotboardState {
     [shots, patchShot],
   )
 
-  const loading = convexEnabled && !!boardId && !loadQuery?.board
+  const loading = !!mirror && !!boardId && !loadQuery?.board
 
   return {
     boards,
@@ -317,7 +327,7 @@ export function useShotboard(initialBoardId?: string | null): ShotboardState {
     shots,
     characters,
     loading,
-    persistent: convexEnabled,
+    persistent: !!mirror,
     selectBoard,
     createBoard,
     patchBoard,
@@ -335,4 +345,41 @@ export function useShotboard(initialBoardId?: string | null): ShotboardState {
     deleteCharacter,
     toggleShotCharacter,
   }
+}
+
+/**
+ * Convex-backed shotboard. Must only be mounted under ConvexProvider —
+ * gates live in ShotboardPage via useConvexEnabled().
+ */
+export function useConvexShotboard(initialBoardId?: string | null): ShotboardState {
+  const [boardId, setBoardId] = useState<string | null>(initialBoardId ?? null)
+  const boardsQuery = useQuery(api.shotboards.list, {})
+  const loadQuery = useQuery(
+    api.shotboards.load,
+    boardId ? { boardId: boardId as Id<'shotboards'> } : 'skip',
+  )
+
+  const mirror: ShotboardMirror = {
+    createBoard: useMutation(api.shotboards.create),
+    patchBoard: useMutation(api.shotboards.patch),
+    removeBoard: useMutation(api.shotboards.remove),
+    createScene: useMutation(api.shotboards.createScene),
+    patchScene: useMutation(api.shotboards.patchScene),
+    removeScene: useMutation(api.shotboards.removeScene),
+    createShot: useMutation(api.shotboards.createShot),
+    patchShot: useMutation(api.shotboards.patchShot),
+    removeShot: useMutation(api.shotboards.removeShot),
+    setShotOrder: useMutation(api.shotboards.setShotOrder),
+    createCharacter: useMutation(api.shotboards.createCharacter),
+    patchCharacter: useMutation(api.shotboards.patchCharacter),
+    removeCharacter: useMutation(api.shotboards.removeCharacter),
+  }
+
+  return useShotboardImpl({ boardId, setBoardId, mirror, boardsQuery, loadQuery })
+}
+
+/** Local-state shotboard for environments without Convex configured. */
+export function useLocalShotboard(initialBoardId?: string | null): ShotboardState {
+  const [boardId, setBoardId] = useState<string | null>(initialBoardId ?? null)
+  return useShotboardImpl({ boardId, setBoardId, mirror: null, boardsQuery: undefined, loadQuery: undefined })
 }

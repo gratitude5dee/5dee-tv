@@ -9,7 +9,8 @@ import SceneSidebar from './SceneSidebar'
 import SceneGallery from './SceneGallery'
 import CharacterPanel from './CharacterPanel'
 import ImageModelSelect from './ImageModelSelect'
-import { useShotboard } from './useShotboard'
+import { useConvexShotboard, useLocalShotboard } from './useShotboard'
+import { useConvexEnabled } from '../ConvexClientProvider'
 import { generateImage } from '../../lib/imageGen'
 import { DEFAULT_IMAGE_MODEL, getImageModel } from '../../lib/imageModels'
 import { compileShotsToBeats } from '../../lib/shotboardCompiler'
@@ -18,8 +19,23 @@ import { shotTypeLabel, type CharacterDetails, type SceneDetails, type ShotDetai
 const boardAspect = (aspectRatio?: string) => aspectRatio || '16:9'
 
 export default function ShotboardPage() {
+  const convexEnabled = useConvexEnabled()
+  // Convex hooks cannot mount without a ConvexProvider, so the two variants
+  // are separate components — both render the same view.
+  return convexEnabled ? <ConvexShotboard /> : <LocalShotboard />
+}
+
+function ConvexShotboard() {
   const params = useSearchParams()
-  const sb = useShotboard(params.get('board'))
+  return <ShotboardView sb={useConvexShotboard(params.get('board'))} />
+}
+
+function LocalShotboard() {
+  const params = useSearchParams()
+  return <ShotboardView sb={useLocalShotboard(params.get('board'))} />
+}
+
+function ShotboardView({ sb }: { sb: ReturnType<typeof useConvexShotboard> }) {
 
   const [imageModel, setImageModel] = useState(DEFAULT_IMAGE_MODEL)
   const [imageQuality, setImageQuality] = useState<string | undefined>(undefined)
