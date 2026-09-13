@@ -1,0 +1,271 @@
+'use client'
+
+import { useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
+import { Clapperboard, Plus, Send, Trash2 } from 'lucide-react'
+import SceneSection from './SceneSection'
+import SceneSidebar from './SceneSidebar'
+import SceneGallery from './SceneGallery'
+import CharacterPanel from './CharacterPanel'
+import ImageModelSelect from './ImageModelSelect'
+import { useShotboard } from './useShotboard'
+import { generateImage } from '../../lib/imageGen'
+import { DEFAULT_IMAGE_MODEL, getImageModel } from '../../lib/imageModels'
+import { compileShotsToBeats } from '../../lib/shotboardCompiler'
+import { shotTypeLabel, type CharacterDetails, type SceneDetails, type ShotDetails } from '../../lib/shotboardTypes'
+
+const boardAspect = (aspectRatio?: string) => aspectRatio || '16:9'
+
+export default function ShotboardPage() {
+  const params = useSearchParams()
+  const sb = useShotboard(params.get('board'))
+
+  const [imageModel, setImageModel] = useState(DEFAULT_IMAGE_MODEL)
+  const [imageQuality, setImageQuality] = useState<string | undefined>(undefined)
+  const [generating, setGenerating] = useState<Set<string>>(new Set())
+  const [selectedSceneId, setSelectedSceneId] = useState<string | null>(null)
+  const [selectedCharacterId, setSelectedCharacterId] = useState<string | null>(null)
+  const [status, setStatus] = useState<string | null>(null)
+
+  const selectedScene = sb.scenes.find((s) => s.id === selectedSceneId) ?? sb.scenes[0] ?? null
+
+  const beatPreview = useMemo(
+    () => compileShotsToBeats(sb.scenes, sb.shots, sb.characters),
+    [sb.scenes, sb.shots, sb.characters],
+  )
+
+  const setGen = (id: string, on: boolean) =>
+    setGenerating((prev) => {
+      const next = new Set(prev)
+      if (on) next.add(id)
+      else next.delete(id)
+      return next
+    })
+
+  const characterImageRefs = (shot: ShotDetails) =>
+    (shot.characterIds ?? [])
+      .map((id) => sb.characters.find((c) => c.id === id)?.imageUrl)
+      .filter((u): u is string => !!u)
+
+  const generateShotImage = async (shot: ShotDetails) => {
+    const prompt = (shot.visualPrompt || shot.promptIdea || '').trim()
+    if (!prompt) {
+      setStatus('Give the shot a prompt or direction first')
+      return
+    }
+    const model = getImageModel(shot.imageModel ?? imageModel)
+    const scene = sb.scenes.find((s) => s.id === shot.sceneId)
+    const refs = [shot.imageUrl, scene?.keyframeUrl, ...characterImageRefs(shot)].filter((u): u is string => !!u)
+    const mode = shot.imageUrl ? 'edit' : 't2i'
+    setGen(shot.id, true)
+    sb.patchShot(shot.id, { imageStatus: 'generating' })
+    try {
+      const url = await generateImage({
+        modelId: shot.imageModel ?? model.id,
+        mode: mode === 'edit' && model.kind !== 't2i' ? 'edit' : 't2i',
+        prompt: `${shotTypeLabel(shot.shotType)}: ${prompt}`,
+        refImages: refs,
+        aspectRatio: boardAspect(sb.board?.aspectRatio),
+        quality: imageQuality,
+      })
+      sb.patchShot(shot.id, { imageUrl: url, imageStatus: 'completed', imageModel: model.id })
+      setStatus(null)
+    } catch (e) {
+      sb.patchShot(shot.id, { imageStatus: 'failed' })
+      setStatus(`Image generation failed: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setGen(shot.id, false)
+    }
+  }
+
+  const generateSceneKeyframe = async (scene: SceneDetails) => {
+    const prompt = [scene.title, scene.description, scene.location, scene.timeOfDay, scene.weather, scene.atmosphere]
+      .filter(Boolean)
+      .join(' — ')
+    if (!prompt.trim()) {
+      setStatus('Add a scene description first')
+      return
+    }
+    setGen(scene.id, true)
+    try {
+      const url = await generateImage({
+        modelId: imageModel,
+        mode: scene.keyframeUrl ? 'edit' : 't2i',
+        prompt,
+        refImages: scene.keyframeUrl ? [scene.keyframeUrl] : undefined,
+        aspectRatio: boardAspect(sb.board?.aspectRatio),
+        quality: imageQuality,
+      })
+      sb.patchScene(scene.id, { keyframeUrl: url })
+      setStatus(null)
+    } catch (e) {
+      setStatus(`Keyframe generation failed: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setGen(scene.id, false)
+    }
+  }
+
+  const generateCharacterPortrait = async (character: CharacterDetails) => {
+    const prompt = `Character portrait: ${character.name}${character.description ? ` — ${character.description}` : ''}. Clean neutral background, centered.`
+    setGen(character.id, true)
+    try {
+      const url = await generateImage({
+        modelId: imageModel,
+        mode: character.imageUrl ? 'edit' : 't2i',
+        prompt: character.imageUrl ? `Keep the same character; refine the portrait.` : prompt,
+        refImages: character.imageUrl ? [character.imageUrl] : undefined,
+        aspectRatio: '1:1',
+        quality: imageQuality,
+      })
+      sb.patchCharacter(character.id, { imageUrl: url })
+      setStatus(null)
+    } catch (e) {
+      setStatus(`Portrait generation failed: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setGen(character.id, false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="fal-card">
+        <div className="fal-card-header">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <Clapperboard className="w-4 h-4 text-fal-gray-500 dark:text-fal-gray-400" />
+              <h3 className="fal-card-title">Shotboard</h3>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {sb.persistent && (
+                <select
+                  value={sb.boardId ?? ''}
+                  onChange={(e) => sb.selectBoard(e.target.value || null)}
+                  className="rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-2 py-1.5 text-xs bg-white dark:bg-fal-gray-900"
+                  title="Saved shotboards"
+                >
+                  <option value="">New / unsaved board</option>
+                  {sb.boards.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.title || 'Untitled'}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <button
+                type="button"
+                onClick={() => void sb.createBoard('Untitled Shotboard')}
+                className="fal-button-secondary flex items-center gap-1 text-xs !py-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>New board</span>
+              </button>
+              <ImageModelSelect modelId={imageModel} quality={imageQuality} onChange={setImageModel} onQualityChange={setImageQuality} />
+              {sb.boardId && (
+                <Link
+                  href={`/admin?board=${sb.boardId}`}
+                  className="fal-button-secondary flex items-center gap-1 text-xs !py-1.5"
+                  title="Load this board's compiled script in the Director"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Send to Director</span>
+                </Link>
+              )}
+              {sb.boardId && sb.persistent && (
+                <button
+                  type="button"
+                  onClick={sb.deleteBoard}
+                  className="p-1.5 text-fal-gray-400 hover:text-red-600 dark:hover:text-red-400"
+                  aria-label="Delete board"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="fal-card-content">
+          <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400">
+            Build scenes of shots with generated keyframes — the board compiles to the timed script the
+            Director runs. {beatPreview.length > 0 && <span className="font-medium">{beatPreview.length} beats · {Math.max(0, ...beatPreview.map((b) => b.offset))}s+ runtime.</span>}
+          </p>
+          {status && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{status}</p>}
+          {!sb.persistent && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">Convex not configured — this board lives only in this page&rsquo;s state.</p>
+          )}
+        </div>
+      </div>
+
+      {sb.boardId ? (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[280px_1fr]">
+          <div className="fal-card">
+            <div className="fal-card-content space-y-4">
+              <SceneSidebar
+                scene={selectedScene}
+                boardTitle={sb.board?.title ?? ''}
+                boardDescription={sb.board?.description}
+                onBoardPatch={sb.patchBoard}
+                onScenePatch={(patch) => selectedScene && sb.patchScene(selectedScene.id, patch)}
+                onGenerateKeyframe={generateSceneKeyframe}
+                generatingKeyframe={selectedScene ? generating.has(selectedScene.id) : false}
+              />
+              <CharacterPanel
+                characters={sb.characters}
+                selectedId={selectedCharacterId}
+                generatingIds={generating}
+                onSelect={setSelectedCharacterId}
+                onAdd={sb.addCharacter}
+                onPatch={sb.patchCharacter}
+                onDelete={sb.deleteCharacter}
+                onGenerateImage={generateCharacterPortrait}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-4 min-w-0">
+            <SceneGallery
+              scenes={sb.scenes}
+              shots={sb.shots}
+              selectedSceneId={selectedScene?.id ?? null}
+              onSelect={setSelectedSceneId}
+            />
+            {sb.scenes.map((scene) => (
+              <SceneSection
+                key={scene.id}
+                scene={scene}
+                shots={sb.shots.filter((s) => s.sceneId === scene.id)}
+                characters={sb.characters}
+                selected={selectedScene?.id === scene.id}
+                generatingIds={generating}
+                onSelect={() => setSelectedSceneId(scene.id)}
+                onPatchScene={(patch) => sb.patchScene(scene.id, patch)}
+                onDeleteScene={() => sb.deleteScene(scene.id)}
+                onMoveScene={(dir) => sb.moveScene(scene.id, dir)}
+                onAddShot={() => sb.addShot(scene.id)}
+                onPatchShot={sb.patchShot}
+                onDeleteShot={sb.deleteShot}
+                onMoveShot={sb.moveShot}
+                onGenerateImage={generateShotImage}
+                onToggleCharacter={sb.toggleShotCharacter}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={sb.addScene}
+              className="fal-button-secondary flex items-center gap-1.5 text-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add scene</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="fal-card">
+          <div className="fal-card-content text-xs text-fal-gray-500 dark:text-fal-gray-400">
+            Create a board or pick a saved one to start laying out scenes and shots.
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

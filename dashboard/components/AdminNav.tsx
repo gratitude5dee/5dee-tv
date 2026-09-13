@@ -2,10 +2,11 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Radio, Film, Video, BarChart3 } from 'lucide-react'
+import { Radio, Film, Video, BarChart3, Clapperboard } from 'lucide-react'
 
 const tabs = [
   { href: '/admin', label: 'Live Control', icon: Radio },
+  { href: '/admin/shotboard', label: 'Shotboard', icon: Clapperboard },
   { href: '/admin/clips', label: 'Clips', icon: Film },
   { href: '/admin/recordings', label: 'Recordings', icon: Video },
   { href: '/admin/analytics', label: 'Twitch Analytics', icon: BarChart3 },
