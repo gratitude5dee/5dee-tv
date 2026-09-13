@@ -239,5 +239,6 @@ body {
   --pixel-card-border: rgba(34, 197, 94, 0.7);
 }
 .dark .pixel-card.pixel-card-latest {
+  --pixel-card-border: rgba(34, 197, 94, 0.7);
   --pixel-card-background: rgba(34, 197, 94, 0.08);
 }

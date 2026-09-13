@@ -129,7 +129,14 @@ export default function Dither({
     const host = hostRef.current;
     if (!host) return;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    // WebGL can be unavailable (driver, policy, remote desktop) — the
+    // background is decorative, so bail and keep the page's CSS fallback.
+    let renderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+    } catch {
+      return;
+    }
     renderer.setPixelRatio(1);
     renderer.domElement.className = 'dither-container';
     host.appendChild(renderer.domElement);
