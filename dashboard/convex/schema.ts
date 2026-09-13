@@ -113,4 +113,58 @@ export default defineSchema({
     gameName: v.optional(v.string()),
     capturedAt: v.number(),
   }).index('by_channel', ['channel', 'capturedAt']),
+
+  // Saved shotboards (script templates) edited on /admin/shotboard and compiled
+  // into Director script beats.
+  shotboards: defineTable({
+    title: v.string(),
+    description: v.optional(v.string()),
+    aspectRatio: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_createdAt', ['createdAt']),
+
+  scenes: defineTable({
+    boardId: v.id('shotboards'),
+    sceneNumber: v.number(),
+    title: v.optional(v.string()),
+    description: v.optional(v.string()),
+    location: v.optional(v.string()),
+    timeOfDay: v.optional(v.string()),
+    weather: v.optional(v.string()),
+    atmosphere: v.optional(v.string()),
+    elements: v.optional(v.array(v.string())),
+    cameraEnvironment: v.optional(v.string()),
+    keyframeUrl: v.optional(v.string()),
+  }).index('by_board', ['boardId', 'sceneNumber']),
+
+  shots: defineTable({
+    sceneId: v.id('scenes'),
+    boardId: v.id('shotboards'),
+    shotNumber: v.number(),
+    shotType: v.optional(v.string()),
+    duration: v.optional(v.number()),
+    promptIdea: v.optional(v.string()),
+    visualPrompt: v.optional(v.string()),
+    dialogue: v.optional(v.string()),
+    soundEffects: v.optional(v.string()),
+    imageUrl: v.optional(v.string()),
+    imageStatus: v.optional(v.string()),
+    imageModel: v.optional(v.string()),
+    audioUrl: v.optional(v.string()),
+    characterIds: v.optional(v.array(v.id('characters'))),
+    order: v.optional(v.number()),
+  })
+    .index('by_scene', ['sceneId', 'shotNumber'])
+    .index('by_board', ['boardId']),
+
+  characters: defineTable({
+    boardId: v.optional(v.id('shotboards')),
+    name: v.string(),
+    handle: v.optional(v.string()),
+    description: v.optional(v.string()),
+    imageUrl: v.optional(v.string()),
+    traits: v.optional(v.any()),
+    createdAt: v.number(),
+  }).index('by_board', ['boardId']),
 })

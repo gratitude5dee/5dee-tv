@@ -1204,6 +1204,15 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         onSendLive={sendScript}
         live={live}
         playbackSeconds={playbackSeconds}
+        onTemplateApplied={(meta) => {
+          setSettings((s) => ({
+            ...s,
+            imageUrl: meta.firstFrame || s.imageUrl,
+            characterName: meta.characterName || s.characterName,
+            characterSheet: meta.characterSheet || s.characterSheet,
+          }))
+          appendLog(`shotboard template "${meta.title}" applied to script`)
+        }}
       />
 
       <ChatSteerer

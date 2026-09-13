@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { Component, useState, type ReactNode } from 'react'
 import { ChevronDown, ChevronUp, Clapperboard, ListPlus, Play, Plus, Send, Trash2 } from 'lucide-react'
 import AssetUrlInput from './AssetUrlInput'
+import ScriptTemplatePicker, { type TemplateAppliedMeta } from './ScriptTemplatePicker'
+import { useConvexEnabled } from './ConvexClientProvider'
 import { beatsToWire, type ScriptBeat } from '../lib/directorProtocol'
 
 interface ScriptEditorProps {
@@ -16,6 +18,24 @@ interface ScriptEditorProps {
   live: boolean
   /** Seconds of video played under the running script (from chunk messages), for progress display. */
   playbackSeconds: number | null
+  /** Fired after a saved shotboard template fills the beats — carries session-level
+   * extras (first frame, lead character) to sync into Director settings. */
+  onTemplateApplied?: (meta: TemplateAppliedMeta) => void
+}
+
+/** Hides the template picker when the Convex deployment can't serve the
+ * shotboards queries (e.g. functions not yet pushed to that deployment). */
+class TemplatePickerBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false }
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+  componentDidCatch(error: unknown) {
+    console.warn('shotboard template picker unavailable:', error)
+  }
+  render() {
+    return this.state.failed ? null : this.props.children
+  }
 }
 
 const newBeat = (beats: ScriptBeat[]): ScriptBeat => ({
@@ -33,8 +53,10 @@ export default function ScriptEditor({
   onSendLive,
   live,
   playbackSeconds,
+  onTemplateApplied,
 }: ScriptEditorProps) {
   const [expanded, setExpanded] = useState<Record<number, boolean>>({})
+  const convexEnabled = useConvexEnabled()
 
   const update = (i: number, patch: Partial<ScriptBeat>) =>
     onChange(beats.map((b, j) => (j === i ? { ...b, ...patch } : b)))
@@ -64,6 +86,19 @@ export default function ScriptEditor({
           Timed shots the model runs on its own clock — each beat&rsquo;s direction starts at its offset and
           holds until the next one. Sent with the session, or pushed live to replace/append the queue.
         </p>
+
+        {convexEnabled && (
+          <div className="flex flex-wrap items-center gap-2">
+            <TemplatePickerBoundary>
+              <ScriptTemplatePicker
+                onApply={(compiled, meta) => {
+                  onChange(compiled)
+                  onTemplateApplied?.(meta)
+                }}
+              />
+            </TemplatePickerBoundary>
+          </div>
+        )}
 
         {beats.map((beat, i) => (
           <div key={i} className="rounded-md border border-fal-gray-200 dark:border-fal-gray-700 p-2 space-y-2">
