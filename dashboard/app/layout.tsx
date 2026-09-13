@@ -13,6 +13,7 @@ const themeInit = `
     var d = localStorage.getItem('theme')
     if (d ? d === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches) {
       document.documentElement.classList.add('dark')
+      document.documentElement.style.colorScheme = 'dark'
     }
   } catch (e) {}
 `
@@ -28,7 +29,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>

@@ -75,6 +75,10 @@ body {
 }
 
 /* Dark mode — wzrd.tech chrome theme (class-based, toggled in the header) */
+.dark {
+  color-scheme: dark; /* native form controls (inputs, checkboxes, selects) go dark */
+}
+
 .dark body {
   background: #0a0d14;
   color: #e5e7eb;
