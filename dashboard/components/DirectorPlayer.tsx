@@ -95,7 +95,15 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const promptsByVersionRef = useRef<Map<number, string>>(new Map())
   const recordingStoppedAtRef = useRef<number | null>(null)
   const convexSessionIdRef = useRef<Id<'sessions'> | null>(null)
-  const clipIndexRef = useRef(0)
+  // Per-direction clip capture: a rotating MediaRecorder splits the live stream
+  // at each applied direction so every clip row gets its actual segment media.
+  const clipRecorderRef = useRef<MediaRecorder | null>(null)
+  const clipChunksRef = useRef<Blob[]>([])
+  const clipStartedAtRef = useRef<number | null>(null)
+  const clipIdRef = useRef<Id<'clips'> | null>(null)
+  const lastAppliedRef = useRef<{ version: number; text: string } | null>(null)
+  // Rotation counter: only the newest rotate may claim clipIdRef.
+  const clipRotateRef = useRef(0)
   // Monotonic attempt counter: invalidating it aborts an in-flight connect().
   const connectAttemptRef = useRef(0)
   // Lets server-driven teardown (stream_exhausted) reach the cleanup path.
@@ -140,6 +148,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const setSessionStatus = persistence?.setSessionStatus ?? noop
   const logPromptEvent = persistence?.logPromptEvent ?? noop
   const createClip = persistence?.createClip ?? noop
+  const attachClipMedia = persistence?.attachClipMedia
   const generateUploadUrl = persistence?.generateUploadUrl
   const deleteStorage = persistence?.deleteStorage
   const createRecording = persistence?.createRecording ?? noop
@@ -265,6 +274,107 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     appendLog(`Recording started (${recorder.mimeType})`)
   }, [appendLog])
 
+  const startClipRecorder = useCallback(() => {
+    const stream = streamRef.current
+    if (!stream || clipRecorderRef.current) return
+    const mimeType = pickRecorderMimeType()
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined)
+    clipChunksRef.current = []
+    recorder.ondataavailable = (ev) => {
+      if (ev.data.size > 0) clipChunksRef.current.push(ev.data)
+    }
+    recorder.start(1000)
+    clipRecorderRef.current = recorder
+    clipStartedAtRef.current = Date.now()
+  }, [])
+
+  const stopClipRecorder = useCallback((): Promise<Blob | null> => {
+    const recorder = clipRecorderRef.current
+    if (!recorder || recorder.state === 'inactive') return Promise.resolve(null)
+    return new Promise((resolve) => {
+      recorder.onstop = () => {
+        const blob = new Blob(clipChunksRef.current, { type: recorder.mimeType || 'video/webm' })
+        clipChunksRef.current = []
+        clipRecorderRef.current = null
+        clipStartedAtRef.current = null
+        resolve(blob.size > 0 ? blob : null)
+      }
+      recorder.stop()
+    })
+  }, [])
+
+  const uploadClipSegment = useCallback(
+    async (clipId: Id<'clips'>, blob: Blob, startedAt: number | null) => {
+      if (!generateUploadUrl || !attachClipMedia) return
+      let storageId: Id<'_storage'> | null = null
+      try {
+        const uploadUrl = await generateUploadUrl()
+        const res = await fetch(uploadUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': blob.type.split(';')[0] || 'video/webm' },
+          body: blob,
+        })
+        if (!res.ok) throw new Error(`Clip upload failed: ${res.status}`)
+        storageId = ((await res.json()) as { storageId: Id<'_storage'> }).storageId
+        await attachClipMedia({
+          clipId,
+          storageId,
+          mimeType: blob.type.split(';')[0] || 'video/webm',
+          sizeBytes: blob.size,
+          durationSeconds: startedAt ? (Date.now() - startedAt) / 1000 : 0,
+        })
+        appendLog(`Clip segment saved (${formatBytes(blob.size)})`)
+      } catch (e) {
+        appendLog(`clip: ${e instanceof Error ? e.message : String(e)}`)
+        if (storageId && deleteStorage) {
+          try {
+            await deleteStorage({ storageId })
+          } catch {
+            // ignore
+          }
+        }
+      }
+    },
+    [generateUploadUrl, attachClipMedia, deleteStorage, appendLog],
+  )
+
+  /** Rotate the clip boundary on a newly applied direction: upload the outgoing
+   * segment's media, then open a clip row + recorder for the new one. */
+  const rotateClip = useCallback(
+    (version: number, text: string) => {
+      if (!convexEnabled) return
+      lastAppliedRef.current = { version, text }
+      const rot = ++clipRotateRef.current
+      const prevClipId = clipIdRef.current
+      const prevStartedAt = clipStartedAtRef.current
+      clipIdRef.current = null
+      void (async () => {
+        if (prevClipId) {
+          const blob = await stopClipRecorder()
+          if (blob) await uploadClipSegment(prevClipId, blob, prevStartedAt)
+        }
+        if (!streamRef.current || rot !== clipRotateRef.current) return
+        try {
+          const id = await createClip({
+            sessionId: convexSessionIdRef.current ?? undefined,
+            prompt: text,
+            promptVersion: version,
+            chunkIndex: version,
+            durationSeconds: 0,
+            source: 'director',
+          })
+          if (rot === clipRotateRef.current) {
+            clipIdRef.current = id
+            startClipRecorder()
+          }
+        } catch (e) {
+          appendLog(`convex: ${e instanceof Error ? e.message : String(e)}`)
+        }
+      })()
+    },
+    [convexEnabled, createClip, startClipRecorder, stopClipRecorder, uploadClipSegment, appendLog],
+  )
+
   const handleData = useCallback(
     (raw: string) => {
       let msg: DirectorMessage
@@ -293,6 +403,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           setDirections((prev) => prev.map((d) => (d.version === v ? { ...d, status: 'applied' } : d)))
           const applied = promptsByVersionRef.current.get(v)
           if (applied) setActivePrompt(applied)
+          rotateClip(v, applied ?? '')
         }
         void persist(() =>
           logPromptEvent({
@@ -321,6 +432,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         if (type === 'prompt_applied' && typeof v === 'number') {
           const applied = promptsByVersionRef.current.get(v)
           if (applied) setActivePrompt(applied)
+          rotateClip(v, applied ?? '')
         }
         if (type === 'prompt_applied' || type === 'prompt_rejected') {
           void persist(() =>
@@ -374,34 +486,14 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       }
 
       if (type === 'chunk' || (/chunk|segment/.test(type) && /(complete|done|finished|end)/.test(type))) {
-        const chunkIndex =
-          typeof msg.chunk_index === 'number'
-            ? msg.chunk_index
-            : typeof msg.index === 'number'
-              ? msg.index
-              : clipIndexRef.current
-        clipIndexRef.current = chunkIndex + 1
         const played = msg.playback_seconds ?? msg.playbackSeconds
         if (typeof played === 'number') setPlaybackSeconds(played)
         if (typeof msg.buffer_depth_seconds === 'number') setBufferDepth(msg.buffer_depth_seconds)
         if (typeof msg.next_generation_estimate_seconds === 'number') setGenEstimate(msg.next_generation_estimate_seconds)
         setConnectStep((s) => (s >= 0 ? CONNECT_STEPS.length - 1 : s))
-        void persist(() =>
-          createClip({
-            sessionId: convexSessionIdRef.current ?? undefined,
-            prompt:
-              promptsByVersionRef.current.get(msg.prompt_version ?? promptVersionRef.current) ??
-              promptsByVersionRef.current.get(promptVersionRef.current) ??
-              '',
-            promptVersion: msg.prompt_version ?? promptVersionRef.current,
-            chunkIndex,
-            durationSeconds: msg.duration_seconds ?? msg.duration ?? 0,
-            source: 'director',
-          }),
-        )
       }
     },
-    [appendLog, persist, logPromptEvent, createClip, setSessionStatus],
+    [appendLog, persist, logPromptEvent, rotateClip, setSessionStatus],
   )
 
   const sendPrompt = useCallback(
@@ -618,6 +710,14 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     // Invalidate any in-flight connect() so a cancelled startup can't open a session.
     connectAttemptRef.current += 1
     setState('closing')
+    // Flush the in-flight clip segment before tearing the session down.
+    const lastClipId = clipIdRef.current
+    const lastClipStartedAt = clipStartedAtRef.current
+    clipIdRef.current = null
+    clipRotateRef.current += 1
+    lastAppliedRef.current = null
+    const clipBlob = await stopClipRecorder()
+    if (clipBlob && lastClipId) await uploadClipSegment(lastClipId, clipBlob, lastClipStartedAt)
     const blob = await stopRecorder()
     const session = sessionRef.current
     sessionRef.current = null
@@ -650,7 +750,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     )
     if (closeError) setError(`Session close: ${closeError}`)
     setState('idle')
-  }, [stopRecorder, uploadRecording, persist, setSessionStatus])
+  }, [stopRecorder, stopClipRecorder, uploadClipSegment, uploadRecording, persist, setSessionStatus, appendLog])
   disconnectRef.current = disconnect
 
   const connect = useCallback(async () => {
@@ -659,7 +759,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     setLog([])
     promptVersionRef.current = 0
     promptsByVersionRef.current = new Map()
-    clipIndexRef.current = 0
+    clipIdRef.current = null
+    lastAppliedRef.current = null
     setPlaybackSeconds(null)
     setSessionAllowance(null)
     setDirections([])
@@ -711,6 +812,10 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         appendLog('media stream attached')
         liveStartedAtRef.current = Date.now()
         setConnectStep(CONNECT_STEPS.length - 1)
+        // `configured` can apply the opening direction before media attaches;
+        // start its clip segment now that the stream exists.
+        const pending = lastAppliedRef.current
+        if (pending && !clipIdRef.current) rotateClip(pending.version, pending.text)
       },
       onData: handleData,
       onState: (s) => {
@@ -751,7 +856,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     sessionRef.current = session
     setConnectStep(0)
     sendPrompt(prompt, true)
-  }, [createSession, prompt, appendLog, handleData, persist, setSessionStatus, sendPrompt, settings, scriptBeats])
+  }, [createSession, prompt, appendLog, handleData, persist, rotateClip, setSessionStatus, sendPrompt, settings, scriptBeats])
 
   // Ping the session every 5s while a session object exists; `pong` sets pingMs.
   // Also keeps a local elapsed clock (the model's playback_seconds restarts per

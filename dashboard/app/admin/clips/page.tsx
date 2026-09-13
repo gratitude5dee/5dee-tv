@@ -5,6 +5,7 @@ import { Clock, Film, Layers } from 'lucide-react'
 import { api } from '../../../convex/_generated/api'
 import ConvexNotConfigured from '../../../components/ConvexNotConfigured'
 import { useConvexEnabled } from '../../../components/ConvexClientProvider'
+import PixelCard from '../../../components/reactbits/PixelCard'
 
 function ClipsList() {
   const clips = useQuery(api.clips.list, { limit: 100 })
@@ -31,12 +32,13 @@ function ClipsList() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {clips?.map((clip, index) => (
-              <div
+              <PixelCard
                 key={clip._id}
-                className={`border rounded-lg overflow-hidden ${
-                  index === 0 ? 'border-fal-green-500 bg-fal-green-500/10' : 'border-fal-gray-200 dark:border-fal-gray-700 bg-fal-gray-50 dark:bg-fal-gray-800'
-                }`}
+                variant="blue"
+                noFocus
+                className={index === 0 ? 'pixel-card-latest' : ''}
               >
+                <div className="relative">
                 <div className="aspect-video bg-black flex items-center justify-center">
                   {clip.url ? (
                     <video src={clip.url} controls preload="metadata" className="w-full h-full object-contain" />
@@ -50,8 +52,7 @@ function ClipsList() {
                 <div className="p-3 space-y-2">
                   <div className="flex items-center justify-between text-xs text-fal-gray-600 dark:text-fal-gray-400">
                     <span className="font-mono">
-                      {clip.source} · chunk #{clip.chunkIndex}
-                      {clip.promptVersion !== undefined && ` · v${clip.promptVersion}`}
+                      {clip.source} · {clip.promptVersion !== undefined ? `segment v${clip.promptVersion}` : `chunk #${clip.chunkIndex}`}
                     </span>
                     <span className="flex items-center space-x-1">
                       <Clock className="w-3 h-3" />
@@ -71,7 +72,8 @@ function ClipsList() {
                     )}
                   </div>
                 </div>
-              </div>
+                </div>
+              </PixelCard>
             ))}
           </div>
         )}

@@ -25,6 +25,21 @@ export const create = mutation({
   },
 })
 
+/** Attaches captured segment media to an existing clip row (set when the
+ * segment's rotated recorder is stopped and uploaded). */
+export const attachMedia = mutation({
+  args: {
+    clipId: v.id('clips'),
+    storageId: v.id('_storage'),
+    mimeType: v.string(),
+    sizeBytes: v.number(),
+    durationSeconds: v.number(),
+  },
+  handler: async (ctx, { clipId, ...media }) => {
+    await ctx.db.patch(clipId, media)
+  },
+})
+
 export const list = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
