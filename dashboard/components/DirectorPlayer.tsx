@@ -108,6 +108,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const clipQueueRef = useRef<Promise<void>>(Promise.resolve())
   // Set when teardown begins — queued rotations after this start nothing.
   const clipClosingRef = useRef(false)
+  // Version of the segment whose recorder+row are live — dedupes the server's
+  // double applied-ack (`configured` and `prompt_applied` both fire for it).
+  const clipSegVersionRef = useRef<number | null>(null)
   // Monotonic attempt counter: invalidating it aborts an in-flight connect().
   const connectAttemptRef = useRef(0)
   // Lets server-driven teardown (stream_exhausted) reach the cleanup path.
@@ -352,6 +355,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       lastAppliedRef.current = { version, text }
       clipQueueRef.current = clipQueueRef.current
         .then(async () => {
+          if (clipSegVersionRef.current === version) return
           const prevClipId = clipIdRef.current
           const prevStartedAt = clipStartedAtRef.current
           clipIdRef.current = null
@@ -368,6 +372,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
             })
           }
           if (closing || !streamRef.current) return
+          clipSegVersionRef.current = version
           clipIdRef.current = createClip({
             sessionId: convexSessionIdRef.current ?? undefined,
             prompt: text,
@@ -791,6 +796,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     promptsByVersionRef.current = new Map()
     clipIdRef.current = null
     lastAppliedRef.current = null
+    clipSegVersionRef.current = null
     clipClosingRef.current = false
     setPlaybackSeconds(null)
     setSessionAllowance(null)
