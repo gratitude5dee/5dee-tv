@@ -223,7 +223,13 @@ export const patchShot = mutation({
     await requireIdentity(ctx)
     const shot = await ctx.db.get(shotId)
     await ctx.db.patch(shotId, fields)
-    if (shot) { const board = await ctx.db.get(shot.boardId); await ctx.db.patch(shot.boardId, { revision: (board?.revision ?? 0) + 1, updatedAt: Date.now() }) }
+    if (shot) {
+      const board = await ctx.db.get(shot.boardId)
+      // Derived GMI text does not invalidate the source revision it was
+      // expanded from. User edits and asset/timing changes do.
+      const derivedOnly = Object.keys(fields).every((key) => key === 'expandedPrompt' || key === 'expandedPromptHash' || key === 'expandedPromptRevision' || key === 'directorPrompt' || key === 'directorPromptHash' || key === 'directorPromptRevision')
+      await ctx.db.patch(shot.boardId, { revision: derivedOnly ? (board?.revision ?? 0) : (board?.revision ?? 0) + 1, updatedAt: Date.now() })
+    }
   },
 })
 

@@ -64,6 +64,10 @@ function ShotboardView({ sb, expandPrompt, prepareDirector, locations = [] }: { 
     () => shotboardRuntimeSeconds(sb.scenes, sb.shots),
     [sb.scenes, sb.shots],
   )
+  const staleDirectorShots = useMemo(
+    () => sb.shots.filter((shot) => !shot.directorPrompt?.trim() || shot.directorPromptRevision !== sb.board?.revision).length,
+    [sb.shots, sb.board?.revision],
+  )
 
   const setGen = (id: string, on: boolean) =>
     setGenerating((prev) => {
@@ -116,7 +120,7 @@ function ShotboardView({ sb, expandPrompt, prepareDirector, locations = [] }: { 
     const scene = sb.scenes.find((s) => s.id === shot.sceneId)
     const characters = (shot.characterIds ?? []).map((id) => sb.characters.find((c) => c.id === id)).filter(Boolean)
     const context = [scene?.title, scene?.description, scene?.location, ...characters.map((c) => `${c?.handle || c?.name}: ${c?.description || ''}`)].filter(Boolean).join('\n')
-    const sourceRevision = sb.board?.updatedAt
+    const sourceRevision = sb.board?.revision
     try {
       const result = await expandPrompt({ kind: 'image', source, context, requestId: `${shot.id}-${Date.now()}`, sourceRevision, shotId: shot.id as Id<'shots'> })
       sb.patchShot(shot.id, { expandedPrompt: result.prompt, expandedPromptRevision: sourceRevision })
@@ -213,6 +217,22 @@ function ShotboardView({ sb, expandPrompt, prepareDirector, locations = [] }: { 
                     setPreparingDirector(true)
                     void sb.flush().then(async () => {
                       if (!prepareDirector || !sb.boardId) throw new Error('Director transfer is unavailable')
+                      const revision = sb.board?.revision
+                      if (expandPrompt && revision != null) {
+                        const pending = sb.shots.filter((shot) => !shot.directorPrompt?.trim() || shot.directorPromptRevision !== revision)
+                        for (let index = 0; index < pending.length; index += 2) {
+                          const batch = pending.slice(index, index + 2)
+                          const expanded = await Promise.all(batch.map(async (shot) => {
+                            const scene = sb.scenes.find((item) => item.id === shot.sceneId)
+                            const source = (shot.directorPrompt || shot.expandedPrompt || shot.promptIdea || '').trim()
+                            if (!source) return null
+                            const context = [scene?.title, scene?.description, scene?.location, shot.dialogue ? `Dialogue: ${shot.dialogue}` : '', shot.soundEffects ? `SFX: ${shot.soundEffects}` : ''].filter(Boolean).join('\n')
+                            return { shot, result: await expandPrompt({ kind: 'director', source, context, requestId: `director-${shot.id}-${Date.now()}`, sourceRevision: revision, shotId: shot.id as Id<'shots'> }) }
+                          }))
+                          for (const item of expanded) if (item) sb.patchShot(item.shot.id, { directorPrompt: item.result.prompt, directorPromptRevision: revision })
+                        }
+                        await sb.flush()
+                      }
                       const transferId = await prepareDirector({ boardId: sb.boardId as Id<'shotboards'>, expectedRevision: sb.board?.revision })
                       router.push(`/admin?transfer=${String(transferId)}`)
                     }).catch((e) => setStatus(`Could not prepare Director transfer: ${e instanceof Error ? e.message : String(e)}`)).finally(() => setPreparingDirector(false))
@@ -242,6 +262,7 @@ function ShotboardView({ sb, expandPrompt, prepareDirector, locations = [] }: { 
           <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400">
             Build scenes of shots with generated keyframes — the board compiles to the timed script the
             Director runs. {beatPreview.length > 0 && <span className="font-medium">{beatPreview.length} beats · {runtimeSeconds}s runtime.</span>}
+            {sb.persistent && staleDirectorShots > 0 && <span className="ml-2 text-amber-600 dark:text-amber-400">{staleDirectorShots} shot{staleDirectorShots === 1 ? '' : 's'} need Director expansion before transfer.</span>}
           </p>
           {status && <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">{status}</p>}
           {!sb.persistent && (
