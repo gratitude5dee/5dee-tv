@@ -10,6 +10,8 @@ import AssetUrlInput from './AssetUrlInput'
 import ChatSteerer from './ChatSteerer'
 import DirectorSettingsForm from './DirectorSettingsForm'
 import ScriptEditor from './ScriptEditor'
+import TrackManager from './TrackManager'
+import TwitchBroadcast from './TwitchBroadcast'
 import { DitherButton } from './dither-kit/button'
 import { DitherGradient } from './dither-kit/gradient'
 import {
@@ -1020,6 +1022,8 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           {lastUpload && !uploading && <span className="text-sm text-green-700 dark:text-green-400 self-center">{lastUpload}</span>}
         </div>
 
+        <TwitchBroadcast live={live} getStream={() => streamRef.current} onLog={appendLog} />
+
         {error && (
           <div className="text-sm text-red-700 dark:text-red-400 bg-red-50 border border-red-200 rounded-md px-3 py-2">{error}</div>
         )}
@@ -1046,6 +1050,12 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         live={live}
         onDirection={sendChatDirection}
         onFrameCommand={(author) => void captureFrame(`@${author}`)}
+      />
+
+      <TrackManager
+        live={live}
+        onUseForSession={(url) => setSettings((s) => ({ ...s, audioUrl: url }))}
+        onUseLive={setLiveAudioUrl}
       />
     </div>
   )

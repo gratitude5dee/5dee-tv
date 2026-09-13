@@ -94,6 +94,15 @@ export default defineSchema({
     .index('by_timestamp', ['timestamp'])
     .index('by_generation', ['generationId', 'timestamp']),
 
+  // Admin-uploaded songs usable as Director audio references (audio_url).
+  tracks: defineTable({
+    name: v.string(),
+    storageId: v.id('_storage'),
+    mimeType: v.string(),
+    sizeBytes: v.number(),
+    createdAt: v.number(),
+  }).index('by_createdAt', ['createdAt']),
+
   // Twitch Helix samples captured by the analytics page poller.
   twitchStats: defineTable({
     channel: v.string(),

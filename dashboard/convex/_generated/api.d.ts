@@ -13,6 +13,7 @@ import type * as generations from "../generations.js";
 import type * as promptEvents from "../promptEvents.js";
 import type * as recordings from "../recordings.js";
 import type * as sessions from "../sessions.js";
+import type * as tracks from "../tracks.js";
 import type * as twitchStats from "../twitchStats.js";
 
 import type {
@@ -27,6 +28,7 @@ declare const fullApi: ApiFromModules<{
   promptEvents: typeof promptEvents;
   recordings: typeof recordings;
   sessions: typeof sessions;
+  tracks: typeof tracks;
   twitchStats: typeof twitchStats;
 }>;
 
