@@ -225,3 +225,19 @@ body {
 .connection-connecting {
   @apply bg-fal-yellow-500/10 text-fal-yellow-700 border border-fal-yellow-500/30;
 }
+
+/* React Bits PixelCard — themed to the fal palette; latest item keeps the green accent. */
+.pixel-card {
+  --pixel-card-border: #e5e7eb;
+  --pixel-card-background: #f9fafb;
+}
+.dark .pixel-card {
+  --pixel-card-border: #374151;
+  --pixel-card-background: #1f2937;
+}
+.pixel-card.pixel-card-latest {
+  --pixel-card-border: rgba(34, 197, 94, 0.7);
+}
+.dark .pixel-card.pixel-card-latest {
+  --pixel-card-background: rgba(34, 197, 94, 0.08);
+}

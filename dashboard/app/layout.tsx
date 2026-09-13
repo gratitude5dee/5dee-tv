@@ -3,7 +3,7 @@ import { JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import ConvexClientProvider from '../components/ConvexClientProvider'
 import ThemeToggle from '../components/ThemeToggle'
-import { DitherGradient } from '../components/dither-kit/gradient'
+import DitherBackground from '../components/DitherBackground'
 
 const jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-mono' })
 
@@ -34,7 +34,8 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
       <body className={`font-focal ${jetbrainsMono.variable}`}>
-        <div className="min-h-screen bg-fal-gray-50 dark:bg-[#0a0d14]">
+        <DitherBackground />
+        <div className="min-h-screen bg-fal-gray-50/60 dark:bg-[#0a0d14]/45">
           {/* wzrd.tech header */}
           <header className="bg-[#0a0d14] border-b border-fal-gray-800">
             <div className="max-w-7xl mx-auto px-6 lg:px-8">
@@ -58,15 +59,8 @@ export default function RootLayout({
             </div>
           </header>
           
-          {/* Main Content — dithered wash behind the page */}
+          {/* Main Content */}
           <main className="relative max-w-7xl mx-auto px-6 lg:px-8 py-8">
-            <DitherGradient
-              from="blue"
-              direction="up"
-              cell={4}
-              opacity={0.14}
-              className="absolute inset-0 pointer-events-none"
-            />
             <div className="relative fade-in">
               <ConvexClientProvider>{children}</ConvexClientProvider>
             </div>

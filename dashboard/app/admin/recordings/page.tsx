@@ -5,6 +5,7 @@ import { Clock, Download, Trash2, Video } from 'lucide-react'
 import { api } from '../../../convex/_generated/api'
 import ConvexNotConfigured from '../../../components/ConvexNotConfigured'
 import { useConvexEnabled } from '../../../components/ConvexClientProvider'
+import PixelCard from '../../../components/reactbits/PixelCard'
 
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
@@ -48,12 +49,13 @@ function RecordingsList() {
         ) : (
           <div className="space-y-4">
             {recordings?.map((recording, index) => (
-              <div
+              <PixelCard
                 key={recording._id}
-                className={`border rounded-lg p-4 grid grid-cols-1 lg:grid-cols-3 gap-4 ${
-                  index === 0 ? 'border-fal-green-500 bg-fal-green-500/10' : 'border-fal-gray-200 dark:border-fal-gray-700 bg-fal-gray-50 dark:bg-fal-gray-800'
-                }`}
+                variant="blue"
+                noFocus
+                className={index === 0 ? 'pixel-card-latest' : ''}
               >
+                <div className="relative p-4 grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="aspect-video bg-black rounded overflow-hidden">
                   {recording.url ? (
                     <video src={recording.url} controls preload="metadata" className="w-full h-full object-contain" />
@@ -119,7 +121,8 @@ function RecordingsList() {
                     </button>
                   </div>
                 </div>
-              </div>
+                </div>
+              </PixelCard>
             ))}
           </div>
         )}
