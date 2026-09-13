@@ -57,8 +57,8 @@ function ShotboardView({ sb, expandPrompt, prepareDirector, locations = [] }: { 
   const selectedScene = sb.scenes.find((s) => s.id === selectedSceneId) ?? sb.scenes[0] ?? null
 
   const beatPreview = useMemo(
-    () => compileShotsToBeats(sb.scenes, sb.shots, sb.characters),
-    [sb.scenes, sb.shots, sb.characters],
+    () => compileShotsToBeats(sb.scenes, sb.shots, sb.characters, locations),
+    [sb.scenes, sb.shots, sb.characters, locations],
   )
   const runtimeSeconds = useMemo(
     () => shotboardRuntimeSeconds(sb.scenes, sb.shots),

@@ -5,6 +5,11 @@ async function requireIdentity(ctx: { auth: { getUserIdentity: () => Promise<unk
   if (!(await ctx.auth.getUserIdentity())) throw new Error('Authentication required')
 }
 
+async function touchBoard(ctx: { db: any }, boardId: any, increment = true) {
+  const board = await ctx.db.get(boardId)
+  if (board) await ctx.db.patch(boardId, { revision: increment ? (board.revision ?? 0) + 1 : (board.revision ?? 0), updatedAt: Date.now() })
+}
+
 // Editable scene fields; sceneNumber lives in scenePatchFields since it is also
 // a required create arg (duplicate keys would weaken the validator).
 const sceneFields = {
@@ -146,7 +151,7 @@ export const load = query({
         .withIndex('by_board', (q) => q.eq('boardId', boardId))
         .collect(),
     ])
-    return { board, scenes, shots, characters }
+    return { board, scenes, shots, characters: characters.filter((row) => !row.archivedAt) }
   },
 })
 
@@ -168,7 +173,7 @@ export const createScene = mutation({
   handler: async (ctx, { boardId, ...fields }) => {
     await requireIdentity(ctx)
     const id = await ctx.db.insert('scenes', { boardId, ...fields })
-    await ctx.db.patch(boardId, { updatedAt: Date.now() })
+    await touchBoard(ctx, boardId)
     return id
   },
 })
@@ -177,7 +182,9 @@ export const patchScene = mutation({
   args: { sceneId: v.id('scenes'), sceneNumber: v.optional(v.number()), ...sceneFields },
   handler: async (ctx, { sceneId, ...fields }) => {
     await requireIdentity(ctx)
+    const scene = await ctx.db.get(sceneId)
     await ctx.db.patch(sceneId, fields)
+    if (scene) await touchBoard(ctx, scene.boardId)
   },
 })
 
@@ -185,12 +192,14 @@ export const removeScene = mutation({
   args: { sceneId: v.id('scenes') },
   handler: async (ctx, { sceneId }) => {
     await requireIdentity(ctx)
+    const scene = await ctx.db.get(sceneId)
     const shots = await ctx.db
       .query('shots')
       .withIndex('by_scene', (q) => q.eq('sceneId', sceneId))
       .collect()
     for (const shot of shots) await ctx.db.delete(shot._id)
     await ctx.db.delete(sceneId)
+    if (scene) await touchBoard(ctx, scene.boardId)
   },
 })
 
@@ -212,7 +221,7 @@ export const createShot = mutation({
   handler: async (ctx, { sceneId, boardId, ...fields }) => {
     await requireIdentity(ctx)
     const id = await ctx.db.insert('shots', { sceneId, boardId, ...fields })
-    await ctx.db.patch(boardId, { updatedAt: Date.now() })
+    await touchBoard(ctx, boardId)
     return id
   },
 })
@@ -237,7 +246,9 @@ export const removeShot = mutation({
   args: { shotId: v.id('shots') },
   handler: async (ctx, { shotId }) => {
     await requireIdentity(ctx)
+    const shot = await ctx.db.get(shotId)
     await ctx.db.delete(shotId)
+    if (shot) await touchBoard(ctx, shot.boardId)
   },
 })
 
@@ -246,9 +257,11 @@ export const setShotOrder = mutation({
   args: { sceneId: v.id('scenes'), shotIds: v.array(v.id('shots')) },
   handler: async (ctx, { sceneId, shotIds }) => {
     await requireIdentity(ctx)
+    const scene = await ctx.db.get(sceneId)
     for (let i = 0; i < shotIds.length; i++) {
       await ctx.db.patch(shotIds[i], { sceneId, order: i + 1, shotNumber: i + 1 })
     }
+    if (scene) await touchBoard(ctx, scene.boardId)
   },
 })
 
@@ -263,8 +276,9 @@ export const listCharacters = query({
         .query('characters')
         .withIndex('by_board', (q) => q.eq('boardId', boardId))
         .collect()
+        .then((rows) => rows.filter((row) => !row.archivedAt))
     }
-    return await ctx.db.query('characters').collect()
+    return await ctx.db.query('characters').collect().then((rows) => rows.filter((row) => !row.archivedAt))
   },
 })
 
@@ -272,7 +286,9 @@ export const createCharacter = mutation({
   args: { boardId: v.optional(v.id('shotboards')), name: v.string(), ...characterFields },
   handler: async (ctx, { boardId, name, ...fields }) => {
     await requireIdentity(ctx)
-    return await ctx.db.insert('characters', { boardId, name, ...fields, createdAt: Date.now() })
+    const id = await ctx.db.insert('characters', { boardId, name, ...fields, createdAt: Date.now() })
+    if (boardId) await touchBoard(ctx, boardId)
+    return id
   },
 })
 
@@ -280,7 +296,9 @@ export const patchCharacter = mutation({
   args: { characterId: v.id('characters'), name: v.optional(v.string()), ...characterFields },
   handler: async (ctx, { characterId, ...fields }) => {
     await requireIdentity(ctx)
+    const character = await ctx.db.get(characterId)
     await ctx.db.patch(characterId, fields)
+    if (character?.boardId) await touchBoard(ctx, character.boardId)
   },
 })
 
@@ -305,5 +323,6 @@ export const removeCharacter = mutation({
     // episodes. Board-local associations are detached above, while shared
     // characters are simply archived rather than physically deleted.
     await ctx.db.patch(characterId, { archivedAt: Date.now() })
+    if (character?.boardId) await touchBoard(ctx, character.boardId)
   },
 })

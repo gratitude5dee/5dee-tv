@@ -37,14 +37,14 @@ export default function ShotCard({
   const [mentionQuery, setMentionQuery] = useState('')
   const [mentionOpen, setMentionOpen] = useState(false)
   const assigned = new Set(shot.characterIds ?? [])
-  const displayedPrompt = shot.expandedPrompt ?? shot.promptIdea ?? ''
+  const displayedPrompt = shot.expandedPrompt || shot.promptIdea || ''
   const mentionMatches = characters.filter((character) => {
     const needle = mentionQuery.toLowerCase()
     return (character.handle || character.name).toLowerCase().replace(/^@/, '').includes(needle)
   }).slice(0, 6)
 
   const updatePrompt = (value: string) => {
-    onPatch({ promptIdea: value, expandedPrompt: undefined })
+    onPatch({ promptIdea: value, expandedPrompt: '' })
     const match = value.match(/@([a-z0-9_-]*)$/i)
     setMentionQuery(match?.[1] ?? '')
     setMentionOpen(Boolean(match))
@@ -53,7 +53,7 @@ export default function ShotCard({
   const insertMention = (character: CharacterDetails) => {
     const handle = (character.handle || character.name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-')).replace(/^@/, '')
     const next = displayedPrompt.replace(/@[a-z0-9_-]*$/i, `@${handle} `)
-    onPatch({ promptIdea: next, expandedPrompt: undefined, characterIds: [...new Set([...assigned, character.id])] })
+    onPatch({ promptIdea: next, expandedPrompt: '', characterIds: [...new Set([...assigned, character.id])] })
     setMentionOpen(false)
     setMentionQuery('')
   }
@@ -160,7 +160,7 @@ export default function ShotCard({
           {expanding ? 'Expanding…' : 'Expand'}
         </button>
         {shot.expandedPrompt && (
-          <button type="button" onClick={() => onPatch({ expandedPrompt: undefined })} className="mt-0.5 text-[10px] text-fal-gray-400 hover:text-fal-gray-600 dark:hover:text-fal-gray-300">Undo expansion</button>
+          <button type="button" onClick={() => onPatch({ expandedPrompt: '' })} className="mt-0.5 text-[10px] text-fal-gray-400 hover:text-fal-gray-600 dark:hover:text-fal-gray-300">Undo expansion</button>
         )}
       </div>
 
