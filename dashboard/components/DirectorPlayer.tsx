@@ -408,17 +408,18 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       if (!session) return
       promptVersionRef.current += 1
       const version = promptVersionRef.current
-      promptsByVersionRef.current.set(version, text)
+      const anchor = configure ? settings.characterName.trim() : ''
+      const wireText = anchor && !text.includes(anchor) ? `${anchor} — ${text}` : text
+      promptsByVersionRef.current.set(version, wireText)
       if (configure) {
         // Full configure message: world prompt + every locked setting. A script
         // in configure cannot combine with end_image_url/audio_url — the beats
         // carry their own.
         const beats = sendScriptOnConnect ? beatsToWire(scriptBeats) : []
-        const anchor = settings.characterName.trim()
         const wire: ConfigureWire = {
           protocol_version: 1,
           type: 'configure',
-          prompt: anchor && !text.includes(anchor) ? `${anchor} — ${text}` : text,
+          prompt: wireText,
           prompt_version: version,
           resolution: settings.resolution,
           aspect_ratio: settings.aspectRatio,
@@ -437,7 +438,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       } else {
         const wire: PromptWire = {
           type: 'prompt',
-          prompt: text,
+          prompt: wireText,
           prompt_version: version,
           ...(liveEndImage.trim() ? { end_image_url: liveEndImage.trim() } : {}),
           ...(liveAudioUrl.trim() ? { audio_url: liveAudioUrl.trim(), audio_behavior: 'replace' } : {}),
@@ -448,13 +449,13 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         if (liveAudioUrl.trim()) setLiveAudioUrl('')
       }
       // Active prompt is only set when the server applies it (prompt_applied).
-      setDirections((prev) => [...prev, { version, text, status: 'sent' as const }].slice(-8))
+      setDirections((prev) => [...prev, { version, text: wireText, status: 'sent' as const }].slice(-8))
       appendLog(`${configure ? 'configure' : 'prompt'} sent (v${version})`)
       void persist(() =>
         logPromptEvent({
           sessionId: convexSessionIdRef.current!,
           kind: configure ? 'configure' : 'prompt',
-          prompt: text,
+          prompt: wireText,
           promptVersion: version,
         }),
       )
