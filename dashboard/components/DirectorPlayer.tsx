@@ -6,6 +6,18 @@ import { wma, type ManagedRealtimeSession, type RealtimeState, type WmaRealtimeS
 import { Circle, Play, Send, Square, Upload, Volume2, VolumeX } from 'lucide-react'
 import type { Id } from '../convex/_generated/dataModel'
 import type { DirectorPersistence } from './useDirectorPersistence'
+import AssetUrlInput from './AssetUrlInput'
+import ChatSteerer from './ChatSteerer'
+import DirectorSettingsForm from './DirectorSettingsForm'
+import ScriptEditor from './ScriptEditor'
+import {
+  beatsToWire,
+  DEFAULT_DIRECTOR_SETTINGS,
+  type ConfigureWire,
+  type DirectorSettings,
+  type PromptWire,
+  type ScriptBeat,
+} from '../lib/directorProtocol'
 
 export const DIRECTOR_MODEL = 'minimax/h3-max/director'
 export const FAL_SDK_PROXY_URL = '/api/fal/sdk-proxy'
@@ -19,6 +31,10 @@ interface DirectorMessage {
   type?: string
   prompt_version?: number
   chunk_index?: number
+  index?: number
+  playback_seconds?: number
+  playbackSeconds?: number
+  reason?: string
   duration?: number
   duration_seconds?: number
   message?: string
@@ -69,6 +85,14 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const [uploading, setUploading] = useState(false)
   const [recordedBytes, setRecordedBytes] = useState(0)
   const [lastUpload, setLastUpload] = useState<string | null>(null)
+  const [settings, setSettings] = useState<DirectorSettings>(DEFAULT_DIRECTOR_SETTINGS)
+  const [scriptBeats, setScriptBeats] = useState<ScriptBeat[]>([])
+  const [sendScriptOnConnect, setSendScriptOnConnect] = useState(true)
+  // Playback clock under the running script, from `chunk` messages.
+  const [playbackSeconds, setPlaybackSeconds] = useState<number | null>(null)
+  // Live end-frame / target-audio overrides for the next prompt message.
+  const [liveEndImage, setLiveEndImage] = useState('')
+  const [liveAudioUrl, setLiveAudioUrl] = useState('')
 
   const noop = async () => undefined
   const createSession = persistence?.createSession
@@ -237,9 +261,34 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         return
       }
 
-      if (/chunk|segment/.test(type) && /(complete|done|finished|end)/.test(type)) {
-        const chunkIndex = typeof msg.chunk_index === 'number' ? msg.chunk_index : clipIndexRef.current
+      if (type === 'prompt_rejected') {
+        const reason = String(msg.reason ?? msg.error ?? 'rejected')
+        setError(`Prompt rejected: ${reason}`)
+        appendLog(`prompt_rejected: ${reason}`)
+        return
+      }
+
+      if (type === 'stream_exhausted') {
+        appendLog(`stream_exhausted: ${String(msg.reason ?? 'ended')}`)
+        setState('idle')
+        void persist(() =>
+          convexSessionIdRef.current
+            ? setSessionStatus({ sessionId: convexSessionIdRef.current, status: 'ended' })
+            : Promise.resolve(),
+        )
+        return
+      }
+
+      if (type === 'chunk' || (/chunk|segment/.test(type) && /(complete|done|finished|end)/.test(type))) {
+        const chunkIndex =
+          typeof msg.chunk_index === 'number'
+            ? msg.chunk_index
+            : typeof msg.index === 'number'
+              ? msg.index
+              : clipIndexRef.current
         clipIndexRef.current = chunkIndex + 1
+        const played = msg.playback_seconds ?? msg.playbackSeconds
+        if (typeof played === 'number') setPlaybackSeconds(played)
         void persist(() =>
           createClip({
             sessionId: convexSessionIdRef.current ?? undefined,
@@ -255,7 +304,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         )
       }
     },
-    [appendLog, persist, logPromptEvent, createClip],
+    [appendLog, persist, logPromptEvent, createClip, setSessionStatus],
   )
 
   const sendPrompt = useCallback(
@@ -265,12 +314,41 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
       promptVersionRef.current += 1
       const version = promptVersionRef.current
       promptsByVersionRef.current.set(version, text)
-      session.send({
-        protocol_version: 1,
-        type: configure ? 'configure' : 'prompt',
-        prompt: text,
-        prompt_version: version,
-      })
+      if (configure) {
+        // Full configure message: world prompt + every locked setting. A script
+        // in configure cannot combine with end_image_url/audio_url — the beats
+        // carry their own.
+        const beats = sendScriptOnConnect ? beatsToWire(scriptBeats) : []
+        const wire: ConfigureWire = {
+          protocol_version: 1,
+          type: 'configure',
+          prompt: text,
+          prompt_version: version,
+          resolution: settings.resolution,
+          aspect_ratio: settings.aspectRatio,
+          memory: settings.memory,
+          audio_bitrate: settings.audioBitrate,
+          ...(settings.seed != null ? { seed: settings.seed } : {}),
+          ...(settings.imageUrl.trim() ? { image_url: settings.imageUrl.trim() } : {}),
+          ...(beats.length
+            ? { script: beats }
+            : {
+                ...(settings.endImageUrl.trim() ? { end_image_url: settings.endImageUrl.trim() } : {}),
+                ...(settings.audioUrl.trim() ? { audio_url: settings.audioUrl.trim() } : {}),
+              }),
+        }
+        session.send(wire)
+      } else {
+        const wire: PromptWire = {
+          protocol_version: 1,
+          type: 'prompt',
+          prompt: text,
+          prompt_version: version,
+          ...(liveEndImage.trim() ? { end_image_url: liveEndImage.trim() } : {}),
+          ...(liveAudioUrl.trim() ? { audio_url: liveAudioUrl.trim(), audio_behavior: 'replace' } : {}),
+        }
+        session.send(wire)
+      }
       setActivePrompt(text)
       appendLog(`${configure ? 'configure' : 'prompt'} sent (v${version})`)
       void persist(() =>
@@ -282,7 +360,48 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         }),
       )
     },
+    [appendLog, persist, logPromptEvent, settings, scriptBeats, sendScriptOnConnect, liveEndImage, liveAudioUrl],
+  )
+
+  /** Push a script mid-session: 'replace' cuts at the next chunk, 'append' queues it. */
+  const sendScript = useCallback(
+    (beats: ScriptBeat[], mode: 'replace' | 'append') => {
+      const session = sessionRef.current
+      if (!session) return
+      const wireBeats = beatsToWire(beats)
+      if (!wireBeats.length) return
+      promptVersionRef.current += 1
+      const version = promptVersionRef.current
+      promptsByVersionRef.current.set(version, `[script ×${wireBeats.length}]`)
+      const wire: PromptWire = {
+        protocol_version: 1,
+        type: 'prompt',
+        prompt_version: version,
+        script: wireBeats,
+        script_mode: mode,
+      }
+      session.send(wire)
+      setActivePrompt(`script (${wireBeats.length} beats, ${mode})`)
+      appendLog(`script ${mode} sent (v${version}, ${wireBeats.length} beats)`)
+      void persist(() =>
+        logPromptEvent({
+          sessionId: convexSessionIdRef.current!,
+          kind: 'prompt',
+          prompt: `[script ${mode}] ${wireBeats.map((b) => `@${b.offset}s ${b.prompt ?? ''}`.trim()).join(' | ')}`,
+          promptVersion: version,
+        }),
+      )
+    },
     [appendLog, persist, logPromptEvent],
+  )
+
+  /** A chat-sourced direction; attributed so the expander and the log show the chatter. */
+  const sendChatDirection = useCallback(
+    (text: string, author: string) => {
+      sendPrompt(`[chat @${author}] ${text}`, false)
+      appendLog(`chat @${author}: ${text.slice(0, 80)}`)
+    },
+    [sendPrompt, appendLog],
   )
 
   const disconnect = useCallback(async () => {
@@ -313,6 +432,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     promptVersionRef.current = 0
     promptsByVersionRef.current = new Map()
     clipIndexRef.current = 0
+    setPlaybackSeconds(null)
     setState('opening')
 
     if (createSession) {
@@ -323,7 +443,15 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         sessionId = await createSession({
           model: 'director',
           outputMode: 'webrtc',
-          config: { model: DIRECTOR_MODEL, prompt },
+          config: {
+            model: DIRECTOR_MODEL,
+            prompt,
+            resolution: settings.resolution,
+            aspectRatio: settings.aspectRatio,
+            memory: settings.memory,
+            seed: settings.seed ?? undefined,
+            scriptBeats: beatsToWire(scriptBeats).length,
+          },
         })
       } catch (e) {
         appendLog(`convex: ${e instanceof Error ? e.message : String(e)}`)
@@ -377,7 +505,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
     })
     sessionRef.current = session
     sendPrompt(prompt, true)
-  }, [createSession, prompt, appendLog, handleData, persist, setSessionStatus, sendPrompt])
+  }, [createSession, prompt, appendLog, handleData, persist, setSessionStatus, sendPrompt, settings, scriptBeats])
 
   useEffect(() => {
     return () => {
@@ -390,8 +518,9 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
   const busy = state === 'opening' || state === 'closing'
 
   return (
-    <div className="fal-card">
-      <div className="fal-card-header">
+    <div>
+      <div className="fal-card">
+        <div className="fal-card-header">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="fal-card-title">Director (realtime WebRTC)</h3>
@@ -421,7 +550,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
         </div>
       </div>
 
-      <div className="fal-card-content space-y-4">
+        <div className="fal-card-content space-y-4">
         <div className="relative bg-black rounded-lg overflow-hidden aspect-video">
           <video ref={videoRef} autoPlay playsInline muted={muted} className="w-full h-full object-contain" />
           {!live && (
@@ -440,8 +569,26 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
           )}
         </div>
 
+        {!live && !busy && (
+          <details className="rounded-md border border-fal-gray-200">
+            <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-fal-gray-700 select-none">
+              Session settings <span className="text-xs text-fal-gray-400 font-normal">(locked once connected)</span>
+            </summary>
+            <div className="px-3 pb-3">
+              <DirectorSettingsForm
+                settings={settings}
+                onChange={setSettings}
+                disabled={live || busy}
+                scriptPlanned={sendScriptOnConnect && beatsToWire(scriptBeats).length > 0}
+              />
+            </div>
+          </details>
+        )}
+
         <div>
-          <label className="block text-sm font-medium text-fal-gray-700 mb-1">Prompt</label>
+          <label className="block text-sm font-medium text-fal-gray-700 mb-1">
+            {live ? 'Next direction' : 'Opening prompt (the series premise)'}
+          </label>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -452,6 +599,18 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
             <p className="text-xs text-fal-gray-500 mt-1">
               Active (v{promptVersionRef.current}): {activePrompt}
             </p>
+          )}
+          {live && (
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 mt-2">
+              <div>
+                <label className="block text-xs text-fal-gray-500 mb-1">End frame for next scene (optional)</label>
+                <AssetUrlInput value={liveEndImage} onChange={setLiveEndImage} placeholder="Image URL or upload" />
+              </div>
+              <div>
+                <label className="block text-xs text-fal-gray-500 mb-1">Replace audio track (optional)</label>
+                <AssetUrlInput value={liveAudioUrl} onChange={setLiveAudioUrl} kind="audio" placeholder="Audio URL or upload" />
+              </div>
+            </div>
           )}
         </div>
 
@@ -473,7 +632,7 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
             className="fal-button-secondary flex items-center space-x-2 disabled:opacity-50"
           >
             <Send className="w-4 h-4" />
-            <span>Update prompt</span>
+            <span>Send direction</span>
           </button>
           {live && !recording && (
             <button onClick={startRecorder} className="fal-button-secondary flex items-center space-x-2">
@@ -506,7 +665,20 @@ export default function DirectorPlayer({ persistence }: DirectorPlayerProps) {
             {log.join('\n')}
           </pre>
         )}
+        </div>
       </div>
+
+      <ScriptEditor
+        beats={scriptBeats}
+        onChange={setScriptBeats}
+        sendOnConnect={sendScriptOnConnect}
+        onSendOnConnectChange={setSendScriptOnConnect}
+        onSendLive={sendScript}
+        live={live}
+        playbackSeconds={playbackSeconds}
+      />
+
+      <ChatSteerer live={live} onDirection={sendChatDirection} />
     </div>
   )
 }
