@@ -98,6 +98,8 @@ export default defineSchema({
   tracks: defineTable({
     name: v.string(),
     storageId: v.id('_storage'),
+    // Artwork is independently stored so audio remains reusable if a cover is replaced.
+    coverStorageId: v.optional(v.id('_storage')),
     mimeType: v.string(),
     sizeBytes: v.number(),
     createdAt: v.number(),
