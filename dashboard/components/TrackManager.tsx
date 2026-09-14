@@ -1,11 +1,12 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from 'convex/react'
 import { Check, Loader2, Music, Play, Trash2, Upload } from 'lucide-react'
 import { api } from '../convex/_generated/api'
 import type { Id } from '../convex/_generated/dataModel'
 import { useConvexEnabled } from './ConvexClientProvider'
+import MorphSlider from './reactbits/MorphSlider'
 
 interface TrackManagerProps {
   /** Use the track as the session's target audio (configure-time audio_url). */
@@ -84,6 +85,10 @@ function TrackManagerInner({ onUseForSession, onUseLive, onUseForMix, live }: Tr
   }
 
   const selectedTrack = tracks?.find((t) => t._id === selected)
+  const sliderTracks = useMemo(() => (tracks ?? []).filter((track) => Boolean(track.coverUrl && track.url)), [tracks])
+  const sliderItems = useMemo(() => sliderTracks.map((track) => ({ image: track.coverUrl!, caption: track.name })), [sliderTracks])
+  const selectedSliderIndex = sliderTracks.findIndex((track) => track._id === selected)
+  const selectSliderTrack = useCallback((index: number) => setSelected(sliderTracks[index]?._id ?? null), [sliderTracks])
 
   return (
     <div className="fal-card">
@@ -112,21 +117,44 @@ function TrackManagerInner({ onUseForSession, onUseLive, onUseForMix, live }: Tr
           </button>
         </div>
       </div>
-      <div className="fal-card-content space-y-2">
+      <div className="fal-card-content space-y-4">
         {tracks === undefined && <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400">Loading…</p>}
         {tracks?.length === 0 && (
           <p className="text-xs text-fal-gray-500 dark:text-fal-gray-400">
             No songs yet — upload one to use it as the stream&apos;s audio reference.
           </p>
         )}
-        <ul className="space-y-1">
+        {sliderTracks.length > 0 && (
+          <section className="overflow-hidden rounded-xl border border-violet-300/50 bg-[#0c0c12] shadow-[0_18px_50px_rgba(44,20,89,0.18)] dark:border-violet-400/25" aria-label="Coast originals artwork carousel">
+            <div className="relative mx-auto aspect-square w-full max-w-xl">
+              <MorphSlider
+                key={sliderTracks.map((track) => track._id).join(':')}
+                items={sliderItems}
+                activeIndex={selectedSliderIndex >= 0 ? selectedSliderIndex : undefined}
+                transition="melt"
+                intensity={0.46}
+                aberration={0.24}
+                drift={0.22}
+                autoplay
+                autoplayDelay={6}
+                radius={12}
+                overlayColor="#090713"
+                onIndexChange={selectSliderTrack}
+              />
+              <div className="absolute left-4 top-4 z-10 rounded-full border border-white/15 bg-black/45 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.15em] text-violet-100 backdrop-blur">
+                Coast originals · {sliderTracks.length} tracks
+              </div>
+            </div>
+          </section>
+        )}
+        <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
           {tracks?.map((track) => (
             <li
               key={track._id}
-              className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs cursor-pointer ${
+              className={`flex min-w-0 items-center gap-2 rounded-lg border p-2 text-xs cursor-pointer transition-colors ${
                 selected === track._id
-                  ? 'border-fal-primary-500 bg-fal-primary-50 dark:bg-fal-primary-900/20'
-                  : 'border-fal-gray-200 dark:border-fal-gray-700'
+                  ? 'border-violet-500 bg-violet-50 dark:bg-violet-950/35'
+                  : 'border-fal-gray-200 bg-white/80 hover:border-violet-300 dark:border-fal-gray-700 dark:bg-fal-gray-900/80 dark:hover:border-violet-500/60'
               }`}
               onClick={() => setSelected(selected === track._id ? null : track._id)}
             >
@@ -135,10 +163,12 @@ function TrackManagerInner({ onUseForSession, onUseLive, onUseForMix, live }: Tr
               }`}>
                 {selected === track._id && <Check className="w-2.5 h-2.5 text-fal-primary-500" />}
               </span>
-              <span className="flex-1 truncate font-medium text-fal-gray-700 dark:text-fal-gray-300">
-                {track.name}
-              </span>
-              <span className="text-fal-gray-400">{formatBytes(track.sizeBytes)}</span>
+              {track.coverUrl ? (
+                // Convex storage provides a public, CORS-enabled image URL for the slider and thumbnail.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={track.coverUrl} alt="" className="h-10 w-10 rounded-md object-cover ring-1 ring-black/10" />
+              ) : <div className="flex h-10 w-10 items-center justify-center rounded-md bg-violet-100 text-violet-700 dark:bg-violet-950/70 dark:text-violet-200"><Music className="h-4 w-4" /></div>}
+              <span className="min-w-0 flex-1"><span className="block truncate font-medium text-fal-gray-800 dark:text-fal-gray-100">{track.name}</span><span className="block pt-0.5 text-[10px] text-fal-gray-400">{formatBytes(track.sizeBytes)}</span></span>
               <button
                 onClick={(e) => {
                   e.stopPropagation()
@@ -154,7 +184,9 @@ function TrackManagerInner({ onUseForSession, onUseLive, onUseForMix, live }: Tr
           ))}
         </ul>
         {selectedTrack?.url && (
-          <div className="flex flex-wrap items-center gap-2 pt-1">
+          <div className="rounded-lg border border-violet-200 bg-violet-50/60 p-3 dark:border-violet-500/25 dark:bg-violet-950/20">
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-fal-gray-800 dark:text-fal-gray-100"><Music className="h-3.5 w-3.5 text-violet-600 dark:text-violet-300" /> {selectedTrack.name}</div>
+            <div className="flex flex-wrap items-center gap-2">
             <audio controls preload="metadata" src={selectedTrack.url} className="h-8 max-w-full" aria-label={`Preview ${selectedTrack.name}`} />
             <label className="flex items-center gap-1 text-[10px] text-fal-gray-500">Volume
               <input type="range" min="0" max="1" step="0.05" value={mixVolume} onChange={(e) => setMixVolume(Number(e.target.value))} aria-label="Music mix volume" />
@@ -188,6 +220,7 @@ function TrackManagerInner({ onUseForSession, onUseLive, onUseForMix, live }: Tr
                 <Music className="w-3 h-3" /> Mix in output
               </button>
             )}
+            </div>
           </div>
         )}
         {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}

@@ -38,6 +38,12 @@ const AccordionGallery = ({
   const count = items.length;
   const [active, setActive] = useState(Math.min(Math.max(defaultIndex, 0), count - 1));
 
+  // Library pages use a stable record id for their selected asset. Reset the
+  // visual preview when that id changes, without treating a hover as a save.
+  useEffect(() => {
+    setActive(Math.min(Math.max(defaultIndex, 0), Math.max(count - 1, 0)));
+  }, [defaultIndex, count]);
+
   const prefersReduced =
     typeof window !== 'undefined' && window.matchMedia
       ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -92,7 +98,11 @@ const AccordionGallery = ({
           if (isActive) {
             tl.to([bar, text], { opacity: 1, x: 0, duration: dur, ease, stagger: prefersReduced ? 0 : stagger }, 0);
           } else {
-            tl.to([bar, text], { opacity: 0, x: -14, duration: dur * 0.6, ease }, 0);
+            // The original React Bits treatment hides every collapsed label.
+            // Asset libraries need their alternatives identifiable on touch and
+            // mobile, so keep a quieter label visible until the card expands.
+            tl.to(bar, { opacity: 0.62, x: 0, duration: dur * 0.6, ease }, 0);
+            tl.to(text, { opacity: 0.72, x: 0, duration: dur * 0.6, ease }, 0);
           }
         }
       });
@@ -160,6 +170,7 @@ const AccordionGallery = ({
   };
 
   const handleKeyDown = (i, e) => {
+    if (!count) return;
     let next;
     if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
       e.preventDefault();
@@ -195,7 +206,7 @@ const AccordionGallery = ({
     >
       {items.map((item, i) => {
         const isActive = i === active;
-        const Tag = item.link ? 'a' : 'div';
+        const Tag = item.link ? 'a' : 'button';
         return (
           <Tag
             key={item.id ?? i}
@@ -203,11 +214,12 @@ const AccordionGallery = ({
             className={`ag-panel${isActive ? ' ag-panel--active' : ''}`}
             style={{ borderRadius: `${radius}px` }}
             href={item.link || undefined}
+            type={item.link ? undefined : 'button'}
             onClick={e => handleClick(i, e)}
             onMouseEnter={() => handleEnter(i)}
             onFocus={() => setActive(i)}
             onKeyDown={e => handleKeyDown(i, e)}
-            role={item.link ? 'listitem' : 'button'}
+            role={item.link ? 'listitem' : undefined}
             tabIndex={isActive ? 0 : -1}
             aria-current={isActive ? 'true' : undefined}
             aria-label={item.label}

@@ -17,6 +17,30 @@ export interface ImageModelDef {
   defaultQuality?: string
 }
 
+/**
+ * Model-specific knobs exposed by the asset studio. Unsupported fields are
+ * never forwarded to Fal; callers cannot accidentally copy Nano parameters to
+ * the GPT Image endpoints (or the other way around).
+ */
+export interface ImageGenerationOptions {
+  aspectRatio?: string
+  quality?: string
+  numImages?: number
+  outputFormat?: 'jpeg' | 'png' | 'webp'
+  resolution?: '0.5K' | '1K' | '2K' | '4K'
+  seed?: number
+  systemPrompt?: string
+  enableWebSearch?: boolean
+  safetyTolerance?: '1' | '2' | '3' | '4' | '5' | '6'
+  thinkingLevel?: 'minimal' | 'high'
+  background?: 'auto' | 'transparent' | 'opaque'
+  outputCompression?: number
+  maskUrl?: string
+}
+
+export const MAX_ASSET_REFERENCES = 14
+export const ASPECT_RATIOS = ['21:9', '16:9', '3:2', '4:3', '5:4', '1:1', '4:5', '3:4', '2:3', '9:16'] as const
+
 export const IMAGE_MODELS: readonly ImageModelDef[] = [
   {
     id: 'nano-banana',
@@ -51,7 +75,10 @@ export const IMAGE_MODELS: readonly ImageModelDef[] = [
 export const DEFAULT_IMAGE_MODEL = 'nano-banana'
 
 export function getImageModel(id?: string | null): ImageModelDef {
-  return IMAGE_MODELS.find((m) => m.id === id) ?? IMAGE_MODELS[0]
+  if (!id) return IMAGE_MODELS[0]
+  const model = IMAGE_MODELS.find((candidate) => candidate.id === id)
+  if (!model) throw new Error(`Unknown image model: ${id}`)
+  return model
 }
 
 /** Map a director aspect ratio to a gpt-image image_size preset. */
@@ -75,40 +102,76 @@ export function buildImageInput(args: {
   refImages?: string[]
   aspectRatio?: string
   quality?: string
+  options?: ImageGenerationOptions
 }): { endpoint: string; input: Record<string, unknown> } {
-  const { model, mode, prompt, refImages, aspectRatio, quality } = args
+  const { model, mode, prompt, refImages, aspectRatio, quality, options = {} } = args
   const endpoint = mode === 'edit' ? model.endpointEdit : model.endpointT2i
   if (!endpoint) throw new Error(`${model.label} does not support ${mode}`)
+  const references = [...new Set((refImages ?? []).map((url) => url.trim()).filter(Boolean))]
+  if (references.length > MAX_ASSET_REFERENCES) {
+    throw new Error(`This workspace supports at most ${MAX_ASSET_REFERENCES} reference images; remove some references first`)
+  }
+  const outputFormat = options.outputFormat ?? 'png'
+  const count = options.numImages ?? 1
+  if (!Number.isInteger(count) || count < 1 || count > 4) throw new Error('Choose between 1 and 4 image variations')
+  if (options.outputCompression != null && (!Number.isInteger(options.outputCompression) || options.outputCompression < 0 || options.outputCompression > 100)) {
+    throw new Error('Output compression must be an integer from 0 to 100')
+  }
 
   if (model.family === 'gpt-image') {
     const input: Record<string, unknown> = {
       prompt,
-      image_size: gptImageSize(aspectRatio),
-      quality: quality ?? model.defaultQuality ?? 'high',
+      image_size: gptImageSize(options.aspectRatio ?? aspectRatio),
+      quality: options.quality ?? quality ?? model.defaultQuality ?? 'high',
+      num_images: count,
+      output_format: outputFormat,
+      background: options.background ?? 'auto',
+    }
+    if (options.outputCompression != null) {
+      if (outputFormat === 'png') throw new Error('PNG output does not support compression; choose JPEG or WebP')
+      input.output_compression = options.outputCompression
     }
     if (mode === 'edit') {
-      if ((refImages ?? []).length > 16) throw new Error(`${model.label} supports at most 16 reference images; remove some references first`)
-      input.image_urls = refImages ?? []
+      if (!references.length) throw new Error(`${model.label} needs at least one reference image for editing`)
+      input.image_urls = references
+      if (options.maskUrl?.trim()) input.mask_url = options.maskUrl.trim()
     }
     return { endpoint, input }
   }
 
   // nano-banana-2
   if (mode === 'edit') {
-    if ((refImages ?? []).length > 16) throw new Error(`${model.label} supports at most 16 reference images; remove some references first`)
+    if (!references.length) throw new Error(`${model.label} needs at least one reference image for editing`)
     return {
       endpoint,
-      input: { prompt, image_urls: refImages ?? [], aspect_ratio: aspectRatio ?? '16:9', resolution: '1K', num_images: 1, output_format: 'jpeg' },
+      input: {
+        prompt,
+        image_urls: references,
+        aspect_ratio: options.aspectRatio ?? aspectRatio ?? '4:3',
+        resolution: options.resolution ?? '1K',
+        num_images: count,
+        output_format: outputFormat,
+        ...(options.seed != null ? { seed: options.seed } : {}),
+        ...(options.systemPrompt?.trim() ? { system_prompt: options.systemPrompt.trim() } : {}),
+        ...(options.enableWebSearch != null ? { enable_web_search: options.enableWebSearch } : {}),
+        ...(options.safetyTolerance ? { safety_tolerance: options.safetyTolerance } : {}),
+        ...(options.thinkingLevel ? { thinking_level: options.thinkingLevel } : {}),
+      },
     }
   }
   return {
     endpoint,
     input: {
       prompt,
-      aspect_ratio: aspectRatio ?? '16:9',
-      resolution: '1K',
-      num_images: 1,
-      output_format: 'jpeg',
+      aspect_ratio: options.aspectRatio ?? aspectRatio ?? '4:3',
+      resolution: options.resolution ?? '1K',
+      num_images: count,
+      output_format: outputFormat,
+      ...(options.seed != null ? { seed: options.seed } : {}),
+      ...(options.systemPrompt?.trim() ? { system_prompt: options.systemPrompt.trim() } : {}),
+      ...(options.enableWebSearch != null ? { enable_web_search: options.enableWebSearch } : {}),
+      ...(options.safetyTolerance ? { safety_tolerance: options.safetyTolerance } : {}),
+      ...(options.thinkingLevel ? { thinking_level: options.thinkingLevel } : {}),
     },
   }
 }

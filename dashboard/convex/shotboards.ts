@@ -136,7 +136,7 @@ export const load = query({
   args: { boardId: v.id('shotboards') },
   handler: async (ctx, { boardId }) => {
     if (!(await ctx.auth.getUserIdentity())) return { board: null, scenes: [], shots: [], characters: [] }
-    const [board, scenes, shots, characters] = await Promise.all([
+    const [board, scenes, shots, localCharacters, sharedCharacters] = await Promise.all([
       ctx.db.get(boardId),
       ctx.db
         .query('scenes')
@@ -148,10 +148,14 @@ export const load = query({
         .collect(),
       ctx.db
         .query('characters')
-        .withIndex('by_board', (q) => q.eq('boardId', boardId))
-        .collect(),
+        .withIndex('by_board_and_archivedAt', (q) => q.eq('boardId', boardId).eq('archivedAt', undefined))
+        .take(100),
+      ctx.db
+        .query('characters')
+        .withIndex('by_board_and_archivedAt', (q) => q.eq('boardId', undefined).eq('archivedAt', undefined))
+        .take(100),
     ])
-    return { board, scenes, shots, characters: characters.filter((row) => !row.archivedAt) }
+    return { board, scenes, shots, characters: [...localCharacters, ...sharedCharacters] }
   },
 })
 
@@ -272,13 +276,13 @@ export const listCharacters = query({
   handler: async (ctx, { boardId }) => {
     if (!(await ctx.auth.getUserIdentity())) return []
     if (boardId) {
-      return await ctx.db
-        .query('characters')
-        .withIndex('by_board', (q) => q.eq('boardId', boardId))
-        .collect()
-        .then((rows) => rows.filter((row) => !row.archivedAt))
+      const [local, shared] = await Promise.all([
+        ctx.db.query('characters').withIndex('by_board_and_archivedAt', (q) => q.eq('boardId', boardId).eq('archivedAt', undefined)).take(100),
+        ctx.db.query('characters').withIndex('by_board_and_archivedAt', (q) => q.eq('boardId', undefined).eq('archivedAt', undefined)).take(100),
+      ])
+      return [...local, ...shared]
     }
-    return await ctx.db.query('characters').collect().then((rows) => rows.filter((row) => !row.archivedAt))
+    return await ctx.db.query('characters').withIndex('by_board_and_archivedAt', (q) => q.eq('boardId', undefined).eq('archivedAt', undefined)).take(100)
   },
 })
 

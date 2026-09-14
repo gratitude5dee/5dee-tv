@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ImagePlus, Loader2, Trash2, Users, Wand2 } from 'lucide-react'
 import AssetUrlInput from '../AssetUrlInput'
+import AccordionGallery from '../reactbits/AccordionGallery'
 import type { CharacterDetails, ShotDetails } from '../../lib/shotboardTypes'
 import { SHOT_TYPE_OPTIONS } from '../../lib/shotboardTypes'
 
@@ -165,24 +166,7 @@ export default function ShotCard({
       </div>
 
       {characters.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1">
-          <Users className="w-3 h-3 text-fal-gray-400" />
-          {characters.map((c) => (
-            <button
-              key={c.id}
-              type="button"
-              onClick={() => onToggleCharacter(c.id)}
-              className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${
-                assigned.has(c.id)
-                  ? 'border-fal-primary-500 text-fal-primary-600 dark:text-fal-primary-400 bg-fal-primary-500/10'
-                  : 'border-fal-gray-300 dark:border-fal-gray-700 text-fal-gray-500 dark:text-fal-gray-400'
-              }`}
-              title={c.description || c.name}
-            >
-              {c.handle || c.name}
-            </button>
-          ))}
-        </div>
+        <div className="space-y-1"><div className="flex flex-wrap items-center gap-1"><Users className="w-3 h-3 text-fal-gray-400" />{characters.map((c) => <button key={c.id} type="button" onClick={() => onToggleCharacter(c.id)} className={`px-1.5 py-0.5 rounded text-[10px] border transition-colors ${assigned.has(c.id) ? 'border-fal-primary-500 text-fal-primary-600 dark:text-fal-primary-400 bg-fal-primary-500/10' : 'border-fal-gray-300 dark:border-fal-gray-700 text-fal-gray-500 dark:text-fal-gray-400'}`} title={c.description || c.name}>{c.handle || c.name}</button>)}</div><details><summary className="cursor-pointer text-[10px] text-fal-primary-700 dark:text-fal-primary-300">Choose from character gallery</summary><div className="mt-1 rounded-md border border-fal-gray-200 bg-white p-1 dark:border-fal-gray-700 dark:bg-fal-gray-900"><AccordionGallery key={`${shot.id}-${[...assigned].join(',')}`} items={characters.map((character) => ({ id: character.id, image: character.imageUrl, label: character.handle ? `@${character.handle.replace(/^@/, '')}` : character.name }))} defaultIndex={Math.max(0, characters.findIndex((character) => assigned.has(character.id)))} height={130} expandRatio={0.5} accentColor="#a78bfa" overlayColor="#05030b" grayscale={false} onSelect={(index: number) => { const character = characters[index]; if (character) onToggleCharacter(character.id) }} /></div></details></div>
       )}
 
       <button

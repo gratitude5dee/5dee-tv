@@ -2,6 +2,7 @@
 
 import { ArrowDown, ArrowUp, Plus, Trash2 } from 'lucide-react'
 import ShotCard from './ShotCard'
+import AccordionGallery from '../reactbits/AccordionGallery'
 import type { CharacterDetails, LocationDetails, SceneDetails, ShotDetails } from '../../lib/shotboardTypes'
 
 interface SceneSectionProps {
@@ -65,7 +66,7 @@ export default function SceneSection({
           placeholder={`Scene ${scene.sceneNumber}`}
           className="flex-1 min-w-0 rounded-md border border-transparent hover:border-fal-gray-300 dark:hover:border-fal-gray-700 px-2 py-1 text-sm font-medium bg-transparent focus:outline-none focus:ring-1 focus:ring-fal-primary-500"
         />
-        {locations.length > 0 && <select value={scene.locationId ?? ''} onChange={(e) => onPatchScene({ locationId: e.target.value || undefined })} className="max-w-40 rounded-md border border-fal-gray-300 dark:border-fal-gray-700 px-2 py-1 text-xs bg-white dark:bg-fal-gray-900" aria-label="Scene location"><option value="">Location</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select>}
+        {locations.length > 0 && <details className="relative shrink-0"><summary className="max-w-44 cursor-pointer list-none rounded-md border border-fal-gray-300 bg-white px-2 py-1 text-xs text-fal-gray-700 shadow-sm dark:border-fal-gray-700 dark:bg-fal-gray-900 dark:text-fal-gray-200">{locations.find((location) => location.id === scene.locationId)?.name ?? 'Choose location'}</summary><div className="absolute right-0 z-30 mt-2 w-[min(420px,calc(100vw-2rem))] rounded-xl border border-fal-gray-300 bg-white p-2 shadow-xl dark:border-fal-gray-600 dark:bg-fal-gray-950"><AccordionGallery key={`${scene.id}-${scene.locationId ?? 'none'}`} items={locations.map((location) => ({ id: location.id, image: location.imageUrl, label: location.name }))} defaultIndex={Math.max(0, locations.findIndex((location) => location.id === scene.locationId))} height={150} expandRatio={0.5} accentColor="#a78bfa" overlayColor="#05030b" grayscale={false} onSelect={(index: number) => { const location = locations[index]; if (location) onPatchScene({ locationId: location.id }) }} /></div></details>}
         <button
           type="button"
           onClick={() => onMoveScene(-1)}
