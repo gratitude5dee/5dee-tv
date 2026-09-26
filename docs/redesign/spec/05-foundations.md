@@ -2,7 +2,7 @@
 
 ## 5. Foundations
 
-This section implements bible §2–§3 with corrections C1–C16 (§4.4.5). Repo facts and line references are as of `845147c`. Paths are repo-relative. The `.mjs` scripts below run on the baseline Node 22.22.2, and they import `lib/*.ts` directly through Node's built-in type stripping (verified).
+This section implements bible §2–§3 with corrections §4.4.5 C1–C16. Repo facts and line references are as of `845147c`. Paths are repo-relative. The `.mjs` scripts below need Node ≥ 22.18 (§1.5; 22.22.2 recommended, as pinned in `dashboard/.nvmrc`), because they import `lib/*.ts` directly through Node's built-in type stripping (verified on 22.22.2).
 
 **Where this section lands.** §14 is the only source of milestone and part placement. This table names the §14 parts that carry this section's work:
 
@@ -21,7 +21,7 @@ All counts below assume part 0A (D1 dead-code removal) has merged.
 | Path | Status | Contents | Allowed top-level nodes |
 |---|---|---|---|
 | `dashboard/postcss.config.js` | changed | `postcss-import` first | — |
-| `dashboard/package.json` | changed | `"devDependencies": { "postcss-import": "15.1.0" }` (dev-only; justify under D8 in the PR: it is already installed through tailwindcss 3.4.17) | — |
+| `dashboard/package.json` | changed | `"devDependencies": { "postcss-import": "15.1.0" }` (dev-only, exact version; justify under D8 in the PR: it is already installed through tailwindcss 3.4.17) | — |
 | `dashboard/app/globals.css` | rewritten | import list only | `@import` |
 | `dashboard/app/styles/tokens.css` | new | every global custom property (the `--bayer-*` tiles excepted), plus the global reduced-motion rule, `scroll-padding` and the base element rules (§5.2) | `@layer base` |
 | `dashboard/app/styles/bayer.css` | new, generated | 16 mask tiles (§5.13) | `@layer base` |
@@ -43,6 +43,12 @@ All counts below assume part 0A (D1 dead-code removal) has merged.
 | `dashboard/scripts/gen-bayer.mjs` | new | §5.13 | — |
 | `dashboard/scripts/codemods/foundations.mjs` | new | §5.19 | — |
 | `dashboard/scripts/checks/{css-layers,cn,uppercase,lucide,format}.mjs`, `uppercase-allowlist.txt`, `lucide-allowlist.txt` | new | §5.17, §5.20.4, §5.20.5, §5.20.6, §5.21 | — |
+
+Add `postcss-import` in 1B with an exact version, from `dashboard/`. 15.1.0 is the version the lockfile already resolves through tailwindcss 3.4.17 at 845147c; confirm it still matches at implementation time:
+
+```bash
+npm i -D -E postcss-import@15.1.0
+```
 
 `dashboard/postcss.config.js`:
 
@@ -200,7 +206,7 @@ module.exports = {
 }
 ```
 
-> Note: this adds six things to the bible's file. (1) `--fs-body`/`--lh-body`, which implement the density table (C13). (2) The `body, :where(body [data-density])` font rule. It deliberately excludes `html`, so `1rem` stays 16 px, and `:where()` gives the density-root selector zero specificity, so a `text-*` class on a `data-density` root still wins. (3) The global reduced-motion block from bible §5.10, which §6 relies on. It is the only global reduced-motion rule. (4) The chrome offsets `--h-chrome`, `--h-offline` and `--dock-h`, driven by `html[data-offline]` and `html[data-dock]` (§5.8, §7.6). (5) The 44 px coarse-pointer `--h-status`. (6) The on-screen focus colour for controls inside screen, bezel and HUD materials (§5.6).
+> Note: this adds six things to the bible's file. (1) `--fs-body`/`--lh-body`, which implement the density table (§4.4.5 C13). (2) The `body, :where(body [data-density])` font rule. It deliberately excludes `html`, so `1rem` stays 16 px, and `:where()` gives the density-root selector zero specificity, so a `text-*` class on a `data-density` root still wins. (3) The global reduced-motion block from bible §5.10, which §6 relies on. It is the only global reduced-motion rule. (4) The chrome offsets `--h-chrome`, `--h-offline` and `--dock-h`, driven by `html[data-offline]` and `html[data-dock]` (§5.8, §7.6). (5) The 44 px coarse-pointer `--h-status`. (6) The on-screen focus colour for controls inside screen, bezel and HUD materials (§5.6).
 
 ### 5.3 Colour tokens
 
@@ -250,7 +256,7 @@ Every colour token is a set of space-separated RGB channels, and alphas live in 
 
 **Usage rules:**
 - Alpha modifiers on token colours are allowed (`bg-accent/20`, `border-white/[.08]` on bezel housings), except on the four surface colours (§4.2 principle 2).
-- `ring-inset` is banned, because the colour name `inset` makes it also set a ring colour (C6).
+- `ring-inset` is banned, because the colour name `inset` makes it also set a ring colour (§4.4.5 C6).
 - Tailwind's default palette stays defined because dither-kit uses stock `gray-*`. App code uses raw palette hues (`red-*`, `amber-*`, `violet-*`…) only until its page migrates. They are gated to 0 in M9 (§15).
 
 ### 5.4 Colour laws
@@ -284,7 +290,7 @@ The shader constants never change: `waveFrequency 2.6`, `waveAmplitude 0.4`, `co
 
 ### 5.6 Contrast ledger and `tests/contrast.spec.ts`
 
-**Method.** For every pair, the ratio is the **minimum over every pixel the carrier can render** (F1), computed as:
+**Method.** For every pair, the ratio is the **minimum over every pixel the carrier can render** (§4.4.4 F1), computed as:
 - veil = `--c-canvas` at `--dither-veil` over the pixel;
 - chassis, panel, raised = the surface at its `--a-*` over the veil;
 - inset = inset at `--a-inset` over the **panel** composite (inputs always sit inside panels);
@@ -329,7 +335,7 @@ The values below are floored to 2 decimals. "Min" is the assertion threshold.
 - `bg-accent-soft` never marks state alone: against the panel it measures 1.15 (light) and 1.23 (dark).
 - The `tally-off` ring (2.00 vs bezel) is decorative only.
 
-> Note: the bible's ledger (bible §2.4) listed the HUD plate at ≈7.9 (recomputed: 6.70), bezel vs light chassis at 17.31 (15.94) and hover 13.54 / 7.70 / 5.07 (13.45 / 7.64 / 5.04). Every pair still passes. The table above is what the test asserts (C9).
+> Note: the bible's ledger (bible §2.4) listed the HUD plate at ≈7.9 (recomputed: 6.70), bezel vs light chassis at 17.31 (15.94) and hover 13.54 / 7.70 / 5.07 (13.45 / 7.64 / 5.04). Every pair still passes. The table above is what the test asserts (§4.4.5 C9).
 
 **`tests/contrast.spec.ts` computation.** §15 owns the harness. The math is this file:
 
@@ -468,7 +474,7 @@ There are no coloured glows anywhere.
 - Never pass `variant="frosted-glass"` to the dither-kit Tooltip (`components/dither-kit/tooltip.tsx:13` uses `backdrop-blur-sm`). The default variant is used.
 - `components/reactbits/ChromaGrid.css:125-126,158-159` (a grayscale backdrop, not a blur, fixture-only after §9) is the only allowed exception.
 
-> Note: the bible's gate excluded all of `components/reactbits/*.css`, which would have left a live 10 px blur on Live Control (C14).
+> Note: the bible's gate excluded all of `components/reactbits/*.css`, which would have left a live 10 px blur on Live Control (§4.4.5 C14).
 
 ### 5.11 z-index
 
@@ -636,7 +642,7 @@ This is the only text of these three files. §6.15 lists each motion class with 
 - `key-jitter`: the Button error state (`[data-btn][data-state="error"]`, §6.9): 180 ms, three 60 ms frames, `steps(1, end)`.
 - Every `boot-*` keyframe lives only in `BOOT_CSS` (§6.2.13). This file defines none.
 
-> Note: the bible animated `background-position` for CoastLoader, which bible §10.1.4 forbids. The strip now uses a transform (C10). The bible also put keyframes in the Tailwind config, where they would not be emitted for `.px-resolve` or `.skeleton-dither` (C2).
+> Note: the bible animated `background-position` for CoastLoader, which bible §10.1.4 forbids. The strip now uses a transform (§4.4.5 C10). The bible also put keyframes in the Tailwind config, where they would not be emitted for `.px-resolve` or `.skeleton-dither` (§4.4.5 C2).
 
 ```css
 /* Original implementation inspired by "Pixel Transition" (https://www.reactbits.dev/animations/pixel-transition). No upstream source copied. */
@@ -752,7 +758,7 @@ This is the only text of these three files. §6.15 lists each motion class with 
 }
 ```
 
-> Note: the bible's `.skeleton-dither` masked the host itself. A masked host also clips its `::after`, so the 50% sweep could never show. The static field is now on `::before` (C8).
+> Note: the bible's `.skeleton-dither` masked the host itself. A masked host also clips its `::after`, so the 50% sweep could never show. The static field is now on `::before` (§4.4.5 C8).
 
 ```css
 /* dashboard/app/styles/components.css — legacy shims and carrier classes. Utilities always win over these. */
@@ -797,8 +803,9 @@ module.exports = {
   darkMode: 'class',
   content: ['./pages/**/*.{js,ts,jsx,tsx,mdx}','./components/**/*.{js,ts,jsx,tsx,mdx}','./app/**/*.{js,ts,jsx,tsx,mdx}',
             './lib/**/*.{js,ts,jsx,tsx}','./hooks/**/*.{js,ts,jsx,tsx}'],
-  // 'dark' keeps every `.dark …` rule inside @layer blocks from being purged; the other four are tested in 1B before any TSX uses them
-  safelist: ['dark', 'px-resolve', 'skeleton-dither', 'dither-veil', 'dither-fallback'],
+  // 'dark' keeps every `.dark …` rule inside @layer blocks from being purged; the other nine are tested in 1B before any TSX uses them
+  safelist: ['dark', 'px-resolve', 'skeleton-dither', 'dither-veil', 'dither-fallback',
+             'surface-chassis', 'surface-panel', 'surface-raised', 'surface-inset', 'surface-hud'],
   theme: {
     screens: { sm:'640px', md:'768px', lg:'1024px', xl:'1280px', wide:'1440px', '2xl':'1536px', '3xl':'1920px' }, // full override: extend would mis-order
     fontWeight: { light:'300', normal:'400', medium:'500', bold:'700' },                                   // full override: no 600 in Focal
@@ -873,7 +880,7 @@ module.exports = {
 
 In 1B, `fontFamily` and `fontWeight` keep today's values from `tailwind.config.js:116-128`. M2 replaces them with the values above (§5 placement table). The build of this config with the real `app/` and `components/` content was verified: `.fal-card` gets `border-radius: var(--r-md)` and `background-color: rgb(var(--c-panel) / var(--a-panel))`; `.text-body` gets `font-size: var(--fs-body)`; `font-semibold` is not generated.
 
-> Note: `safelist` is added to the bible's config. Without `'dark'`, Tailwind 3 purges `.dark {…}` token blocks inside `@layer` whenever the literal `dark` is missing from the content (reproduced; C3). Without the other four, `.px-resolve`, `.skeleton-dither`, `.dither-veil` and `.dither-fallback` are not emitted until a content file uses them, so the 1B checks in §5.21 would find no rule. `content` also scans `lib/` and `hooks/`, because class strings authored there (for example a tone→class map) would otherwise be purged.
+> Note: `safelist` is added to the bible's config. Without `'dark'`, Tailwind 3 purges `.dark {…}` token blocks inside `@layer` whenever the literal `dark` is missing from the content (reproduced; §4.4.5 C3). Without the other nine, `.px-resolve`, `.skeleton-dither`, `.dither-veil`, `.dither-fallback` and the five `surface-*` utilities (`surface-chassis`, `surface-panel`, `surface-raised`, `surface-inset`, `surface-hud`) are not emitted until a content file uses them, so the 1B checks in §5.21 would find no rule (`tests/reduced-media.spec.ts` probes the surface utilities in 1B, before any TSX uses the first four, and codemod 4 introduces only `surface-hud`; `.fal-card`'s `@apply surface-panel` does not count as a use). Verified on a scratch 845147c−D1 copy with the §5.1 stylesheets and no TSX using a `surface-*` class: without the five entries the build emits none of the `.surface-*` rules; with them it emits all five. `content` also scans `lib/` and `hooks/`, because class strings authored there (for example a tone→class map) would otherwise be purged.
 
 ### 5.16 Collision removal and verification
 
@@ -926,7 +933,7 @@ export const cn = (...inputs: ClassValue[]) => twMerge(clsx(inputs))
 
 `tailwind-merge` is 3.7.0 (installed). `extendTailwindMerge` exists, and every case below was verified.
 
-> Note: `theme.spacing` is added to the bible's config (C4). The bible's `export const cn` arrow form is kept; the existing `import { cn } from '@/lib/utils'` call sites are unchanged.
+> Note: `theme.spacing` is added to the bible's config (§4.4.5 C4). The bible's `export const cn` arrow form is kept; the existing `import { cn } from '@/lib/utils'` call sites are unchanged.
 
 `scripts/checks/cn.mjs` must exit 0:
 
@@ -1030,7 +1037,7 @@ Within a milestone, run the steps in ascending number. The dry-run counts below 
 | 4 | Violet: hex → auto (`#a78bfa→#7AA5E0`, `#7c3aed/#8b5cf6→#4F83CC`, `#6d28d9→#3A6AB0`, `#05030b/#090713→#05080F`, case-insensitive). Classes by role, by hand, with this exhaustive list (keep `hover:` prefixes; delete every `dark:` twin, because every token is theme-aware): `text-violet-{50…700}` → `text-accent`; `text-violet-100` on the `TrackManager.tsx:144` plate → `text-fg-on-screen`; `bg-violet-{500,600,700} text-white` → `bg-accent text-accent-ink`; `bg-violet-{50,100}[/NN]` and `dark:bg-violet-950/NN` → `bg-accent-soft`; `border-violet-500` (selected) → `border-accent`; every other `border-violet-*` → `border-line-subtle`; `bg-gradient-to-br from-violet-500/80 to-fal-gray-950` (`AssetStudioVisualFixture.tsx:43`) → `bg-screen`; violet `shadow-[…]` → `shadow-e1`. The solid 'Generate' button: `bg-fal-primary-500 text-white hover:bg-fal-primary-400` → `bg-accent text-accent-ink hover:bg-accent-hover` (§5.16). Stray surfaces: `bg-[#11131a]` → `bg-bezel` (theme-invariant dark; the Generate asides keep their light-on-dark children until §10 replaces them); `bg-[#0c0c12]` → `bg-screen`; `bg-[#0a0d14]` (`layout.tsx:38,40`) is removed with the veil and shell (3A/4B). `MorphSlider.css` per §5.10. | 1B | `--step hex` plus hand edits in `TrackManager.tsx`, `AssetStudioVisualFixture.tsx`, `ViewerChart.tsx`, `app/admin/analytics/page.tsx`, `CharacterLibraryPage.tsx:160`, `LocationLibraryPage.tsx:151`, `components/reactbits/MorphSlider.css` | hex 16 | `violet-\|purple-\|#a78bfa\|#7c3aed\|#8b5cf6\|#6d28d9\|#05030b\|#090713` (case-insensitive) returns 0 outside `components/dither-kit` and `components/reactbits/*.css`; the §5.10 MorphSlider.css grep prints nothing; `bg-fal-primary-(400\|500)([^/0-9]\|$)` returns 0 |
 | 5 | Hover/dark pairs: `hover:X dark:Y` → `hover:X dark:hover:Y` | 1B | by hand at `AdminNav.tsx:31` (×2), `ScriptEditor.tsx:125`, `ScriptEditor.tsx:133`, `AssetUrlInput.tsx:78`, `app/admin/analytics/page.tsx:155` | 6 | Those 6 sites are converted. `TrackManager.tsx:157` is a false positive of the gate regex and clears when TrackManager migrates. |
 | 6 | Bang modifiers: `!py-*`/`!px-*` → plain | 1B | `--step bang` | 23 | `\!p[xy]-` returns 0 |
-| 7 | Focus rings: remove `focus:ring-*`, `focus:outline-none` **and** bare `outline-none` with any variant prefix (the global `:focus-visible` rule replaces them; a surviving `outline-none` beats it, as on the shared input `field` constants at `CharacterLibraryPage.tsx:38`, `LocationLibraryPage.tsx:37` and `AssetStudioVisualFixture.tsx:28`) | 1B | `--step focus` | 56 | `focus:ring\|focus:outline-none` returns 0, and no `outline-none` token remains |
+| 7 | Focus rings: remove `focus:ring-*`, `focus:outline-none` **and** bare `outline-none` with any variant prefix (the global `:focus-visible` rule replaces them; a surviving `outline-none` beats it, as on the shared input `field` constants at `CharacterLibraryPage.tsx:38`, `LocationLibraryPage.tsx:37` and `AssetStudioVisualFixture.tsx:28`) | 1B | `--step focus` | 56 | `focus:ring\|focus:outline-none` returns 0, and no `outline-none` token remains, outside `app/layout.tsx` (from 4B its `main#content`, a non-interactive skip target, keeps `focus:outline-none`: §16.2 A3) |
 | 8 | Radii (single pass): `rounded→rounded-xs`, `rounded-sm→rounded-screen`, `rounded-md→rounded-sm`, `rounded-lg→rounded-md`, `rounded-xl`/`2xl`/`3xl→rounded-lg`, with side variants (`rounded-t-lg→rounded-t-md`). `rounded-full`, `rounded-none` and arbitrary values are untouched. `sq` is **not** added here; primitives add it. | 1B | `--step radii` | 113 | `\brounded-(xl\|2xl\|3xl)\b` returns 0 |
 | 9 | Spinners: `Loader2` (8 imports, 10 JSX sites) and `animate-spin` (10) → `<BayerSpinner/>`. `animate-pulse` (3: `DirectorPlayer.tsx:1073,1094,1147`) → tally and LED primitives. | 5A | by hand | 10 + 3 | `Loader2\|animate-spin\|animate-pulse` returns 0 |
 | 10 | Greys: `fal-gray-*` (1015 at 845147c including dead code and CSS; 557 in live TS/TSX after D1) → semantic tokens, page by page | M6–M8 | by hand | 557 | `\bfal-(gray\|primary\|green\|yellow\|blue\|red)-` returns 0, then the aliases are deleted (M9 `sweep`) |
@@ -1052,9 +1059,9 @@ git grep -nE 'bg-fal-primary-(400|500)([^/0-9]|$)' -- app components
 # 5 (1B): no command; the PR diff shows the 6 listed sites converted
 # 6 (1B)
 git grep -nE '!p[xy]-' -- app components hooks lib "$X"
-# 7 (1B)
-git grep -nE 'focus:ring|focus:outline-none' -- app components hooks lib "$X"
-git grep -nE '(^|[[:space:]"'\''`])([a-z-]+:)*outline-none' -- app components hooks lib "$X"
+# 7 (1B; app/layout.tsx is excluded: from 4B its main#content keeps focus:outline-none, §16.2 A3)
+git grep -nE 'focus:ring|focus:outline-none' -- app components hooks lib "$X" ':!app/layout.tsx'
+git grep -nE '(^|[[:space:]"'\''`])([a-z-]+:)*outline-none' -- app components hooks lib "$X" ':!app/layout.tsx'
 # 8 (1B)
 git grep -nE '\brounded-(xl|2xl|3xl)\b' -- app components hooks lib "$X"
 # 9 (5A)
@@ -1063,7 +1070,7 @@ git grep -nE 'Loader2|animate-spin|animate-pulse' -- app components hooks lib "$
 git grep -nE '\bfal-(gray|primary|green|yellow|blue|red)-' -- app components hooks lib "$X"
 ```
 
-> Note: the bible's radius step covered only `xl`, `2xl` and bare `rounded`. Once the new keys land, `rounded-sm/md/lg` change meaning, so step 8 remaps every size in one pass (C7). The bible's `fal-red-50/200` and `fal-yellow-300` targets exist only in the dead `TestControlPanel.tsx`, so after D1 those sub-steps are no-ops. Its counts "18 Loader2 sites" and "animate-pulse (4)" are corrected above (C12).
+> Note: the bible's radius step covered only `xl`, `2xl` and bare `rounded`. Once the new keys land, `rounded-sm/md/lg` change meaning, so step 8 remaps every size in one pass (§4.4.5 C7). The bible's `fal-red-50/200` and `fal-yellow-300` targets exist only in the dead `TestControlPanel.tsx`, so after D1 those sub-steps are no-ops. Its counts "18 Loader2 sites" and "animate-pulse (4)" are corrected above (§4.4.5 C12).
 
 **Hand re-weighting after steps 1–2 (M2):**
 - Delete any `font-*` class that sits on the same element as a named size and equals that size's built-in weight. For example, `text-caption font-normal` becomes `text-caption`, and `text-title-lg font-medium` becomes `text-title-lg`.
@@ -1121,7 +1128,7 @@ This is the Tailwind `fontSize` (§5.15). The JBM steps get their family from `u
 | `timecode` | JBM | 28 / 32 | −0.02em | 500 | The program clock in the transport bar, uptime in the Analytics ON-AIR strip |
 | `code` | JBM | 12 / 18 | 0 | 400 | Model ids, handles, env names, digests |
 
-The PX5×7 face (`<PixelFace>`, §12) is not a font. It is used on md lamp faces, slate kickers and the boot only, for at most 3 words (O11).
+The PX5×7 face (`<PixelFace>`, §12) is not a font. It is used on md lamp faces, slate kickers and the boot only, for at most 3 words (§4.4.3 O11).
 
 #### 5.20.3 Weight policy
 
@@ -1131,7 +1138,7 @@ The PX5×7 face (`<PixelFace>`, §12) is not a font. It is used on md lamp faces
 
 #### 5.20.4 Numerals, time formats and `lib/format.ts`
 
-- Any number that can change while visible uses JBM with `.nums`. The `readout`, `readout-lg` and `timecode` steps include `.nums`. Focal numbers that update inside prose use `tabular-nums`, because Focal's default digits are proportional (F5).
+- Any number that can change while visible uses JBM with `.nums`. The `readout`, `readout-lg` and `timecode` steps include `.nums`. Focal numbers that update inside prose use `tabular-nums`, because Focal's default digits are proportional (§4.4.4 F5).
 - Changing values sit in fixed `ch` slots: `min-w-[8ch]` for HH:MM:SS and `min-w-[5ch]` for ms values.
 - `slashed-zero` has no effect on JBM's Google latin subset (it has no `zero` feature). It stays for the fallback fonts.
 - Focal and the JBM subset both lack `⌘`, `↵` and `●`. These glyphs render in system fonts. `<Kbd>` shows `⌘` only on Apple platforms and `Ctrl` elsewhere (§7). The `●` exists only in `document.title` (§6).
@@ -1214,7 +1221,7 @@ export function formatMime(mime: string | null | undefined): string {
 
 **Preserved patterns:**
 - `'Ping · {n} ms'` and `'REC {formatBytes}'` are verbatim. `'REC ' + bytes(n)` is byte-identical to today's `DirectorPlayer.tsx:76-79` output at every size.
-- `'Live · {n}s'` (`DirectorPlayer.tsx:1148-1149`) becomes `'Live · ' + tc(elapsed)` (O15).
+- `'Live · {n}s'` (`DirectorPlayer.tsx:1148-1149`) becomes `'Live · ' + tc(elapsed)` (§4.4.3 O15).
 - `'{n} beats · {s}s runtime'` and `'{n}/14'` are verbatim.
 - The three local `formatBytes` copies are replaced: `DirectorPlayer.tsx:76` and `TrackManager.tsx:21` by `bytes(n)`, `app/admin/recordings/page.tsx:10` by `bytes(n, { gb: true })`. No formatter output changes.
 - §11.0 appends its media helpers to this file (11A). They are additive to §5.20.4.
@@ -1298,7 +1305,7 @@ ChevronLeft ChevronUp ArrowUp ArrowDown ListPlus MessagesSquare LayoutTemplate U
 ```
 
 - The first line holds the nav icons, which do not change (`AdminNav.tsx:5`).
-- The last line and `Minus` extend the bible's list. They are the icons of preserved controls (`ShotCard` 'Move shot earlier', `SceneSection` 'Move scene up/down', `ScriptEditor`, `ChatSteerer`, `ScriptTemplatePicker`, `TwitchBroadcast`, the character fallback) and NumberStepper's "−" (C11).
+- The last line and `Minus` extend the bible's list. They are the icons of preserved controls (`ShotCard` 'Move shot earlier', `SceneSection` 'Move scene up/down', `ScriptEditor`, `ChatSteerer`, `ScriptTemplatePicker`, `TwitchBroadcast`, the character fallback) and NumberStepper's "−" (§4.4.5 C11).
 - `Loader2` is retired in 5A (BayerSpinner). `Database` is retired in 5A, when `ConvexNotConfigured` becomes the NotConfigured slate.
 - To add a name, first run `node -e "process.exit(require('lucide-react').Name ? 0 : 1)"` and paste the output into the PR.
 
@@ -1326,7 +1333,11 @@ After D1 it reports only `Loader2` (8 files) and `Database` (`ConvexNotConfigure
 
 ### 5.21 Acceptance criteria
 
-Commands whose paths start with `dashboard/`, `docs/`, `.agents/`, `goal.md` or `README.md`, and `git` commands with such pathspecs, run from the repository root. Every other command runs from `dashboard/`; that is every command below. Playwright items run in the §1.6 dev mode on `/admin?noboot`.
+Commands whose paths start with `dashboard/`, `docs/`, `.agents/`, `goal.md` or `README.md`, and `git` commands with such pathspecs, run from the repository root. Every other command runs from `dashboard/`; that is every command below. Playwright items run in the §1.6 dev mode on `/admin?noboot`. The three items marked `tests/foundations.spec.ts` are that spec's tests, one test per item (§15.5; since 1B, in the `desktop-dark` and `desktop-light` projects). Run it with the contrast spec, setting `WZRD_MILESTONE` to the PR's milestone (`1` for 1B, `2` for M2; §15.4):
+
+```bash
+WZRD_MILESTONE=1 npx playwright test tests/foundations.spec.ts tests/contrast.spec.ts
+```
 
 - [ ] `node -e` resolution (§5.16) prints `fal-primary-500 = #4F83CC` and exits 0.
 - [ ] `node scripts/checks/css-layers.mjs` exits 0. The script: for each file in {`app/globals.css`: `@import`; `tokens.css`, `bayer.css`: `@layer base`; `keyframes.css`: `@keyframes`; `components.css`: `@layer components`; `shell.css`, `live-control.css`, `shotboard.css`, `studio.css`, `library.css`, `analytics.css`: `@layer components` (each skipped until the part that creates it); `utilities.css`: `@layer utilities`; `fonts-legacy.css` (1B only, optional): `@font-face`}, it parses the file with `postcss.parse` and fails on any top-level node other than the allowed at-rule and `comment` nodes.
@@ -1339,11 +1350,11 @@ Commands whose paths start with `dashboard/`, `docs/`, `.agents/`, `goal.md` or 
 - [ ] `node --no-warnings scripts/checks/cn.mjs` exits 0. Run against today's `lib/utils.ts`, the same cases fail (proves the fix).
 - [ ] `npm run typecheck` exits 0. `npm run qa:build` (the §1.6 prod build) exits 0, and `grep -c 'is used but no matching' .qa/build.log` prints `0`. `npm run lint` exits 0 with no warning beyond the post-M0 baseline.
 - [ ] `tests/contrast.spec.ts` passes all 12 runs (§5.6). Temporarily setting light `--c-text-3` to `120 130 150` makes it fail (mutation check; revert afterwards).
-- [ ] Playwright on `/admin?noboot`: `getComputedStyle(document.documentElement).getPropertyValue('--c-accent').trim()` is `45 84 136` in light and `122 165 224` in dark. With `data-broadcast="on-air"`, `--dither-veil` is `.72` in light and `.62` in dark. Under emulated `prefers-reduced-transparency: reduce`, `--a-panel` is `1` and `--dither-veil` is `.80`.
-- [ ] Playwright: an element with class `px-resolve` has computed `animation-name: px-resolve`. With `html[data-lock="air"]` it has `none`, and a `.px-resolve[data-air-allow]` element still computes `px-resolve` under the lock. A `.skeleton-dither` has a non-`none` `::after` `animation-name`, and `getComputedStyle(el, '::after').content` is `none` under the air lock. In 1B the test sets `data-lock="air"` on `html` itself; from 3A it calls `window.__wzrd.broadcast.publish({ director: 'live', firstFrame: true })` (§1.6).
-- [ ] Playwright: `getComputedStyle(document.body).fontWeight === '400'`. After M2, `getComputedStyle(document.body).fontFamily` starts with `focal` or `"focal"`, and `html.className` contains two `__variable_` classes.
+- [ ] `tests/foundations.spec.ts` on `/admin?noboot`: `getComputedStyle(document.documentElement).getPropertyValue('--c-accent').trim()` is `45 84 136` in light and `122 165 224` in dark. With `data-broadcast="on-air"`, `--dither-veil` is `.72` in light and `.62` in dark. Under emulated `prefers-reduced-transparency: reduce`, `--a-panel` is `1` and `--dither-veil` is `.80`.
+- [ ] `tests/foundations.spec.ts`: an element with class `px-resolve` has computed `animation-name: px-resolve`. With `html[data-lock="air"]` it has `none`, and a `.px-resolve[data-air-allow]` element still computes `px-resolve` under the lock. A `.skeleton-dither` has a non-`none` `::after` `animation-name`, and `getComputedStyle(el, '::after').content` is `none` under the air lock. In 1B the test sets `data-lock="air"` on `html` itself; from 3A it calls `window.__wzrd.broadcast.publish({ director: 'live', firstFrame: true })` (§1.6).
+- [ ] `tests/foundations.spec.ts`: `getComputedStyle(document.body).fontWeight === '400'`. After M2, `getComputedStyle(document.body).fontFamily` starts with `focal` or `"focal"`, and `html.className` contains two `__variable_` classes.
 - [ ] After M2: `ls .next/static/media/*.p.woff2 | wc -l` prints `5`, and `grep -rl '\.otf' .next/static/css` prints nothing.
-- [ ] The §5.19 "Done when" commands (the block under the table) print nothing from their parts on. The 1B PR body lists the dry-run counts (hex 16, bang 23, focus 56, radii 113). The M2 PR body lists weights 95 and sizes 249. Every count differs from these only by edits made between 845147c and the PR, and the PR explains any difference.
+- [ ] The §5.19 "Done when" commands (the block under the table) print nothing from their parts on. The two step-7 commands exclude `app/layout.tsx`, whose `main#content` keeps `focus:outline-none` from 4B (§16.2 A3). The 1B PR body lists the dry-run counts (hex 16, bang 23, focus 56, radii 113). The M2 PR body lists weights 95 and sizes 249. Every count differs from these only by edits made between 845147c and the PR, and the PR explains any difference.
 - [ ] After M2: `grep -rnE '\bfont-light\b' app components | grep -v 'text-premise'` prints nothing. `grep -rnE '\bfont-(semibold|extrabold|black|thin|extralight)\b' app components | grep -v '^components/dither-kit/'` prints nothing.
 - [ ] After 1B: `grep -rnE 'bg-fal-primary-(400|500)([^/0-9]|$)' app components` prints nothing (§5.16).
 - [ ] After M2: `node scripts/checks/uppercase.mjs` exits 0, and the sum of the allowlist counts is at most 9.

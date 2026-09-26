@@ -38,9 +38,9 @@ These two pages hold the show's cast and sets. This section rebuilds them as two
 | 10A | 10A (after 9D, §14.13) | Mechanical extraction into `components/asset-studio/` with identical props and strings, plus the uppercase-allowlist moves (§10.5.1) | none |
 | 10B | 10B | Draft safety: payload fix, the rehydrate rule, the unsaved-changes guard (§10.5.2) | UNSAVED LED, guard dialog |
 | 10C | 10C | Shared studio parts: Darkroom + pipeline, SheetTray, ReferenceTray/ReferenceAssetManager restyle, ImageGenerationControls restyle, assetPlaceholder restyle, chyron routing, `studio.css` | yes |
-| 10D | 10D | Characters "Casting" | yes |
-| 10E | 10E | Locations "Scout wall" | yes |
-| 10F | 10F | `AssetStudioVisualFixture` rebuilt on the real components; the audio fixture restyle; the fixture's allowlist line drops to 2 (§10.5.1); the RouteSkeleton specimen leaves `ds-skeletons`, so the page has one `h1` (§10.5.9) | fixture |
+| 10D | 10D | Characters "Casting". In the fixture, `section#characters-visual-test` with `CharacterStudioView` on the populated fixture data replaces the inert character block, which is the Characters ready-state target (§10.5.9); the fixture's allowlist line drops to 2 (§10.5.1) | yes |
+| 10E | 10E | Locations "Scout wall". In the fixture, `section#locations-visual-test` with `LocationStudioBody` on the populated fixture data replaces the inert locations block, which is the Locations ready-state target (§10.5.9) | yes |
+| 10F | 10F | `AssetStudioVisualFixture` completed on the real components: the banner, the two state selects and every non-default `?studio=`/`?scout=` state; the audio fixture restyle with display-only arming (D3); the RouteSkeleton specimen leaves `ds-skeletons`, so the page has one `h1` (§10.5.9) | fixture |
 
 **Create**
 
@@ -70,7 +70,7 @@ These two pages hold the show's cast and sets. This section rebuilds them as two
 | `dashboard/components/states/skeletons/StudioSkeleton.tsx` | Created in 4D by §6.3 (API §7.5) from the §10.4.7 geometry, and re-verified in 10D/10E | 4D |
 | `dashboard/app/admin/visual-test/DesignSystemFixture.tsx` | `'use client'`. Renders its own root `<section id="design-system-visual-test">` (§10.5.9). 5B, 5C, 8B and the page parts add their specimens; 10F removes the RouteSkeleton specimen | 5A (10-DS), 10F |
 | `dashboard/lib/fixtures/designSystem.ts` | Frozen DS fixture data (§10.5.9). 8B replaces the five literal CONNECT_STEPS strings of `FX_DECRYPT_LABELS` with the import from `components/director/constants.ts` (§8.2) | 5A (10-DS), 8B |
-| `dashboard/lib/fixtures/assetStudio.ts` | Frozen studio fixture data (§10.5.9) | 10F |
+| `dashboard/lib/fixtures/assetStudio.ts` | Frozen studio fixture data (§10.5.9). 10D creates it with `FIXTURE_NOW`, `FX_CHARACTERS` and `FX_CHARACTER_HISTORY`; 10E adds `FX_LOCATIONS` and `FX_LOCATION_HISTORY`; 10F adds `FX_TRACKS`, `FX_RUNS` and the `seeded` Coast row | 10D, 10E, 10F |
 
 **Change**
 
@@ -80,16 +80,16 @@ These two pages hold the show's cast and sets. This section rebuilds them as two
 | `dashboard/components/ReferenceAssetManager.tsx` | Keeps its default export, props interface, hooks and upload logic, and renders `ReferenceTray`. Additive optional prop `roles?: Record<string, AssetRole>` | 10C |
 | `dashboard/components/ImageGenerationControls.tsx` | Restyle only (§10.5.8). Same props, same 7 aria-labels, same option values and labels | 10C |
 | `dashboard/lib/assetPlaceholders.ts` | Brand restyle with the **same signature** (§10.5.4) | 10C |
-| `dashboard/components/AssetStudioVisualFixture.tsx` | 10-0 formats it. 4B changes its root `<main>` to `<div>` (§14.3 R4). 5C removes `autoplay`/`autoplayDelay`, imports MorphSlider through `next/dynamic` (§14.3 R5, D3) and adds the MorphSlider specimen attribute (§10.5.9). 10F rebuilds it on the real presentational components with fixture data. It keeps the docstring, `.asset-studio`, `#audio-library-visual-test` and the no-network, no-mutation guarantee (§10.5.9) | 0B (10-0), 4B, 5C, 10F |
+| `dashboard/components/AssetStudioVisualFixture.tsx` | 10-0 formats it. 4B changes its root `<main>` to `<div>` (§14.3 R4). 5C imports MorphSlider through `next/dynamic` (§14.3 R5) and adds the MorphSlider specimen attribute (§10.5.9); it keeps `autoplay autoplayDelay={6}` (D3). 10D replaces the inert character block (hero, AccordionGallery, source form and Generate aside) with `section#characters-visual-test` rendering `CharacterStudioView`; 10E replaces the inert locations block with `section#locations-visual-test` rendering `LocationStudioBody`; 10F completes it on the real presentational components with fixture data, including display-only arming for the MorphSlider (D3, §0.4 BC-15). It keeps the docstring, `.asset-studio`, `#audio-library-visual-test` and the no-network, no-mutation guarantee (§10.5.9) | 0B (10-0), 4B, 5C, 10D, 10E, 10F |
 | `dashboard/app/admin/visual-test/page.tsx` | Keeps the `notFound()` line byte-identical. 4D wraps the body in `<Suspense fallback={null}>` and adds `<ThrowProbe />` (§11.D.10); 10-DS adds `DesignSystemFixture`; every other fixture's owning part adds only its own import and element. The final file is in §10.5.9 | 4D, 5A (10-DS), 8B, 9B, 11A, 11C |
-| `dashboard/scripts/checks/uppercase-allowlist.txt` | §5.20.5 owns the file. The 8 preserved `uppercase` sites keep their class ('Character source' ×2, 'Location source', 'Generate' ×3, 'Location selection', 'Audio library visual fixture'). Each site's line moves with it in the same commit, and the total stays ≤ 9 at every commit (the exact lines after 10A and 10F: §10.5.1) | 10A, 10F |
+| `dashboard/scripts/checks/uppercase-allowlist.txt` | §5.20.5 owns the file. The 8 preserved `uppercase` sites keep their class ('Character source' ×2, 'Location source', 'Generate' ×3, 'Location selection', 'Audio library visual fixture'). Each site's line moves with it in the same commit, and the total stays ≤ 9 at every commit (the exact lines after 10A and 10D: §10.5.1) | 10A, 10D |
 
 **Delete:** `components/asset-studio/StudioGallery.tsx` (10D/10E) and `components/asset-studio/StudioStatus.tsx` (10C). Both are created and deleted inside this section.
 
-**Never touch:** every §1.4 never-touch path (the §1.4 check runs in every §10 PR). For §10 that list matters most for `dashboard/convex/**` (D2, §1.8 item 2) and the vendored `AccordionGallery.jsx`/`.css` (the fixture specimen still renders them). In addition, no §10 part changes `dashboard/components/shotboard/**` (§9), `dashboard/lib/imageGen.ts` or `dashboard/lib/imageModels.ts`: 5B already landed `onStatus` and `IMAGE_MODEL_ETA_MS` (§6.6, §14.3 R6), and §10 only consumes them. In every §10 PR this prints nothing (from the repository root, like the §1.4 check):
+**Never touch:** every §1.4 never-touch path (the §1.4 check runs in every §10 PR). For §10 that list matters most for `dashboard/convex/**` (D2, §1.8 item 2) and the vendored `AccordionGallery.jsx`/`.css` (the fixture specimen still renders them). In addition, no §10 part changes `dashboard/components/shotboard/**` (§9), `dashboard/lib/imageGen.ts` or `dashboard/lib/imageModels.ts`: 5B already landed `onStatus` and `IMAGE_MODEL_ETA_MS` (§6.6, §14.3 R6), and §10 only consumes them. In every §10 PR this prints nothing (from the repository root, like the §1.4 check; `BASE` is this PR's base branch, §1.4):
 
 ```bash
-git diff --name-only "origin/<base branch of the PR>...HEAD" | grep -E '^dashboard/(components/shotboard/|lib/image(Gen|Models)\.ts$)'
+: "${BASE:?set BASE (§1.4) in this same shell first}" && git diff --name-only "$BASE"...HEAD | grep -E '^dashboard/(components/shotboard/|lib/image(Gen|Models)\.ts$)'
 ```
 
 > Note: assets.md says the ImageGenerationControls props interface "is shared with the Shotboard". At 845147c only `CharacterLibraryPage.tsx`, `LocationLibraryPage.tsx` and `AssetStudioVisualFixture.tsx` import it; Shotboard uses `components/shotboard/ImageModelSelect.tsx`. The props stay unchanged either way.
@@ -443,7 +443,8 @@ NODE_PATH=$PWD/node_modules node /tmp/literals.cjs /tmp/base/CharacterLibraryPag
 **10A baseline.** The 845147c baseline no longer applies to 10A: 1B and M2 codemods rewrite `className` strings and hex props in the two pages before 10A. 10A compares against the merge base of its own PR and uses `--set`, because StudioHero, StudioGallery and Darkroom merge two near-identical page blocks into one component (so a shared literal such as the two identical `<aside>` class strings appears once). The candidates include `.ts` files, because `types.ts` receives the moved types. `<rev>:<path>` is always repository-relative, so this block runs from `dashboard/`:
 
 ```bash
-base=$(git merge-base HEAD origin/<base branch of the 10A PR>)
+: "${BASE:?set BASE (§1.4) in this same shell first}"   # the 10A PR's base branch
+base=$(git merge-base HEAD "$BASE")
 mkdir -p /tmp/base10a
 for f in CharacterLibraryPage LocationLibraryPage; do git show "$base:dashboard/components/$f.tsx" > "/tmp/base10a/$f.tsx"; done
 NODE_PATH=$PWD/node_modules node /tmp/literals.cjs --set /tmp/base10a/CharacterLibraryPage.tsx /tmp/base10a/LocationLibraryPage.tsx -- \
@@ -474,7 +475,7 @@ components/AssetStudioVisualFixture.tsx	4	Character source | Generate | Location
 components/reactbits/MorphSlider.css	1	.morph-slider-caption-text (track names, data)
 ```
 
-10F rebuilds the fixture on the real components, so its 'Character source' and 'Generate' copies go away. After 10F the fixture line is `components/AssetStudioVisualFixture.tsx	2	Location selection | Audio library visual fixture` and the total is 6. The two header comment lines stay as §5.20.5 writes them.
+10D replaces the fixture's inert character block with `CharacterStudioView` (§10.5.9), so its 'Character source' and 'Generate' copies go away in 10D. From 10D the fixture line is `components/AssetStudioVisualFixture.tsx	2	Location selection | Audio library visual fixture` and the total is 6; 10E and 10F keep both sites ('Location selection' is composition item 4's eyebrow). The two header comment lines stay as §5.20.5 writes them.
 
 #### 10.5.2 Draft safety (10B): the stale-draft overwrite and what the redesign must not make worse
 
@@ -539,7 +540,7 @@ The redesign removes it from both pages (bible: "Removed from the Characters and
 
 **Bible portrait (HoloCard or static)**, first match wins:
 1. The first `referenceAssets` entry whose role is `identity`. The role comes from `listAssetHistory`, where the latest row per `storageId` wins.
-2. If @coast: `` <BrandImage id="talent/coast-portrait" sizes="(max-width: 639px) 144px, 192px" alt={`${name} character card`} /> `` (API §13.8). This is a Coast-approved final (D5, D9) or the manifest's non-human placeholder (`generated:false`), so the UI never shows a fake likeness.
+2. If @coast: `` <BrandImage id="talent/coast-portrait" sizes="(max-width: 639px) 144px, 192px" alt={`${name} character card`} /> `` (API §13.8). This is a Coast-approved final (D5, D9), a prop-only no-likeness asset (`likeness:false`, §13) or the manifest's non-human placeholder (`generated:false`), so the UI never shows a fake likeness.
 3. `imageUrl` (`object-cover`, 3:4).
 4. `StudioAvatar` scaled up.
 
@@ -724,7 +725,7 @@ export default function VisualTestPage() {
 | Section (rendered by the component itself) | Component | Owner | Part |
 |---|---|---|---|
 | — (throws on `?throw=render` in dev; otherwise `null`) | `app/admin/visual-test/ThrowProbe.tsx` | §11.D.10 | 4D |
-| `div.asset-studio` containing `section#audio-library-visual-test` | `components/AssetStudioVisualFixture.tsx` | §10 | exists; rebuilt in 10F |
+| `div.asset-studio` containing `section#characters-visual-test`, `section#locations-visual-test` and `section#audio-library-visual-test` | `components/AssetStudioVisualFixture.tsx` | §10 | exists; 10D adds `#characters-visual-test`, 10E adds `#locations-visual-test`, 10F completes it |
 | `section#design-system-visual-test` with the `#ds-*` blocks below | `app/admin/visual-test/DesignSystemFixture.tsx` | §10 hosts; each specimen's content and controls belong to its primitive's owner | 5A–5C |
 | `section#live-control-visual-test` | `components/director/LiveControlVisualFixture.tsx` | §8.5.13 | 8B |
 | `section#shotboard-visual-test` | `components/shotboard/ShotboardVisualFixture.tsx` | §9.6.3 | 9B |
@@ -742,17 +743,21 @@ export default function VisualTestPage() {
 - The DS broadcast simulator is the only thing that touches global state, and only on click.
 - `AssetStudioVisualFixture` keeps its docstring `/** Development-only deterministic visual fixture. It never mounts Convex hooks. */`. Its root is `<div className="asset-studio">`, not a nested `<main>` (the change lands in 4B, §14.3 R4).
 
-**AssetStudioVisualFixture composition (10F):**
-1. `InlineBanner tone="warning"` with the verbatim 'Visual-test fixture only. No account, Convex mutation, GMI request, or Fal generation is available on this route.'
-2. Two native selects: 'Studio fixture state' (writes `?studio=`) and 'Scout fixture state' (writes `?scout=`), read with `useSearchParams()`.
-3. `<CharacterStudioView>` with fixture props, `description="Fixture state mirrors the generated character-sheet workspace."` and Darkroom `intro="The source is expanded before the selected Fal image route is called."` (both fixture strings kept). The references slot is `<ReferenceTray>`.
-4. `<section aria-labelledby>` (id from `useId()`) with eyebrow 'Location selection' (keeps `uppercase`), `h2` 'Reusable San Francisco environments', then `<LocationStudioBody>`.
-5. `<section id="audio-library-visual-test">`, restyled:
+**AssetStudioVisualFixture composition** (items 3 and 4 land in 10D and 10E with the populated data only, so each page part can capture its route's ready state; 10F restyles items 1 and 5, adds item 2 and adds every other state):
+1. `InlineBanner tone="warning"` with the verbatim 'Visual-test fixture only. No account, Convex mutation, GMI request, or Fal generation is available on this route.' (10F)
+2. Two native selects: 'Studio fixture state' (writes `?studio=`) and 'Scout fixture state' (writes `?scout=`), read with `useSearchParams()`. (10F)
+3. `<section id="characters-visual-test">` holding `<CharacterStudioView>` with fixture props, `description="Fixture state mirrors the generated character-sheet workspace."` and Darkroom `intro="The source is expanded before the selected Fal image route is called."` (both fixture strings kept). The references slot is `<ReferenceTray>`. The section has no heading of its own: CharacterStudioView's PageHeader `h1` is inside it. (10D)
+4. `<section id="locations-visual-test" aria-labelledby>` (the `h2`'s id from `useId()`) with eyebrow 'Location selection' (keeps `uppercase`), `h2` 'Reusable San Francisco environments', then `<LocationStudioBody>`. (10E)
+5. `<section id="audio-library-visual-test">`, restyled (10F):
    - eyebrow 'Audio library visual fixture' (keeps `uppercase`) and `h2` 'Coast originals';
-   - the MorphSlider specimen (`[data-specimen="MorphSlider"]`, the attribute lands in 5C): a 1:1 `bg-screen rounded-screen` stage (max 448) holding `next/dynamic` MorphSlider with the 4 covers of `FX_TRACKS`, **no `autoplay`** (D3), `overlayColor="#05080F"`, `radius={2}`, mounted only while `useEffectCanvasSlot('morph', 2, inView && artworkSlot)` returns true (otherwise a static `<img>`), plus a `Switch` 'Artwork slot' (`artworkSlot`, on by default);
-   - the selected-track row (`surface-inset`, Check icon in `text-accent`, 'Preview' ghost sm with Play);
+   - the MorphSlider specimen (`[data-specimen="MorphSlider"]`, the attribute lands in 5C): a 1:1 `bg-screen rounded-screen` stage (max 448) holding `next/dynamic` MorphSlider with the 4 covers of `FX_TRACKS`, **`autoplay autoplayDelay={6}` kept** (D3), `overlayColor="#05080F"`, `radius={2}`, `activeIndex={armed}` and `onIndexChange={setShown}`. It is mounted only while `useEffectCanvasSlot('morph', 2, inView && artworkSlot)` returns true (otherwise a static `<img>` of the cover at `shown`), plus a `Switch` 'Artwork slot' (`artworkSlot`, on by default);
+   - autoplay pauses under every §12.4.1 condition that exists on this route: the air lock (which 'Simulate recording' and the other `#ds-simulator` buttons can set), reduced motion and a hidden page. The dock-collapsed and Audio-tab-hidden conditions have no fixture counterpart. Where §12.4.1 computes a condition in the caller rather than inside MorphSlider, the fixture computes it the way TrackManager does. Fixture screenshots run with `reducedMotion: 'reduce'` (§10.10 Run modes), so the slide shown is the same in every capture;
+   - display-only arming, mirroring §8.5.10 (D3, §0.4 BC-15). The fixture holds two states: `shown` (the slide on screen, written only by `onIndexChange`) and `armed` (initially `0`, 'SPRING (intro)'). No slide change writes `armed`: not autoplay, not 'Previous song artwork' or 'Next song artwork', not a 'Song artwork' tab and not a drag. The 'Arm this track' button under the stage (rendered exactly as §8.5.10 renders it, with its label and disabled rule) sets `armed = shown`;
+   - the selected-track row (`surface-inset`, Check icon in `text-accent`, the name of `FX_TRACKS[armed]` in `<span data-armed-track>`, 'Preview' ghost sm with Play);
    - 'Music gain · 25%' readout with Volume2, and 'Mix in output' (secondary sm).
    - All `violet-*`, `#0c0c12` and `#090713` are removed.
+
+`populated` is the default of both params. It is the only state in 10D and 10E; 10F adds the selects and every other row below.
 
 | `?studio=` | Renders | `?scout=` | Renders |
 |---|---|---|---|
@@ -768,7 +773,7 @@ export default function VisualTestPage() {
 | `review` | 2 results, PRIMARY+REF and REF | | |
 | `failed` | Failed at Expand, error 'GMI prompt expansion exceeded its three-minute deadline' | | |
 
-**Fixture data (`lib/fixtures/assetStudio.ts`):**
+**Fixture data (`lib/fixtures/assetStudio.ts`;** 10D: `FIXTURE_NOW`, `FX_CHARACTERS` without the `seeded` row, `FX_CHARACTER_HISTORY`; 10E: `FX_LOCATIONS`, `FX_LOCATION_HISTORY`; 10F: the `seeded` row, `FX_TRACKS`, `FX_RUNS`**):**
 - `FIXTURE_NOW = Date.UTC(2026, 8, 24, 21, 4, 0)`.
 - `FX_CHARACTERS`:
   - Coast / `coast`: locked, the description from `AssetStudioVisualFixture.tsx:13` verbatim, identityNotes 'Face, hairline and proportions from the approved references.', defaultWardrobe 'Chosen per scene.', revision 12, `updatedAt = FIXTURE_NOW − 2 d`, 3 uploads (2 identity, 1 style) + 2 REF sheets.
@@ -832,6 +837,34 @@ export default function VisualTestPage() {
 | HoverClipButton | 'Play ident' with the committed `public/fixtures/testcard-320x180-2s.{webm,mp4}` (created in 5C with §11.0's ffmpeg commands) and the poster `/brand/talent/coast-portrait-384.webp`; no `page.route` stub |
 | CountUp | value 1234, 'Replay', 'Set 1300' |
 | MorphSlider | 4 covers, plus a Switch 'Artwork slot' (on by default) |
+
+**Ready-state capture targets.** The owner sees every redesigned route in its ready state through element captures of these fixture targets. §10.5.9 owns the two new section ids (`#characters-visual-test`, `#locations-visual-test`) and the `data-ready-state` values, as it owns the section ids above. §15.10 names the capture files and puts them in the PR Screenshots table of the part in the "Lands in" column.
+- Each `data-ready-state` value appears exactly once on the page. It sits on the element that wraps exactly that state's view (its label strip or header included), inside its host section. The fixture component named in the §10.5.9 section table adds it in the part listed.
+- Every target follows the rules for every fixture file above: fixture data only, no network.
+- Each target is captured with `locator.screenshot()` at a 1440×900 viewport, once in dark and once in light, under §15.10's capture settings and with `reducedMotion: 'reduce'`, as every fixture screenshot in §10.10.
+
+| Route | Ready state | Target on `/admin/visual-test?noboot` | Lands in | Before the capture |
+|---|---|---|---|---|
+| `/admin` (Live Control) | Standby: the idle 16:9 program column (`STAND BY`, 'Director offline') of §8.5.13 | `#live-control-visual-test [data-ready-state="live-standby"]` | 8B | nothing |
+| `/admin` (Live Control) | Preview: the preview program column (`programStill` under the transparent `<video>`) | `#live-control-visual-test [data-ready-state="live-preview"]` | 8B | nothing |
+| `/admin` (Live Control) | On air: the on-air program column (TallyBar `snapshot` with `air: 'on'`, plus the keyline) | `#live-control-visual-test [data-ready-state="live-onair"]` | 8B | nothing |
+| `/admin/shotboard` | The §9.6.3 item-1 editor: 3 scenes and 7 shots, with one frame generating and one failed | `#shotboard-visual-test [data-ready-state="shotboard"]` | 9B | The three Shotboard steps below |
+| `/admin/characters` | `?studio=populated` (the default): @coast selected and locked, `REFS 5/14`, the turnaround, Sheet history and the Darkroom, with `assetPlaceholder()` art | `section#characters-visual-test` | 10D | nothing |
+| `/admin/locations` | `?scout=populated` (the default): the 4:3 contact wall of the 10 starters with Ferry Building open, the scout report and the Darkroom | `section#locations-visual-test` | 10E | nothing |
+| `/admin/clips` | The ready body with the 100 `CLIP_FIXTURES` (§11.A): clips #1, #2 and #3 read CAPTURING, UPLOADING and FAILED at the top of the first group | `#clips-visual-test [data-ready-state="clips"]` | 11A | nothing |
+| `/admin/recordings` | The ready list of the 30 fixture rows (24 rendered, §11.B) | `#recordings-visual-test [data-ready-state="recordings"]` | 11B | nothing |
+| `/admin/analytics` | LIVE with data: the live state on `VIEWER_SERIES_24H` (§11.C) | `#analytics-visual-test [data-ready-state="analytics-live"]` | 11C | nothing |
+| `/admin/analytics` | NOT PATCHED: the not-configured (503) state with the server sentence verbatim | `#analytics-visual-test [data-ready-state="analytics-not-patched"]` | 11C | nothing |
+
+**Shotboard ready board** (9B adds this to §9.6.3's fixture; nothing else in §9.6.3 changes):
+- The item-1 board lays its 7 shots out 3/2/2: SC01 · SH01–SH03, SC02 · SH01–SH02 and SC03 · SH01–SH02. SC01 · SH02 stays the @coast shot, and SC01 · SH03 is the `gpt-sunburst` shot.
+- SC03 · SH02 carries persisted `imageStatus: 'failed'` and no `imageUrl`, so its frame shows §9.6.2's failed plate with 'Retry' at rest.
+- A fixture-only `Switch` 'Hold generation' sits next to 'Reject writes' and is off by default. While it is on, the injected `generate` emits `queued 2 → running` as usual and then stays pending. Turning it off lets every held call resolve as §9.6.3 describes. The switch is off at load, so §9.10's transfer check still reads 'No generations running'.
+
+The three Shotboard steps, in order:
+1. Turn on 'Hold generation'.
+2. Click the SC02 · SH01 frame (the `[data-testid="shot-frame"]` whose tag row starts with `SC02 · SH01`), then press 'Generate image' in the inspector ('Regenerate image' if the shot already has a picture).
+3. Wait until that frame has `data-phase="running"`, then capture the target.
 
 ### 10.6 States
 
@@ -947,7 +980,7 @@ Only `transform`, `opacity` and stepped `mask-image` animate. Nothing loops exce
 | A13 'Loading character library…' | CoastLoader's visible caption and `role="status"` name, byte-identical |
 | A13 'Use as primary reference' (title) | The `title` and `aria-label` of the contact-tile promote IconButton and of SheetViewer's promote button, on every `REF` sheet (a sheet removed from references cannot be promoted, §10.4.6) |
 | A14 AccordionGallery | Not used on these pages any more. The file is untouched, and the fixture keeps a specimen with the same semantics |
-| A15 MorphSlider in the fixture | Default aria-label unchanged; `autoplay` off (D3); local images; slot-gated |
+| A15 MorphSlider in the fixture | Default aria-label unchanged; `autoplay autoplayDelay={6}` kept (D3); the `activeIndex`/`onIndexChange` contract is unchanged, and `onIndexChange` writes only the shown slide, never the armed fixture track (display-only, §0.4 BC-15); local images; slot-gated |
 | A17 fixture no-network | Same-origin `/brand/**`, `/fixtures/**` and `data:` only (§10.5.9 fixture rules); enforced by the §10.10 network gate |
 | A4 `patchCharacter` / `patchLocation` | Same mutation and accepted arguments. The Save call omits the optional `referenceStorageIds` (§10.5.2). Promote still sends `primaryStorageId` |
 | A5 / S4 order | §10.5.7 only inserts state calls; the `await` sequence is gate-checked in §10.10 |
@@ -974,17 +1007,17 @@ Only `transform`, `opacity` and stepped `mask-image` animate. Nothing loops exce
 
 #### 10.9.6 Allowed changes on these pages (exhaustive) and new strings
 
-**Allowed changes** (add each to Appendix A's allowed-changes list):
+**Allowed changes** (add each to Appendix A's allowed-changes list). Items tagged `§0.4 BC-<n>` are behaviour changes listed in goal.md §0.4; each applies by default, and the owner vetoes one with `OVERRIDE D10: <BC-id>` (§2.2 D10), after which Devin keeps the 845147c behaviour for that row and records it under Decisions. The roster and wall that replace the hover AccordionGallery (hover and focus never select) are §0.4 BC-19:
 1. The Type option label `Coast` becomes `Coastline` (value `'coast'` unchanged; A8 permits this). The kind filter and badges use `Coastline`/`COASTLINE`.
 2. `assetPlaceholder()` drops the in-image text "visual fixture · add approved reference" and the Arial/violet art (§10.5.4), keeping the same signature.
 3. Notices and errors move from bottom `<p>`s to chyrons and the inline Darkroom alert. Text and roles are unchanged.
 4. The identity checkbox becomes a Switch with the same label.
-5. Sheet history lists only `role:'sheet'` rows, and a click opens the viewer instead of promoting. Promotion uses the explicit 'Use as primary reference' control, which renders only on `REF` sheets.
-6. Save payloads omit `referenceStorageIds` (a data-loss fix, §10.5.2).
-7. Ordering and selection: @coast is pinned first; the wall uses `_creationTime` descending; the first item is auto-selected.
+5. Sheet history lists only `role:'sheet'` rows, and a click opens the viewer instead of promoting. Promotion uses the explicit 'Use as primary reference' control, which renders only on `REF` sheets (§0.4 BC-20).
+6. Save payloads omit `referenceStorageIds` (a data-loss fix, §10.5.2). With the unsaved-edits guard ('Discard unsaved changes?' and `beforeunload` while the draft is dirty), this is §0.4 BC-20.
+7. Ordering and selection: @coast is pinned first; the wall uses `_creationTime` descending; the first item is auto-selected (§0.4 BC-20).
 8. 'New character' and 'New location' render as secondary (one primary per view). 'Load SF starters' renders as ghost.
 9. The header band (eyebrow, h1, description) also renders in the not-configured and auth states. This is additive.
-10. Fixture: the nested `<main>` becomes `<div>`; production Convex URLs become local `/brand/slate/*.webp`; MorphSlider autoplay is off; inert copies become the real components; violet is removed.
+10. Fixture: the nested `<main>` becomes `<div>`; production Convex URLs become local `/brand/slate/*.webp`; MorphSlider keeps `autoplay autoplayDelay={6}` but is display-only: a slide change no longer changes the selected-track row, and only 'Arm this track' does, as on Live Control (D3, §0.4 BC-15); inert copies become the real components; violet is removed.
 
 > Note: bible §7.4 sets the Locations eyebrow to `SETS`. That would drop the preserved 'Visual asset studio' from `/admin/locations` (`LocationLibraryPage.tsx:141`), so it is **not** applied. Bible §7.3's roster "last sheet 2d ago" cannot be derived per row: `listAssetHistory` is per character, capped at 24, and would need 100 subscriptions. Rows therefore show `updated {ago}` from `updatedAt ?? createdAt`, and the bible header shows `last sheet {ago}`. Where the bible says the auto-append fix "needs owner sign-off", D2's default applies.
 
@@ -996,18 +1029,18 @@ Only `transform`, `opacity` and stepped `mask-image` animate. Nothing loops exce
 - Reference tray: `IDENTITY`, `WARDROBE`, `STYLE`, `ENVIRONMENT`, `SHEET`.
 - Placeholder art (`assetPlaceholder`, §10.5.4): `NO IMAGE YET`.
 - Locations: `SAN FRANCISCO · 10 LOCATIONS`; 'Location kind'; 'All'; 'Coastline'; `LANDMARK`/`NEIGHBORHOOD`/`COASTLINE`/`INTERIOR`/`OTHER`; 'Compare {name}'; 'Compare'; 'Mark two locations to compare'; 'Compare set: {A} and {B}'; 'Compare locations'; `A · {name}`, `B · {name}`; 'Swap A and B'; 'Kind'; 'References'; 'Revision'; 'Scout report'; 'View crops' (Grid, Strip, Off); `ESTABLISHING`, `APPROACH`, `DETAIL`, `ATMOSPHERE`; 'Crops assume the four views the sheet brief requests, in order.'; 'No location sheet yet.'; 'Default light presets'; 'Morning fog', 'Golden hour', 'Blue hour', 'Night neon'.
-- Fixture: 'Studio fixture state'; 'Scout fixture state' (their options are the `?studio=`/`?scout=` values in §10.5.9, including `seeded`); 'Artwork slot'; 'Show PixelCard'; every DS specimen heading and every button, control and simulator label in §10.5.9 (including the specimen controls table, whose labels §12 also lists, and the fixture-only 'Hold to go live (fixture)', 'Fixture board' and 'Keep board').
+- Fixture: 'Studio fixture state'; 'Scout fixture state' (their options are the `?studio=`/`?scout=` values in §10.5.9, including `seeded`); 'Artwork slot'; 'Arm this track' (§8.5.10's string, reused by the audio fixture); 'Hold generation' (the Shotboard ready board, §10.5.9, in §9.6.3's fixture); 'Show PixelCard'; every DS specimen heading and every button, control and simulator label in §10.5.9 (including the specimen controls table, whose labels §12 also lists, and the fixture-only 'Hold to go live (fixture)', 'Fixture board' and 'Keep board').
 
 ### 10.10 Acceptance criteria
 
 - **Working directory** (§1.5). Commands whose paths start with `dashboard/`, `docs/`, `.agents/`, `goal.md` or `README.md`, and `git` commands with such pathspecs, run from the repository root. Every other command runs from `dashboard/`; every command below does, unless it is marked "from the repository root".
-- **Run modes** (§1.6). **Fixture** means dev (`env $UNSET NEXT_TELEMETRY_DISABLED=1 npx next dev -p 3107`) at `/admin/visual-test?noboot` with the given `?studio=`/`?scout=`, in both themes, with `emulateMedia({ reducedMotion: 'reduce' })` for screenshots; fixture checks never run on prod, where the route is 404. Product-route browser checks run unconfigured on dev unless marked **prod** (`npm run qa:build`, then `env $UNSET ADMIN_AUTH_MODE=edge-only NEXT_TELEMETRY_DISABLED=1 npx next start -p 3109`).
+- **Run modes** (§1.6). **Fixture** means dev (`: "${UNSET:?run the §1.6 step 2 UNSET= line in this same shell first}" && env $UNSET NEXT_TELEMETRY_DISABLED=1 npx next dev -p 3107`) at `/admin/visual-test?noboot` with the given `?studio=`/`?scout=`, in both themes, with `emulateMedia({ reducedMotion: 'reduce' })` for screenshots; fixture checks never run on prod, where the route is 404. Product-route browser checks run unconfigured on dev unless marked **prod** (`npm run qa:build`, then `: "${UNSET:?run the §1.6 step 2 UNSET= line in this same shell first}" && env $UNSET ADMIN_AUTH_MODE=edge-only NEXT_TELEMETRY_DISABLED=1 npx next start -p 3109`).
 
 **Pre-step (10-0, 10A)**
 - [ ] After 10-0: `npx --no-install prettier --no-semi --single-quote --print-width 120 --trailing-comma all --check components/CharacterLibraryPage.tsx components/LocationLibraryPage.tsx components/AssetStudioVisualFixture.tsx` exits 0, and `awk 'length($0) > 280' components/CharacterLibraryPage.tsx components/LocationLibraryPage.tsx components/AssetStudioVisualFixture.tsx` prints nothing.
 - [ ] After 10-0: the §10.5.1 10-0 block (`/tmp/literals.cjs`, multiset mode, against the 845147c versions of the three files) prints `OK 476 literals`.
 - [ ] After 10A: the §10.5.1 10A block (`--set`, baseline = the merge base of the 10A PR, candidates = both pages + `components/asset-studio/*.{ts,tsx}`) prints `OK …`, with no `lost` and no `added`.
-- [ ] After 10A: `git diff --name-only "origin/<base branch of the PR>...HEAD"` (from the repository root) lists only `dashboard/components/CharacterLibraryPage.tsx`, `dashboard/components/LocationLibraryPage.tsx`, `dashboard/scripts/checks/uppercase-allowlist.txt` and new `dashboard/components/asset-studio/` files; the fixture's dark and light screenshots are pixel-identical to the previous commit; `node scripts/checks/uppercase.mjs` exits 0; `npm run typecheck` exits 0; `npm run lint` reports no new warning.
+- [ ] After 10A: `git diff --name-only "$BASE"...HEAD` (from the repository root, after the §1.4 `BASE` guard line) lists only `dashboard/components/CharacterLibraryPage.tsx`, `dashboard/components/LocationLibraryPage.tsx`, `dashboard/scripts/checks/uppercase-allowlist.txt` and new `dashboard/components/asset-studio/` files; the fixture's dark and light screenshots are pixel-identical to the previous commit; `node scripts/checks/uppercase.mjs` exits 0; `npm run typecheck` exits 0; `npm run lint` reports no new warning.
 
 **Draft safety (10B)**
 - [ ] `grep -nE "referenceStorageIds: draft\.referenceStorageIds" components/CharacterLibraryPage.tsx components/LocationLibraryPage.tsx` prints nothing.
@@ -1020,7 +1053,7 @@ Only `transform`, `opacity` and stepped `mask-image` animate. Nothing loops exce
 - [ ] Fixture at 1440×900: `[data-studio="rail"]` width is 280 ±0.5, `[data-studio="darkroom"]` is 360 ±0.5, `[data-studio="main"]` is 704 ±1 at x = 328 ±1. At 1280×800 main is 560 ±1. At 1100×800 the Darkroom's top is ≥ the main column's bottom and its x equals main's x. At 390×844 `document.documentElement.scrollWidth <= 390` and the regions' y-order is header < rail < main < darkroom.
 - [ ] `[data-studio="header"]` height ≤ 96 at 1440 and 1024. At 1024 the description (`.studio-header__desc`) computes `-webkit-line-clamp: 1`, its `scrollHeight` ≤ its `clientHeight` + 20, its bottom is ≤ the header's bottom, and its `textContent` is the full preserved description. `[data-roster-row]` min-height 72 with a 48×48 avatar; the HoloCard box is 192×256 at ≥1024; the turnaround screen's aspect is 16/9 ±0.01; every `[data-sheet-tile] img` computes `object-fit: contain`.
 - [ ] On every route in §10: exactly one `h1`. Its text is 'Characters with a stable identity' on `/admin/characters` (unconfigured and fixture) and 'Locations that hold their atmosphere' on `/admin/locations`. From 10F, `/admin/visual-test` has exactly one `h1` (the Characters PageHeader; `routes.spec.ts` checks it from `WZRD_MILESTONE=7`, §14.13), and all `[id]` values on it are unique: `new Set([...document.querySelectorAll('[id]')].map((e) => e.id)).size === document.querySelectorAll('[id]').length`. `getByText('Visual asset studio', { exact: true })` computes `text-transform: none`.
-- [ ] The 'Character source', 'Location source' and 'Generate' eyebrow elements have the class `uppercase`; `scripts/checks/uppercase-allowlist.txt` holds exactly the §10.5.1 lines for the current part (after 10F: CharacterSourceForm 1, LocationSourceForm 1, Darkroom 1, AssetStudioVisualFixture 2, MorphSlider.css 1); `node scripts/checks/uppercase.mjs` exits 0.
+- [ ] The 'Character source', 'Location source' and 'Generate' eyebrow elements have the class `uppercase`; `scripts/checks/uppercase-allowlist.txt` holds exactly the §10.5.1 lines for the current part (from 10D: CharacterSourceForm 1, LocationSourceForm 1, Darkroom 1, AssetStudioVisualFixture 2, MorphSlider.css 1); `node scripts/checks/uppercase.mjs` exits 0.
 - [ ] `getByRole('switch', { name: 'Lock the face and overall look across generations' })` resolves to one element whose `aria-checked` toggles on click.
 - [ ] With 'Nano Banana 2' selected, comboboxes named 'Image model', 'Image aspect ratio', 'Image variations', 'Output image format', 'Nano Banana resolution' exist. With 'GPT Image 2.5 Sunburst', 'GPT Image quality' and 'Image background' replace 'Nano Banana resolution'. `grep -c 'aria-label="\(Image model\|Image aspect ratio\|Image variations\|Output image format\|Nano Banana resolution\|GPT Image quality\|Image background\)"' components/ImageGenerationControls.tsx` prints `7`.
 - [ ] `?studio=no-reference`: 'Add a name, handle, description, and a face reference while identity lock is enabled.' is visible with computed color `rgb(var(--c-warning))`, the `REFERENCE` Led is off, and the button named 'Generate character sheet' is disabled.
@@ -1055,17 +1088,27 @@ Only `transform`, `opacity` and stepped `mask-image` animate. Nothing loops exce
 - [ ] Fixture network: across a full load plus clicking every fixture-state option and every DS button, every request's origin equals the page origin, none targets `/api/`, and the console has **no** `net::ERR_TUNNEL_CONNECTION_FAILED`, only the §1.6 every-route message.
 - [ ] Fixture canvas audit: at most 2 WebGL contexts (the carrier + MorphSlider while `morph` owns the slot); at most one effect canvas at a time; `window.__wzrd.slots.owner` is `null` or exactly one of `morph`, `symbol-raster`, `pixel-card` (§7.16). With 'Show PixelCard' on and 'Run raster' on, only `symbol-raster` (priority 3) holds a canvas, and the PixelCard specimen shows its static Bayer tile.
 - [ ] `grep -n "  if (process.env.NODE_ENV === 'production') notFound()" app/admin/visual-test/page.tsx` prints one line; `test ! -e app/admin/visual-test/loading.tsx` succeeds. In prod (§1.6), `curl -s -o /dev/null -w '%{http_code}' localhost:3109/admin/visual-test` prints `404`.
-- [ ] The fixture contains `#audio-library-visual-test`, `#design-system-visual-test`, every `ds-*` id in §10.5.9 (including `ds-reactbits`), `#live-control-visual-test` (from 8B) and `#shotboard-visual-test` (from 9B); §11 adds `#clips-visual-test`, `#recordings-visual-test` (11A) and `#analytics-visual-test` (11C). `document.querySelectorAll('.asset-studio').length >= 1`. The page has exactly one element for each `data-specimen` value in §10.5.9 (PxResolve, PixelFace, DecryptedText, CountUp, SelectionBrackets, SymbolRaster, HoloCard, HoverClipButton, StreamList, StageTrack, AccordionGallery, ChromaGrid, PixelCard, MorphSlider), each inside its §10.5.9 host. The MorphSlider stage has no `autoplay`: `grep -n "autoplay" components/AssetStudioVisualFixture.tsx` prints nothing.
+- [ ] The fixture contains `#audio-library-visual-test`, `#design-system-visual-test`, every `ds-*` id in §10.5.9 (including `ds-reactbits`), `#live-control-visual-test` (from 8B), `#shotboard-visual-test` (from 9B), `#characters-visual-test` (from 10D) and `#locations-visual-test` (from 10E); §11 adds `#clips-visual-test`, `#recordings-visual-test` (11A) and `#analytics-visual-test` (11C). `document.querySelectorAll('.asset-studio').length >= 1`. The page has exactly one element for each `data-specimen` value in §10.5.9 (PxResolve, PixelFace, DecryptedText, CountUp, SelectionBrackets, SymbolRaster, HoloCard, HoverClipButton, StreamList, StageTrack, AccordionGallery, ChromaGrid, PixelCard, MorphSlider), each inside its §10.5.9 host. The MorphSlider keeps autoplay (D3): `grep -c "autoplayDelay={6}" components/AssetStudioVisualFixture.tsx` prints `1`, and `grep -n "onIndexChange={setTrack}" components/AssetStudioVisualFixture.tsx` (the 845147c wiring that made the shown slide the selected track) prints nothing.
+- [ ] Fixture display-only arming (D3, §0.4 BC-15), with `[data-specimen="MorphSlider"]` scrolled into view, its canvas mounted and the pointer outside it, and no reduced-motion emulation: `[data-armed-track]` reads 'SPRING (intro)' at load. The selected tab of the 'Song artwork' tablist (`[role="tab"][aria-selected="true"]`) changes within 7000 ms, and `[data-armed-track]` still reads 'SPRING (intro)'. Clicking 'Next song artwork' and then the tab named 'Show POP OUT' leaves it unchanged too. Once that tab has `aria-selected="true"`, clicking 'Arm this track' makes `[data-armed-track]` read 'POP OUT'.
 - [ ] From 8B, `#ds-connect` contains the five CONNECT_STEPS in order and exactly one button named 'Cancel'. `#ds-format` shows '1536.0 MB' and '1.50 GB' (§5.20.4's values).
 - [ ] `npm run qa:build`: the `.qa/build.log` route table shows `/admin/characters` and `/admin/locations` First Load JS ≤ 210 kB each (baseline 192 kB); `npm run typecheck` exits 0; lint has no warning in `components/asset-studio/**`.
 - [ ] Playwright screenshots of `/admin/characters` and `/admin/locations` (unconfigured, dark, light, 390) and of every fixture state above are attached to the PR next to `admin_characters-dark.jpg`, `admin_characters-mobile.jpg`, `admin_locations-dark.jpg` and `admin_visual-test-dark.jpg`.
 
+**Ready-state targets** (fixture; each item applies from the part in its §10.5.9 "Lands in" column)
+- [ ] Each target of the §10.5.9 ready-state table exists exactly once, inside its host section. For every `data-ready-state` value `v` of the table and its host section id `h` (for example `v = 'clips'`, `h = '#clips-visual-test'`), `document.querySelectorAll('[data-ready-state="' + v + '"]').length === 1` and `document.querySelector(h + ' [data-ready-state="' + v + '"]') !== null`. `document.querySelectorAll('#characters-visual-test').length === 1` and `document.querySelectorAll('#locations-visual-test').length === 1`.
+- [ ] (10D) `#characters-visual-test` contains the `h1` 'Characters with a stable identity' (from 10F the page's only `h1`), the text 'Fixture state mirrors the generated character-sheet workspace.', exactly one `[data-roster-row][aria-current="true"]`, whose text contains `@coast`, and exactly one `[data-studio="darkroom"]`, which contains the text 'The source is expanded before the selected Fal image route is called.'.
+- [ ] (10E) `#locations-visual-test` contains 10 `[data-plate]`, exactly one `[data-plate] button[aria-current="true"]`, whose text contains 'Ferry Building', and exactly one `[data-studio="darkroom"]`.
+- [ ] (9B) At load, no `[data-ready-state="shotboard"] [role="gridcell"][data-testid="shot-frame"]` has `data-phase="running"`, and 'Hold generation' has `aria-checked="false"`. After the three Shotboard steps of §10.5.9, the target contains the `ol` named 'Scenes' with 3 direct `li` children, and 7 `[role="gridcell"][data-testid="shot-frame"]`. Exactly one of those frames has `data-phase="running"` (SC02 · SH01), and it still has it 5000 ms later. Exactly one has `data-phase="failed"` (SC03 · SH02) and contains a button named 'Retry'. Turning 'Hold generation' off makes the SC02 · SH01 frame leave `data-phase="running"` within 3000 ms.
+- [ ] (11A–11C) `[data-ready-state="clips"]` contains `[data-testid=clip-status-capturing]`, `[data-testid=clip-status-uploading]` and `[data-testid=clip-status-failed]`. `[data-ready-state="recordings"]` contains 24 `[data-testid=recording-row]`. `[data-ready-state="analytics-live"] [data-testid=onair-tally]` has `data-state="live"`, and `[data-ready-state="analytics-not-patched"] [data-testid=onair-tally]` has `data-state="not-patched"`.
+- [ ] (8B) `[data-ready-state="live-standby"]` contains the text 'Director offline'. Neither `[data-ready-state="live-preview"]` nor `[data-ready-state="live-onair"]` contains it.
+- [ ] Every ready-state target is captured at 1440×900 in dark and in light as §10.5.9 describes. The 10D PR's Screenshots table has the two `#characters-visual-test` captures and the 10E PR's has the two `#locations-visual-test` captures (§15.10 names the files).
+
 ### 10.11 Cut order
 
-Cut first item first. Each cut keeps every §10.9 item and every never-cut item.
+Cut first item first. Each cut keeps every §10.9 item and every never-cut item. §17.2 is the project-wide order and wins where the two differ: it places item 3 as its #34, right after the Live beat inspector pane (#33).
 1. HoverClipButton 'Play ident' on the HoloCard (bible cut 1).
 2. HoloCard tilt and foil. Keep the static 3:4 card with the seal (bible cut 2).
-3. Locations CompareSheet, the X key and the scout-report crops. Keep the wall and a plain primary plate (bible cut 5).
+3. Locations: the X key and the scout-report crops. Keep the wall, the CompareSheet (opened by the 'Compare' button) and a plain primary plate (bible cut 5, reduced: the 4:3 wall plus CompareSheet is never cut).
 4. SheetViewer. Tile clicks then do nothing, and the actions stay on the tile.
 5. Turnaround view guides.
 6. The ReadinessRow LEDs. The amber hint stays.
@@ -1083,5 +1126,6 @@ Cut first item first. Each cut keeps every §10.9 item and every never-cut item.
 - the StageTrack and GenerationFrames driven by real status;
 - the inline generation alert;
 - the `REF` badge plus 'Remove from references' (D2);
-- the fixture's `notFound()`, no-network rule, `#audio-library-visual-test`, `.asset-studio` and `#design-system-visual-test`;
+- the Locations 4:3 wall plus CompareSheet (§17.2);
+- the fixture's `notFound()`, no-network rule, `#audio-library-visual-test`, `.asset-studio`, `#design-system-visual-test` and the §10.5.9 ready-state targets;
 - every invariant in §10.9.

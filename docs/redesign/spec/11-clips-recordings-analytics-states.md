@@ -41,7 +41,7 @@ mkdir -p public/fixtures
 "$FF" -v error -y -f lavfi -i testsrc2=size=64x64 -frames:v 1 public/fixtures/testcard-avatar.png
 ```
 
-**Test hooks** (DI-17 names, stable from here on): `clip-card`, `clip-status-{capturing|uploading|failed}`, `clip-open`, `session-reel`, `clips-show-more`, `recording-row`, `recording-download`, `recording-delete`, `kpi-viewers`, `kpi-followers`, `kpi-uptime`, `kpi-category`, `onair-tally`, `onair-refresh`, `viewer-chart`, `stream-rail`.
+**Test hooks** (DI-17 names, stable from here on): `clip-card`, `clip-status-{capturing|uploading|failed}`, `clip-open`, `session-reel`, `clips-show-more`, `recording-row`, `recording-session`, `recording-download`, `recording-delete`, `kpi-viewers`, `kpi-followers`, `kpi-uptime`, `kpi-category`, `onair-tally`, `onair-refresh`, `viewer-chart`, `stream-rail`.
 
 **Air lock.** It cannot be set on these routes: leaving Live Control under the lock ends the session and `DirectorPlayer` unmount calls `broadcast.reset()` (§7.17). The primitives still honour `deriveLock`; no route here adds lock-specific behaviour.
 
@@ -130,12 +130,12 @@ From `docs/redesign/audit/shell.md` (route-state items):
 |---|---|---|
 | `components/media/ClipsView.tsx` | Presentational root: header, groups, grid, "Show more", viewer. Props: `{ state: 'loading'\|'empty'\|'ready'\|'auth'\|'offline'; groups: ClipGroup[]; total: number; statusOf: Map<string, ClipStatus>; onDownload(clip); headingLevel?: 1 \| 2 }` (`headingLevel` default 1, §11.A.8) | 11A |
 | `components/media/SessionGroup.tsx` | Sticky `h2` header + `SessionReel` + card grid for one group | 11A |
-| `components/media/SessionReel.tsx` | Status-filled segment strip (§11.A.5) | 11A |
+| `components/media/SessionReel.tsx` | Status-filled segment strip (§11.A.5); 11B adds its read-only mode for the Recordings Session disclosure (§11.B.2) | 11A |
 | `components/media/MediaCard.tsx` | Clip card: `MediaScreen`, label, time, prompt, source, actions | 11A |
 | `components/media/useClipsLibrary.ts` | Wraps the queries, grouping, status derivation and the boundary timer | 11A |
-| `lib/clips.ts` | Pure `deriveClipStatus`, `groupClips`, `isSessionLive`, `UPLOAD_GRACE_MS`, `LIVE_MAX_MS` (unit-tested) | 11A |
+| `lib/clips.ts` | Pure `deriveClipStatus`, `groupClips`, `isSessionLive`, `UPLOAD_GRACE_MS`, `LIVE_MAX_MS` (unit-tested), and `NO_SESSIONS` (a module-level empty `SessionRow[]`, so Recordings' `groupClips` memo stays stable, §11.B.5) | 11A |
 | `components/media/fixtures.ts` | `CLIP_FIXTURES`: 100 clips in 5 groups (4 sessions plus a no-session group). Clip `n` (1 = newest) is created at `now − 20_000 − (n − 1) × 60_000`. Session s1 (`live`, `startedAt: now − 70 min`) holds clips 1–64: #1 has no media (`durationSeconds: 0`, no `url`) → capturing; #2 has no media → uploading (its segment ended when #1 was created, 20 s ago); #3 has `url: null` and `durationSeconds: 14` → failed; #4 has `promptVersion: 12`; #5 has no `promptVersion` and `chunkIndex: 3` → `chunk #3`; #6 has a 600-character prompt; clips #4–#100 (in every group) are ready. s2 (`ended`, `endedAt: now − 30_000`) holds clips 65–80, s3 (`ended`, `endedAt: now − 60 min`) 81–92 and s4 (`ended`, `endedAt: now − 90 min`) 93–96. Clips 97–100 have no `sessionId`. Every clip except #5 has a `promptVersion` (#4 = 12, the others `200 − n`). Ready clips alternate between the §11.0 webm (odd `n`) and mp4 (even `n`) testcard files, with the matching `mimeType`, the file's real `sizeBytes` and `durationSeconds: 2`. `SESSION_FIXTURES` holds s1–s4; `RECORDING_FIXTURES` is the §11.B.10 list. Every timestamp is relative to an injected `now`, so statuses are deterministic. (No clip field records an aspect ratio; the screen's `object-contain` handles 9:16 media, so there is no portrait fixture) | 11A |
-| `components/media/LibraryVisualFixture.tsx` | Renders its own `<section id="clips-visual-test">` (11A) and `<section id="recordings-visual-test">` (11B), with every Clips and Recordings state from fixtures and the views at `headingLevel={2}`. It makes no `fetch` of its own: Download calls `lib/download.ts` on same-origin `/fixtures/*` only, which §10's fixture rules permit | 11A, 11B |
+| `components/media/LibraryVisualFixture.tsx` | Renders its own `<section id="clips-visual-test">` (11A) and `<section id="recordings-visual-test">` (11B), with every Clips and Recordings state from fixtures and the views at `headingLevel={2}`. Each state is one view instance in its own `div`. The ready ClipsView's `div` carries `data-ready-state="clips"` (11A) and the ready RecordingsView's `div` carries `data-ready-state="recordings"` (11B): these are the §10.5.9 ready-state capture targets, and each value appears once on the page. The ready RecordingsView gets `reels` from `groupClips(CLIP_FIXTURES, NO_SESSIONS, now)` and a no-op `onReelsWanted` (§11.B.5). It makes no `fetch` of its own: Download calls `lib/download.ts` on same-origin `/fixtures/*` only, which §10's fixture rules permit | 11A, 11B |
 | `components/states/skeletons/ClipsSkeleton.tsx` | Layout-exact skeleton built from `components/media/layout.ts` (§11.A.6) | 11A |
 | `tests/library.spec.ts`, `tests/unit/{clip-status,format-media}.spec.ts` | e2e and unit specs (§15 harness) | 11A |
 | Shared files | §11.0 table | 11A |
@@ -376,6 +376,12 @@ export function deriveClipStatus(clip: ClipRow, newer: ClipRow | undefined,
   3. Then focus that card's `[data-testid=clip-open]` with `preventScroll: true`. If the clip has no media, focus its `h3` (`tabIndex={-1}`).
 - The reel is a redundant pointer shortcut: every clip is reachable in the grid, so the reel is `aria-hidden` and its buttons stay out of the tab order.
 
+**`SessionReel` read-only mode** (added in 11B for the Recordings Session disclosure, §11.B.5). Props: `{ clips: ClipRow[]; statusOf: Map<string, ClipStatus>; onJump?: (id: string) => void }`. With `onJump` set, the reel is exactly the Clips reel above. Without it:
+- The root is `ol.reel[data-testid=session-reel]` with `role="list"` and `aria-label="Session clips, oldest first"`, and it is **not** `aria-hidden`: in Recordings nothing else lists the session's clips.
+- Each segment is an `li` with the same order, flex, colour and mask rules as above. There is no `button`, no `tabIndex` and no click handler, so the reel adds no tab stop.
+- Each `li` holds sr-only text `` `${label} · ${duration(durationSeconds)} · ${STATUS}. ${prompt.slice(0, 140)}` `` (for example `segment v120 · 00:02 · READY. A slow dolly past…`), where `label` is the DI-9 label and `STATUS` is `READY`, `CAPTURING`, `UPLOADING` or `FAILED`.
+- A fine-pointer hover shows the same 1 px `accent` outline and the same Tooltip (`delay={400}`) as the Clips reel. The Tooltip is never the only source of that text: the sr-only text carries it (§7.3).
+
 **`MediaScreen`** (`components/media/MediaScreen.tsx`; shared with Recordings):
 
 ```ts
@@ -541,6 +547,8 @@ Nothing else moves. There are no loops on this page apart from the `BayerSpinner
 | DI-17 | Test ids from §11.0 |
 | DI-18 | Page stays `'use client'`; no Suspense or server data |
 
+**Behaviour changes** (goal.md §0.4; each applies by default, and the owner vetoes one with `OVERRIDE D10: <BC-id>`, §2.2 D10, after which Devin keeps the 845147c behaviour for that row and records it under Decisions): plain cards with no PixelCard canvas (§0.4 BC-19); the Download control, `clip-<id>.<ext>` through a Blob or the save dialog (§0.4 BC-21, §11.A.5); 24 cards at a time with 'Show more' and lazy posters (§0.4 BC-22, §11.A.5).
+
 **String ledger** (every visible string of `app/admin/clips/page.tsx` at 845147c). Every row whose "After" differs from the original is a D6-listed change for this route; nothing else changes:
 
 | String | Where | After |
@@ -570,7 +578,7 @@ Nothing else moves. There are no loops on this page apart from the `BayerSpinner
 - [ ] `grep -n "pixel-card-latest" dashboard/components/media/MediaCard.tsx dashboard/app/styles/components.css` finds the hook in both files, and `grep -oE -- "--pixel-card-(border|background|active-color)" dashboard/app/styles/components.css | sort -u | wc -l` prints `3` (the §5.18 shim, unchanged).
 - [ ] `npm run lint`, `npm run typecheck` and `npm run build` exit 0. In the PR's route table, `/admin/clips` First Load JS minus "First Load JS shared by all" is ≤ 45 kB.
 
-**Unit (`npx playwright test tests/unit`)**
+**Unit (`WZRD_MILESTONE=7 npx playwright test tests/unit`)**
 - [ ] `deriveClipStatus` returns: `url` set → `ready`; `url` null and duration 14 → `failed`; newest in a `live` session started 10 min ago → `capturing`; newest in an `opening` session → `capturing`; newer clip created 30 s ago → `uploading`; newer clip created 121 s ago → `failed`; newest, session `ended` with `endedAt` 60 s ago → `uploading`; the same at 200 s → `failed`; no `sessionId` and no newer clip, created 5 min ago → `failed`.
 - [ ] Stale and missing session rows: the newest clip of a `live` session whose `startedAt` is 5 h ago, itself created 5 h ago → `failed`, and `isSessionLive` of that session is `false` (the LIVE LED is hidden). With the clip's session row absent from `sessions`, the newest clip is never `capturing`, and `isSessionLive(undefined, now)` is `false`.
 - [ ] `groupClips` on `CLIP_FIXTURES` returns 5 groups in newest-first order whose clip counts sum to 100, with the no-session group keyed `'none'`; clips #1, #2 and #3 derive `capturing`, `uploading` and `failed`; `nextBoundary` equals the smallest future value among `segmentEndedAt + 120000` of the `uploading` clips and `startedAt + LIVE_MAX_MS` of live sessions, which is `now + 100_000` for the fixture.
@@ -583,13 +591,14 @@ Nothing else moves. There are no loops on this page apart from the `BayerSpinner
 - [ ] Clicking `[data-testid=clips-show-more]` 3 times renders 100 cards, and the button then disappears. After scrolling through all cards and back to the top, `section#clips-visual-test video` count is ≤ 24.
 - [ ] The first card has class `pixel-card-latest` and contains a lamp whose sr-only text is 'Newest clip'. The fixture's capturing clip has `data-status="capturing"` and `[data-testid=clip-status-capturing]`. The uploading clip has `clip-status-uploading`. The failed clip has `clip-status-failed` and the text 'No media stored for this segment'. No card shows '0.0s' or `00:00`.
 - [ ] A card whose fixture clip has `promptVersion: 12` has `h3` text `segment v12`; the fixture clip without `promptVersion` and with `chunkIndex: 3` has `h3` text `chunk #3`. Each group `h2` except the NO SESSION group contains a `code` element whose text matches `/^[a-z0-9]{8}…$/` and whose `title` equals the full session id.
-- [ ] Every `[data-testid=session-reel]` has `aria-hidden="true"` and one child per group clip. Clicking the reel segment of the 60th clip renders at least 72 cards and leaves `#clip-<id> [data-testid=clip-open]` focused, with its bounding box inside the viewport.
+- [ ] Every `#clips-visual-test [data-testid=session-reel]` has `aria-hidden="true"` and one child per group clip (the read-only Recordings reel, §11.B.5, is not `aria-hidden`). Clicking the reel segment of the 60th clip renders at least 72 cards and leaves `#clip-<id> [data-testid=clip-open]` focused, with its bounding box inside the viewport.
 - [ ] Hovering a ready card's screen and moving the pointer to 50% of its width sets the poster `video.currentTime` within ±0.25 s of `durationSeconds / 2` and shows a HUD reading `MM:SS / MM:SS`. After `pointerleave`, `currentTime` is 0.1 ± 0.05. With `hasTouch: true` and `isMobile: true`, the same gesture does not change `currentTime`.
 - [ ] Focusing a card's open control and pressing Space opens a `dialog` whose title is the card label and which contains `video[controls]`. With the 2 s fixture media, pressing `l` from `currentTime = 0` sets it to the end (±0.1 s; +5 s clamped) and `j` then sets it to 0 (−5 s clamped), `k` toggles `paused`, and Esc closes the dialog and returns focus to the open control.
 - [ ] Clicking 'Download' on a webm fixture clip fires a Playwright `download` whose `suggestedFilename()` is `clip-<id>.webm`, and the button then contains 'Saved'; on the mp4 fixture clip it is `clip-<id>.mp4`. Routing the fixture URL to `abort()` shows a chyron titled "Couldn't download directly" with an "Open file" button, and `page.url()` is unchanged.
 - [ ] The fixture's `auth`, `offline`, `empty` and `loading` bodies show, respectively: kicker `NO ACCESS` and the §11.D.7 title; `NO CARRIER` and "Network offline"; `NO FOOTAGE`, 'No clips yet' and the new body string exactly; `[aria-busy=true]` with a `role="status"` reading "Loading clips". None shows 'No clips yet' except the empty body.
 - [ ] Axe (`@axe-core/playwright`) reports 0 serious or critical violations on `#clips-visual-test` in both themes, and exactly one `h1` exists on `/admin/clips`.
 - [ ] Emulating `reducedMotion: 'reduce'`: after load, `document.getAnimations().filter(a => a.playState === 'running')` inside `#clips-visual-test` is empty.
+- [ ] Ready-state target (§10.5.9): `document.querySelectorAll('[data-ready-state="clips"]').length === 1`, and that element is inside `#clips-visual-test`. It contains 24 `[data-testid=clip-card]`, `[data-testid=clip-status-capturing]`, `[data-testid=clip-status-uploading]` and `[data-testid=clip-status-failed]`, and no `[aria-busy=true]` and no text 'No clips yet' (it wraps the ready view only).
 
 **Unconfigured e2e**
 - [ ] `/admin/clips`: `h1` is 'Clips'; `main` contains the kicker `NOT PATCHED` and `textContent` includes `Convex is not configured` and `Set NEXT_PUBLIC_CONVEX_URL to enable clips. Run npx convex dev in dashboard/ to create a deployment.`; `main video` and `main canvas` counts are 0; `document.title === 'Clips · stream.wzrd.tech admin'`; the console holds only the §1.6 allowed messages.
@@ -600,7 +609,10 @@ Nothing else moves. There are no loops on this page apart from the `BayerSpinner
 - [ ] **Needs a live Director session: Devin never runs one (§1.8 item 3) and records this item under Deferred / blocked as "not run (paid)".** During a live Director session in tab A, tab B on `/admin/clips` shows the newest clip as CAPTURING. After the next applied direction, it shows UPLOADING, then a poster within 120 s. A clip whose stored `mimeType` starts with `video/webm` saves `.webm`, and one with `video/mp4` saves `.mp4`.
 - [ ] Signed out (expired Access cookie), `/admin/clips` shows NO ACCESS, not 'No clips yet'.
 
-**Screenshots:** dark, light and 390 px after-screenshots of the fixture (ready with all four statuses) and of the unconfigured route, attached next to `docs/redesign/baseline/admin_clips-dark.jpg` in the PR.
+**Screenshots.** §15.10 names the files and sets the Before of each row; the dark 1440 Before is `docs/redesign/baseline/admin_clips-dark.jpg`. The 11A PR Screenshots table has rows for:
+- the **ready-state captures**: `locator.screenshot()` of `#clips-visual-test [data-ready-state="clips"]` on `/admin/visual-test?noboot` (the §10.5.9 target: the 100 `CLIP_FIXTURES`, with clips #1, #2 and #3 reading CAPTURING, UPLOADING and FAILED at the top of the first group) at a 1440×900 viewport, once in dark and once in light, with `reducedMotion: 'reduce'`;
+- the same target at 390×844 in dark, committed next to them with `-390` appended to its §15.10 name;
+- the route after-screenshots of `/admin/clips` from `WZRD_AFTER=1` (unconfigured, so they show the NOT PATCHED slate).
 
 #### 11.A.11 Cut order
 
@@ -609,7 +621,7 @@ Cut from the top when time runs short; each cut keeps every invariant.
 2. Reel Tooltips (clicking still jumps).
 3. Previous/Next in the viewer.
 4. Hover-scrub (the poster stays; the viewer still plays).
-5. The whole SessionReel (the group headers remain).
+5. The whole SessionReel on Clips (the group headers remain). `components/media/SessionReel.tsx` still ships, because the Recordings Session disclosure uses its read-only mode (§11.B.5).
 6. CountUp on the header count.
 
 **Never cut:** C1–C4 fixes (`useLoadState`, auth before empty, `deriveClipStatus` and the three lamps), no PixelCard, 24-at-a-time with lazy posters, the download with `extFromMime` (a Blob up to 256 MiB, the save dialog above), `.pixel-card-latest` with the NEW lamp, and the LTX copy removal.
@@ -622,11 +634,12 @@ Cut from the top when time runs short; each cut keeps every invariant.
 
 **Goal.**
 - **A tape is a row, not a card.** Each recording is a wide row: a 320×180 poster screen with scrub on the left, and on the right an `h2` title, engraved `inset` plates (Duration, Size, Format, Session) and two actions.
+- **The tape carries its story.** The Session plate is a disclosure. Opening it shows the session's reel beside the tape: the read-only `SessionReel` from 11A, one segment per applied direction, width proportional to its duration, filled by status. The clips come from the Clips page's existing `api.clips.list` query with `{ limit: 100 }`, matched to the row's `sessionId` on the client, so there is no backend change. When no clip in that window matches, the panel says 'Clips for this session are older than the latest 100'.
 - **Downloads work.** Download saves `recording-<id>.<ext>`, where the extension comes from the stored `mimeType`; it is never a hard-coded `.webm`. Up to 256 MiB it goes through a Blob (the cross-origin `download` attribute is ignored today); a larger session tape streams to disk through the save dialog and is never buffered in the tab (§11.A.5).
 - **Delete is safe and visible.** Delete opens a `ConfirmDialog` titled 'Delete this recording permanently?', runs a real pending state around the awaited mutation, reports failure inline, and returns focus predictably.
 - **Same honest states as Clips.** The page has skeleton, NO ACCESS, NOT PATCHED, NO CARRIER and NO TAPE states, and keeps the preserved guidance sentence.
 
-**Hero interaction: "pull the tape".** The operator scrubs the top row's poster to check the ending, then presses "Download" (a tape over 256 MiB first opens the browser's save dialog). The button reads "Downloading…" (width-locked) and then "Saved" for 900 ms, and the file saves as `recording-<id>.mp4` for a recording whose stored `mimeType` is `video/mp4`. Then "Delete" on an old take opens the dialog: "Delete permanently" → "Deleting…" → the dialog closes, the row disappears, the INFO chyron reads "Recording deleted", and focus lands on the next row's Download.
+**Hero interaction: "pull the tape".** The operator opens the top row's Session plate: the session's reel appears under the plates, 14 segments from the first direction to the last, and hovering a segment shows that direction's prompt. The operator scrubs the poster to check the ending, then presses "Download" (a tape over 256 MiB first opens the browser's save dialog). The button reads "Downloading…" (width-locked) and then "Saved" for 900 ms, and the file saves as `recording-<id>.mp4` for a recording whose stored `mimeType` is `video/mp4`. Then "Delete" on an old take opens the dialog: "Delete permanently" → "Deleting…" → the dialog closes, the row disappears, the INFO chyron reads "Recording deleted", and focus lands on the next row's Download.
 
 #### 11.B.2 Files
 
@@ -634,9 +647,9 @@ Cut from the top when time runs short; each cut keeps every invariant.
 
 | Path | Purpose | PR |
 |---|---|---|
-| `components/media/RecordingsView.tsx` | Presentational root: header, list, "Show more", viewer, delete dialog. Props: `{ state; recordings: RecordingRow[]; total: number; totalBytes: number; onDownload(r); onDelete(id): Promise<void>; headingLevel?: 1 \| 2 }` (`headingLevel` as §11.A.8) | 11B |
-| `components/media/RecordingRow.tsx` | One row (§11.B.4) | 11B |
-| `components/media/useRecordings.ts` | `useQuery(api.recordings.list, { limit: 100 })`, `useMutation(api.recordings.remove)`, the load state, and `deleteRecording(id)` that awaits `remove({ recordingId: id })` and rethrows | 11B |
+| `components/media/RecordingsView.tsx` | Presentational root: header, list, "Show more", viewer, delete dialog. Props: `{ state; recordings: RecordingRow[]; total: number; totalBytes: number; reels?: { groups: ClipGroup[]; statusOf: Map<string, ClipStatus> }; onReelsWanted?(): void; onDownload(r); onDelete(id): Promise<void>; headingLevel?: 1 \| 2 }` (`headingLevel` as §11.A.8; `reels` is `undefined` until the clips query has loaded, §11.B.5) | 11B |
+| `components/media/RecordingRow.tsx` | One row (§11.B.4), including the Session disclosure and its reel panel (§11.B.5) | 11B |
+| `components/media/useRecordings.ts` | `useQuery(api.recordings.list, { limit: 100 })`, `useMutation(api.recordings.remove)`, the load state, and `deleteRecording(id)` that awaits `remove({ recordingId: id })` and rethrows. For the Session disclosure: the lazy `api.clips.list` read, `groupClips(clips, NO_SESSIONS, now)` and the boundary timer, returned as `reels` and `onReelsWanted` (§11.B.5) | 11B |
 | `components/states/skeletons/RecordingsSkeleton.tsx` | Layout-exact skeleton (§11.B.6) | 11B |
 | `tests/recordings.spec.ts` | e2e | 11B |
 
@@ -646,7 +659,9 @@ Cut from the top when time runs short; each cut keeps every invariant.
 |---|---|---|
 | `app/admin/recordings/page.tsx` | Container only; the gate and the literal `<ConvexNotConfigured feature="recordings" />` are kept. The local `formatBytes` (`:10-14`) and `formatDuration` (`:16-22`) move to `lib/format.ts` as `bytes(n, { gb: true })` (§5.20.4) and `hms(s)` (§11.0), with byte-identical output | 11B |
 | `app/admin/recordings/loading.tsx` | Swap `RouteSkeleton` for `RecordingsSkeleton` (the file is created in 4D; shape and caption: §6.3). The route title is §7.7's, 4B | 11B |
-| `components/media/LibraryVisualFixture.tsx` | Adds `<section id="recordings-visual-test">` (§11.A.2) | 11B |
+| `components/media/LibraryVisualFixture.tsx` | Adds `<section id="recordings-visual-test">`, with `data-ready-state="recordings"` on the ready RecordingsView's `div` and `reels` from `CLIP_FIXTURES` (§11.A.2) | 11B |
+| `components/media/SessionReel.tsx` | Adds the read-only mode: `onJump` becomes optional, and without it the reel renders the `ol`/`li` form of §11.A.5. The Clips reel is unchanged | 11B |
+| `app/styles/library.css` | Adds the §11.B.4 rules (`.rec-list`, `.rec-row`, `.rec-plates`, `.rec-plate`, `.rec-session-toggle`, `.rec-reel`) inside its `@layer components` block | 11B |
 
 `ConfirmDialog` needs no change here: `pendingLabel`, `error`, `errorSignal` and `restoreFocus` are in its §7.3 API (4A).
 
@@ -676,6 +691,12 @@ Baseline: `docs/redesign/baseline/admin_recordings-dark.jpg` (unconfigured: the 
 @media (min-width: 768px) { .rec-row { grid-template-columns: 320px minmax(0, 1fr); gap: 16px; } }
 .rec-plates { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 @media (min-width: 1024px) { .rec-plates { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.rec-plate { position: relative; }                        /* surface-inset rounded-sm sq px-3 py-2, 48 px */
+.rec-session-toggle { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; }
+.rec-session-toggle::after { content: ''; position: absolute; inset: 0; }   /* invisible; the whole 48 px plate is the target */
+.rec-session-toggle:hover code { text-decoration: underline; text-underline-offset: 3px; }
+.rec-reel { margin-top: 8px; min-height: 16px; }
+.rec-reel .reel { margin: 0; }
 ```
 
 | Part | Spec |
@@ -684,9 +705,11 @@ Baseline: `docs/redesign/baseline/admin_recordings-dark.jpg` (unconfigured: the 
 | Row | `article.rec-row[data-testid=recording-row]`, `Panel tone="panel"` (`rounded-md sq shadow-e1`); index 0 adds `.pixel-card-latest` (border `rgb(var(--c-tally-preview) / .7)`, §11.A.4 rule) |
 | Screen | `MediaScreen` 16:9 (320×180 from 768; full width below); click opens `MediaViewer`; HUD bottom-right `duration(durationSeconds)` (`MM:SS`, or `HH:MM:SS` from 1 h); `isLatest` → NEW lamp |
 | Title row | `h2` `title` 16/22 `text-fg`, `line-clamp-2`, `title={full}`; right: `<time>` `caption` `text-fg-3`. When the fallback title is used (it already contains the stamp), the visible `<time>` is omitted and its `toLocaleString()` value moves to the `h2`'s `title` |
-| Plates | `<dl class="rec-plates">`; each plate `surface-inset rounded-sm sq px-3 py-2`, 48 px tall: `<dt>` `label` `text-fg-3`, `<dd>` `readout` `text-fg` `.nums` `truncate` |
+| Plates | `<dl class="rec-plates">`; each plate is a `div.rec-plate` (`surface-inset rounded-sm sq px-3 py-2`, 48 px tall) holding `<dt>` `label` `text-fg-3` and `<dd>` `readout` `text-fg` `.nums` `truncate` |
+| Session plate | With a `sessionId`, the `<dd>` holds the disclosure button `button.rec-session-toggle[data-testid=recording-session]` (§11.B.5): the short id `code`, sr-only text, and a 14 px `ChevronDown` (`ChevronUp` while open) in `text-fg-2`. Its `::after` covers the whole plate, so the target is 48 px tall at every pointer. Without a `sessionId` the `<dd>` is the preserved '—' and there is no button |
+| Reel panel | `div.rec-reel` directly after the `dl`, `hidden` while the disclosure is closed: `margin-top: 8px`, 16 px tall (the read-only `SessionReel`, a 16 px skeleton block, or one `caption` line) |
 | Actions | `flex gap-2`, 32 px: `Button variant="secondary" size="sm" icon={Download}` 'Download' (`recording-download`, url only) · `Button variant="danger" size="sm" icon={Trash2}` 'Delete' (`recording-delete`) |
-| Right column height | 44 (2 title lines) + 12 + 48 (plates at ≥1024) + 16 + 32 = 152 ≤ 180, so the row is 204 px tall at ≥ 1024 |
+| Right column height | 44 (2 title lines) + 12 + 48 (plates at ≥1024) + 16 + 32 = 152 ≤ 180; with the reel panel open, 152 + 8 + 16 = 176 ≤ 180. The row is 204 px tall at ≥ 1024 either way, so opening a disclosure never moves the rows below. Below 1024 the plates are 2 × 2 and an open panel adds 24 px |
 
 ```text
 1440 × 900 · gutter 32 · content 1376
@@ -700,7 +723,7 @@ Baseline: `docs/redesign/baseline/admin_recordings-dark.jpg` (unconfigured: the 
 ││┌─ 320×180 ───────┐  A continuous original late-night market story…    Sep 24, 21:04            ││ h2, line-clamp-2 · <time>
 │││[NEW]            │  in the rain, told in eight directions                                      ││
 │││                 │  ┌─ Duration ───┐ ┌─ Size ───────┐ ┌─ Format ─────┐ ┌─ Session ────┐        ││ plates 48, 4 columns from 1024
-│││  poster / scrub │  │1h 2m 3s      │ │412.3 MB      │ │WebM · VP9    │ │3f2a91c0…     │        ││
+│││  poster / scrub │  │1h 2m 3s      │ │412.3 MB      │ │WebM · VP9    │ │3f2a91c0… ▾   │        ││
 │││                 │  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘        ││
 │││         01:02:03│  [↓ Download]  [Delete]                                                     ││ actions 32
 ││└─────────────────┘                                                                             ││
@@ -730,11 +753,21 @@ Baseline: `docs/redesign/baseline/admin_recordings-dark.jpg` (unconfigured: the 
 ││ │1h 2m 3s      │ │412.3 MB      │││
 ││ └──────────────┘ └──────────────┘││
 ││ ┌─ Format ─────┐ ┌─ Session ────┐││
-││ │WebM · VP9    │ │3f2a91c0…     │││
+││ │WebM · VP9    │ │3f2a91c0… ▾   │││
 ││ └──────────────┘ └──────────────┘││
 ││ [↓ Download] [Delete]            ││ actions 32
 │└──────────────────────────────────┘│
 └────────────────────────────────────┘
+
+Row 1 with its Session plate open (1440): the right column grows from 152 to 176 px, so the row stays 204
+││┌─ 320×180 ───────┐  A continuous original late-night market story…    Sep 24, 21:04            ││
+│││[NEW]            │  in the rain, told in eight directions                                      ││
+│││                 │  ┌─ Duration ───┐ ┌─ Size ───────┐ ┌─ Format ─────┐ ┌─ Session ────┐        ││
+│││  poster / scrub │  │1h 2m 3s      │ │412.3 MB      │ │WebM · VP9    │ │3f2a91c0… ▴   │        ││ aria-expanded="true"
+│││                 │  └──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘        ││
+│││                 │  [█████|███|████████|██|████|██████|███|█████|██|████|███|█████|██|██]      ││ reel panel 8 + 16: read-only SessionReel, 14 segments, oldest left
+│││         01:02:03│  [↓ Download]  [Delete]                                                     ││ actions 16 + 32
+││└─────────────────┘                                                                             ││
 ```
 
 #### 11.B.5 Component tree
@@ -750,7 +783,11 @@ RecordingsView
 │  └─ article.rec-row (+ .pixel-card-latest on index 0) aria-labelledby → its h2 (titleId = useId())
 │     ├─ MediaScreen src={url} status={url ? 'ready' : 'unavailable'} durationSeconds label={'recording from ' + stamp(createdAt)} isLatest
 │     ├─ div > h2#{titleId} · <time dateTime title={toLocaleString()}>{stamp(createdAt)}</time>
-│     ├─ dl.rec-plates: Duration hms(durationSeconds) · Size bytes(sizeBytes,{gb:true}) · Format formatMime(mimeType) [title=mimeType] · Session {id.slice(0,8)}… | '—' [title=sessionId]
+│     ├─ dl.rec-plates: Duration hms(durationSeconds) · Size bytes(sizeBytes,{gb:true}) · Format formatMime(mimeType) [title=mimeType] · Session: sessionId ? button.rec-session-toggle (code {id.slice(0,8)}… [title=sessionId]) : '—'
+│     ├─ div.rec-reel#{reelId} (reelId = useId(); hidden while closed; children only while open):
+│     │    reels === undefined → Skeleton shape="block" h={16} + sr-only role="status" "Loading clips"
+│     │    no group for sessionId → p.caption.text-fg-3 "Clips for this session are older than the latest 100"
+│     │    otherwise → SessionReel clips={group.clips} statusOf={reels.statusOf}   (no onJump: read-only, §11.A.5)
 │     └─ div.actions: Download (url only) · Delete
 ├─ ShowMore
 ├─ MediaViewer (shared, §11.A.5)
@@ -760,6 +797,38 @@ RecordingsView
 **Title.** ``recording.title ?? `${modelLabel(recording.model)} session · ${stamp(recording.createdAt)}` ``, where `modelLabel('director') === 'Director'` and every other `sessionModel` literal is shown as stored. For example: "Director session · Sep 24, 21:04" (DI-10: still `title ?? <model-based label>`).
 
 **Download.** ``downloadMedia(url, `recording-${recording._id}.${extFromMime(recording.mimeType)}`, { sizeBytes: recording.sizeBytes })``. The Button has `pending`, `pendingLabel="Downloading…"`, `successLabel="Saved"`, `successSignal`/`errorSignal` set exactly as the Clips Download (§11.A.5), and `aria-describedby={titleId}` (the row `h2`). It runs the error micro-state on `'fallback'`.
+
+**Session disclosure** (`RecordingRow`, only when `recording.sessionId` is set):
+- The button is `<button type="button" className="rec-session-toggle" data-testid="recording-session" aria-expanded={open} aria-controls={reelId}>` holding `<code title={sessionId}>{sessionId.slice(0, 8)}…</code>`, `<span className="sr-only">, session clips</span>` and `{open ? <ChevronUp size={14} /> : <ChevronDown size={14} />}` (`aria-hidden`, `text-fg-2`). Its accessible name is "3f2a91c0…, session clips", and `aria-expanded` carries the state.
+- A click (or Enter/Space) toggles `open`. The first open also calls `onReelsWanted()`. Focus stays on the button. The disclosure starts closed on every mount. Rows are keyed by `_id`, so "Show more" or a delete never changes another row's open state.
+- `div.rec-reel#{reelId}` always exists, so `aria-controls` always resolves. It has the `hidden` attribute while closed and renders its children only while open, so closed rows cost nothing.
+- The group is `reels.groups.find((g) => g.key === recording.sessionId)`. The panel renders the read-only `SessionReel` of that group, the 16 px skeleton block while `reels` is `undefined`, or, when no group matches, the `caption` `text-fg-3` line 'Clips for this session are older than the latest 100'.
+
+**`useRecordings()` additions** (`components/media/useRecordings.ts`):
+
+```ts
+const [clipsWanted, setClipsWanted] = useState(false)                             // set by the first Session disclosure opened on the page; never reset
+const clips = useQuery(api.clips.list, clipsWanted ? { limit: 100 } : 'skip')   // the Clips page's query and args (DI-4, ST-4); matched client-side, no backend change
+const [now, setNow] = useState(() => Date.now())
+const reelData = useMemo(
+  () => (clips === undefined ? undefined : groupClips(clips, NO_SESSIONS, now)),  // NO_SESSIONS from lib/clips.ts
+  [clips, now])
+const nextBoundary = reelData?.nextBoundary ?? null
+useEffect(() => {                                                                 // the §11.A.5 one-shot timer: only the next uploading → failed flip
+  if (nextBoundary === null) return
+  const id = setTimeout(() => setNow(Date.now()), Math.max(0, nextBoundary - Date.now()) + 50)
+  return () => clearTimeout(id)
+}, [nextBoundary])
+useEffect(() => setNow(Date.now()), [clips])                                      // re-anchor on every reactive update
+const reels = useMemo(() => reelData && { groups: reelData.groups, statusOf: reelData.statusOf }, [reelData])
+const onReelsWanted = useCallback(() => setClipsWanted(true), [])
+```
+
+- The query runs only after a disclosure first opens, so a visit that never opens one adds no subscription. Later opens reuse the loaded clips at once.
+- The statuses are `deriveClipStatus` with no session row (`NO_SESSIONS`), so no segment is CAPTURING. That matches the data: only `disconnect()` saves a recording with a `sessionId` (`DirectorPlayer.tsx:899`), after the recorder has stopped; 'Stop & save recording' saves one without a `sessionId` (`:1277`), which gets no disclosure. A clip with media is READY; a clip without media is UPLOADING until `segmentEndedAt + UPLOAD_GRACE_MS` and FAILED after that (§11.A.5; with no session row, the newest clip's `segmentEndedAt` is its own `createdAt`).
+- Clip rows are matched by `sessionId` only. No `api.sessions.list` read is added here.
+
+> Note: `api.clips.listBySession` exists (`convex/clips.ts:67-82`) but is not used: it would add one subscription per open row, and a Convex call that ST-4's list does not contain. The reel therefore shows only the session's clips that are within the latest 100 clips. When the window is full, a session's oldest clips can fall outside it, and the reel then starts at the oldest clip that is still inside. Cursor pagination is the §17.4 F12 follow-up.
 
 **Delete flow:**
 
@@ -805,7 +874,11 @@ RecordingsView
 | Loading | `recordings === undefined` or `auth.isLoading` | `RecordingsSkeleton.Body` via `useDelayedFlag` (150/300); `aria-busy`; sr-only status | "Loading recordings" |
 | Empty | `recordings.length === 0` | `<Slate kind="empty" kicker="NO TAPE" art="recordings" size="route" actions={<Link href="/admin" …>Open Live Control</Link>}>` | Title 'No recordings yet' (preserved); body 'Use “Record” on the Director player, then “Stop & save recording”' (preserved, U+201C/U+201D, no final period) |
 | Media URL null | `recording.url === null` | Screen placeholder; no Download | 'Media unavailable' (preserved) |
-| Session missing | `!recording.sessionId` | Session plate | '—' (preserved) |
+| Session missing | `!recording.sessionId` | Session plate, no disclosure | '—' (preserved) |
+| Session disclosure closed | Default | Session plate button `aria-expanded="false"`, ChevronDown; `div.rec-reel` `hidden` and empty | Short id `3f2a91c0…` (preserved) + sr-only ', session clips' |
+| Session reel loading | Open and `reels === undefined` (the lazy `api.clips.list` read has not loaded) | `Skeleton shape="block" h={16}` in the panel, sr-only `role="status"` | "Loading clips" |
+| Session reel | Open and a group matches `sessionId` | Read-only `SessionReel` (§11.A.5), `aria-label="Session clips, oldest first"` | Per segment (sr-only and Tooltip): `{label} · {MM:SS} · {STATUS}. {prompt, first 140 characters}` |
+| Session clips outside the window | Open and no group matches `sessionId` | `caption` `text-fg-3` line in the panel | 'Clips for this session are older than the latest 100' |
 | Downloading / saved / fallback | §11.B.5 | Button micro-states; fallback chyron (§11.A.6) | 'Downloading…' · 'Saved' · "Couldn't download directly" (body 'Large file: open it in a new tab and save it from there.' over 256 MiB without a save dialog) |
 | Deleting / deleted / delete failed | §11.B.5 | Dialog pending / INFO chyron / inline alert | 'Deleting…' · 'Recording deleted' · "Couldn't delete the recording." + message |
 
@@ -817,6 +890,7 @@ Same table as §11.A.7 for route enter, skeleton → content, CountUp on the cou
 - The Delete dialog opens and closes per `Dialog` (§7.3), with pending shown by the in-button `BayerSpinner`.
 - The removed row is a **cut** (Convex reactivity). There is no exit animation, because holding a deleted row on screen would misstate storage.
 - The INFO chyron resolves in over 160 ms (§6.10).
+- The Session disclosure panel opens and closes as a **cut**: no height animation, and the icon swaps between `ChevronDown` and `ChevronUp` without rotating. The reel's segment outline on hover is instant.
 - Reduced motion: everything is instant; the BayerSpinner is a static glyph.
 
 #### 11.B.8 Accessibility
@@ -831,23 +905,30 @@ Same table as §11.A.7 for route enter, skeleton → content, CountUp on the cou
   - The destructive button is never the default.
   - While pending, `aria-busy="true"` is on the dialog, and the confirm button keeps focus (never native `disabled`).
 - **Focus after delete:** §11.B.5.
-- **Announcements:** `announce('Recording deleted')`; download success "Saved `recording-<id>.<ext>`" (the real file name).
-- **Selection:** title and plates are selectable.
-- **Targets:** buttons are 28 px (sm), 44 px on coarse pointers.
+- **Session disclosure:**
+  - The Session plate's button has `aria-expanded` and `aria-controls` → the panel (`useId()`), and its name is "{short id}…, session clips". Focus stays on it when it toggles.
+  - The open panel follows the plates in DOM order, before the actions. The read-only reel is a list named "Session clips, oldest first" whose items carry the sr-only segment text (§11.A.5). It adds no tab stop, so Tab goes from the Session button to Download.
+  - The Tooltip on a segment is pointer-only and repeats the sr-only text.
+- **Announcements:** `announce('Recording deleted')`; download success "Saved `recording-<id>.<ext>`" (the real file name). Opening or closing a disclosure is not announced (`aria-expanded` conveys it).
+- **Selection:** the title and the Duration, Size and Format plates are selectable. The Session plate's short id is the disclosure button's label, so it is not drag-selectable; the full id stays in the `code` element's `title`, as today.
+- **Targets:** buttons are 28 px (sm), 44 px on coarse pointers. The Session button's target is the whole 48 px plate (`::after`, §11.B.4).
 
 #### 11.B.9 Preserved contract
 
 | ID | How §11.B satisfies it |
 |---|---|
 | DI-3, SH-5 | Gate and `<ConvexNotConfigured feature="recordings" />` kept literally |
-| DI-4, ST-4 | `useQuery(api.recordings.list, { limit: 100 })` and `useMutation(api.recordings.remove)` called as `remove({ recordingId })`, now awaited |
+| DI-4, ST-4 | `useQuery(api.recordings.list, { limit: 100 })` and `useMutation(api.recordings.remove)` called as `remove({ recordingId })`, now awaited. The Session disclosure reads the existing `api.clips.list` with the Clips page's `{ limit: 100 }` args, only after a disclosure first opens (`'skip'` before): an additional read of a listed call, no backend change and no new Convex function |
 | DI-8, ST-3, SH-7 | Newest first; index 0 row carries `.pixel-card-latest` + NEW lamp |
+| DI-9 | The Session plate keeps the short id `{id.slice(0,8)}…` with `title={sessionId}` inside the disclosure button; the reel segments use the DI-9 label (`segment v{promptVersion}` or `chunk #{chunkIndex}`) |
 | DI-10 | `title ?? <model-based label>`; Duration plate uses `hms()` (= `formatDuration`, h/m/s); Size uses `bytes(n, { gb: true })` (= this page's `formatBytes`, KB/MB/GB) |
 | DI-11 | Confirmation required for every delete; title 'Delete this recording permanently?' unchanged; permanence unchanged (`convex/recordings.ts:39-48` untouched) |
 | DI-12 | Empty body keeps 'Use “Record” on the Director player, then “Stop & save recording”' byte-for-byte |
 | DI-1, DI-13–DI-18, ST-1/2/5, SH-1/6 | As §11.A.9 |
 
 > Note: the `MM:SS` media-duration format (§5 typography) applies to the screen's HUD plate. The Duration **plate** keeps `formatDuration` semantics, because DI-10 requires it.
+
+**Behaviour changes** (goal.md §0.4; each vetoable with `OVERRIDE D10: <BC-id>`, §2.2 D10, as in §11.A.9): plain rows with no PixelCard canvas (§0.4 BC-19); `recording-<id>.<ext>` downloads with `<ext>` from `mimeType`, through a Blob or the save dialog (§0.4 BC-21, §11.B.5); 24 rows at a time with 'Show more', and ConfirmDialog instead of the native `confirm()` (§0.4 BC-22, §11.B.5).
 
 **String ledger** (`app/admin/recordings/page.tsx` at 845147c). Every row whose "After" differs is a D6-listed change; nothing else changes:
 
@@ -862,30 +943,34 @@ Same table as §11.A.7 for route enter, skeleton → content, CountUp on the cou
 | `toLocaleString()` (`:76`) | Visible `stamp()`; full value in `title` |
 | 'Duration', 'Size', 'Session' (`:81`, `:85`, `:95`) | Plate labels (same text; authored-case unchanged, `label` style adds no `text-transform`) |
 | 'Type' (`:89`) + raw MIME (`:91`) | **'Format'** + `formatMime()`; raw MIME stays in `title` (D6, listed) |
-| `` `${sessionId.slice(0, 8)}…` `` / '—' (`:97`) | Session plate (same), same `title` |
+| `` `${sessionId.slice(0, 8)}…` `` / '—' (`:97`) | Session plate (same text, same `title`); with a `sessionId` the text is the label of the Session disclosure button (§11.B.5) |
 | 'Download' (`:110`), `download="recording-${id}.webm"` (`:106`) | 'Download'; file `recording-${id}.${extFromMime(mimeType)}` |
 | 'Delete' (`:120`), `confirm('Delete this recording permanently?')` (`:115`) | 'Delete'; ConfirmDialog title (same string) |
 
-**New strings:** 'Format', 'Director session · {stamp}', 'The video file is removed from Convex storage. This cannot be undone.', 'Delete permanently', 'Deleting…', 'Keep recording', "Couldn't delete the recording.", 'Recording deleted', 'Loading recordings', 'NO TAPE', plus the shared strings from §11.A.9.
+**New strings:** 'Format', 'Director session · {stamp}', 'The video file is removed from Convex storage. This cannot be undone.', 'Delete permanently', 'Deleting…', 'Keep recording', "Couldn't delete the recording.", 'Recording deleted', 'Loading recordings', 'NO TAPE', 'session clips' (sr-only, after the short id), 'Session clips, oldest first', 'Clips for this session are older than the latest 100', the sr-only segment pattern `{label} · {MM:SS} · {STATUS}. {prompt}` (§11.A.5), plus the shared strings from §11.A.9 ('Loading clips', 'READY', 'CAPTURING', 'UPLOADING' and 'FAILED' among them).
 
 #### 11.B.10 Acceptance criteria
 
 **How to run.** Run modes are §1.6's: browser items run in **dev** (unconfigured) on `/admin/recordings?noboot`, or in **fixture** mode (dev at `/admin/visual-test?noboot#recordings-visual-test`; never on prod, where the route is 404), unless a line says otherwise. Commands whose paths start with `dashboard/` or `docs/`, and `git` commands with such pathspecs, run from the repository root; every other command runs from `dashboard/`.
 
 **Contract and gates**
-- [ ] `git diff --stat 845147c -- dashboard/convex/recordings.ts` prints nothing; `grep -n "useQuery(api.recordings.list, { limit: 100 })" dashboard/components/media/useRecordings.ts` and `grep -n "remove({ recordingId" dashboard/components/media/useRecordings.ts` each print one line.
+- [ ] `git diff --stat 845147c -- dashboard/convex` prints nothing; `grep -n "useQuery(api.recordings.list, { limit: 100 })" dashboard/components/media/useRecordings.ts` and `grep -n "remove({ recordingId" dashboard/components/media/useRecordings.ts` each print one line.
+- [ ] `grep -c "useQuery(api.clips.list, clipsWanted ? { limit: 100 } : 'skip')" dashboard/components/media/useRecordings.ts` prints `1`, and `grep -rn "listBySession\|api.sessions" dashboard/components/media/useRecordings.ts dashboard/components/media/RecordingRow.tsx dashboard/components/media/RecordingsView.tsx` prints nothing (the reel reads only the existing `api.clips.list` window).
 - [ ] `grep -rnE '\bconfirm\(|PixelCard|console\.|fal-red|\.webm' dashboard/app/admin/recordings dashboard/components/media --exclude=fixtures.ts` prints nothing (the extension comes only from `extFromMime` in `lib/format.ts`).
 - [ ] `/admin/recordings` First Load JS minus shared is ≤ 45 kB.
 
 **Fixture e2e (`tests/recordings.spec.ts`, `#recordings-visual-test`, 1440×900, both themes)**
-- [ ] The fixture list (30 rows: a webm row and an mp4 row on the §11.0 testcard files with their real `sizeBytes`, a `url: null` row, a `sizeBytes: 1_610_612_736` row whose `url` is the webm testcard, and a row with `sessionId` absent) renders 24 `[data-testid=recording-row]`; the first has class `pixel-card-latest`; `section#recordings-visual-test canvas` count is 0.
+- [ ] The fixture list (30 rows: a webm row and an mp4 row on the §11.0 testcard files with their real `sizeBytes`, a `url: null` row, a `sizeBytes: 1_610_612_736` row whose `url` is the webm testcard, and a row with `sessionId` absent; rows 1, 2 and 3 carry the session ids of `CLIP_FIXTURES`' s2, s3 and s4, and every other row that has a `sessionId` carries one that no fixture clip has; the `url: null` row and the row without a `sessionId` are not among rows 1–4) renders 24 `[data-testid=recording-row]`; the first has class `pixel-card-latest`; `section#recordings-visual-test canvas` count is 0.
 - [ ] Plate text: the 1.5 GiB row's Size is `1.50 GB`; a row with `durationSeconds: 3723` shows Duration `1h 2m 3s` and a screen HUD `01:02:03`; the webm row's Format is `WebM · VP9` with `title="video/webm;codecs=vp9,opus"`; the row without a session shows '—'. The row with `url: null` shows 'Media unavailable' and has no `[data-testid=recording-download]`.
 - [ ] A fixture row with `title: undefined, model: 'director', createdAt: Date.UTC(2026, 8, 24, 21, 4)`, rendered under `timezoneId: 'UTC'`, has `h2` text `Director session · Sep 24, 21:04`.
 - [ ] Download on the mp4 row fires a `download` with `suggestedFilename() === 'recording-<id>.mp4'`, and on the webm row `…webm`. During the fetch (fixture route delayed 500 ms), the button has `aria-busy="true"`, contains 'Downloading…', and its width equals its idle width ± 0.5 px.
 - [ ] Large file: with `Response.prototype.blob` wrapped to count calls, and `window.showSaveFilePicker` stubbed through `page.addInitScript` to return a handle whose `createWritable()` resolves to a byte-counting `WritableStream`, Download on the 1.5 GiB row ends with the button containing 'Saved', the stream received ≥ 1 byte, and `blob` was called 0 times. With `showSaveFilePicker` deleted instead, the same click shows the chyron body 'Large file: open it in a new tab and save it from there.', issues no request with `request.resourceType() === 'fetch'` after the click (the poster `<video>` may still load the same testcard file as `media`), and `blob` is still called 0 times.
 - [ ] Delete opens a dialog titled exactly 'Delete this recording permanently?' with buttons 'Keep recording' (focused) and 'Delete permanently'. With the fixture `remove` resolving after 400 ms, the confirm button shows 'Deleting…' with `aria-busy="true"`, Esc does not close the dialog while pending, then the row is gone, a `role="status"` chyron reads 'Recording deleted', and `document.activeElement` is the next row's Download. Pressing 'Keep recording' on another row's dialog closes it and returns focus to that row's Delete. With `remove` rejecting 'Authentication required', the dialog stays open with a `role="alert"` containing "Couldn't delete the recording." and 'Authentication required', and the row remains.
+- [ ] Session disclosure: row 1's `[data-testid=recording-session]` is a `button` with `aria-expanded="false"` whose text starts with the first 8 characters of s2's id followed by `…`, and the element named by its `aria-controls` has the `hidden` attribute and no children. Clicking the button sets `aria-expanded="true"` and removes `hidden`. That element then contains exactly one `[data-testid=session-reel]`: an `ol` with `role="list"`, `aria-label="Session clips, oldest first"` and no `aria-hidden`, with 16 `li` children and no `button`, whose first `li`'s `textContent` starts with `segment v120 · 00:02 · READY.` (clip #80, the oldest of s2). At 1440 the row's bounding-box height is the same before and after the click (± 1 px). With the button focused, Tab moves focus to row 1's `[data-testid=recording-download]`; pressing Enter on the button closes the panel (`aria-expanded="false"`, `hidden` back) and focus stays on the button.
+- [ ] Rows 2 and 3 open reels with 12 and 4 `li` children. Row 4 opens a panel whose text is exactly 'Clips for this session are older than the latest 100' and which contains no `[data-testid=session-reel]`. The row without a `sessionId` has no `[data-testid=recording-session]`, and its Session plate's `dd` text is '—'.
 - [ ] The fixture `auth`, `empty`, `offline` and `loading` bodies show `NO ACCESS`; `NO TAPE` + 'No recordings yet' + the preserved sentence exactly; `NO CARRIER`; "Loading recordings" as `role="status"`.
-- [ ] Axe: 0 serious or critical violations in both themes; one `h1`.
+- [ ] Ready-state target (§10.5.9): `document.querySelectorAll('[data-ready-state="recordings"]').length === 1`, and that element is inside `#recordings-visual-test`. It contains 24 `[data-testid=recording-row]`, and no `[aria-busy=true]` and no text 'No recordings yet' (it wraps the ready view only).
+- [ ] Axe: 0 serious or critical violations in both themes, with every disclosure closed and again with rows 1 and 4 open; one `h1`.
 
 **Unconfigured e2e**
 - [ ] `/admin/recordings` shows `h1` 'Recordings', kicker `NOT PATCHED`, and the text `Set NEXT_PUBLIC_CONVEX_URL to enable recordings. Run npx convex dev in dashboard/ to create a deployment.`; `document.title === 'Recordings · stream.wzrd.tech admin'`; no `video` or `canvas` in `main`; console clean per §1.6.
@@ -893,6 +978,12 @@ Same table as §11.A.7 for route enter, skeleton → content, CountUp on the cou
 **Configured QA** (Human operator only, §1.6 step 6, on existing recordings of a configured deployment; recorded under Verification)
 - [ ] CORS first: `curl -sI -H 'Origin: https://stream.wzrd.tech' "<a recording url>" | grep -i '^access-control-allow-origin'` prints `*` or the origin. If it prints nothing, record "fallback-only download" in the PR (the §17.4 follow-up); the fallback chyron is then the expected result, and the file-name items below are N/A.
 - [ ] A recording whose stored `mimeType` starts with `video/mp4` saves `.mp4`, and one with `video/webm` saves `.webm` (the Format plate's `title` shows the stored `mimeType`); the admin tab never navigates away; the viewer shows a finite duration for a Chromium WebM of at most 64 MiB after `fixInfiniteDuration`, and the stored duration in the description above 64 MiB.
+- [ ] Opening the Session plate of the newest recording that has a `sessionId` shows a reel with as many segments as `/admin/clips` shows in that session's group header (`{n} clips`) when the whole session is within the latest 100 clips; a recording whose session has no clip in that window shows 'Clips for this session are older than the latest 100'.
+
+**Screenshots.** §15.10 names the files and sets the Before of each row; the dark 1440 Before is `docs/redesign/baseline/admin_recordings-dark.jpg`. The 11B PR Screenshots table has rows for:
+- the **ready-state captures**: `locator.screenshot()` of `#recordings-visual-test [data-ready-state="recordings"]` on `/admin/visual-test?noboot` (the §10.5.9 target: the 30 fixture rows, 24 rendered, every Session disclosure closed) at a 1440×900 viewport, once in dark and once in light, with `reducedMotion: 'reduce'`;
+- the same target at 390×844 in dark, committed next to them with `-390` appended to its §15.10 name;
+- the route after-screenshots of `/admin/recordings` from `WZRD_AFTER=1` (unconfigured, so they show the NOT PATCHED slate).
 
 #### 11.B.11 Cut order
 
@@ -938,7 +1029,7 @@ Same table as §11.A.7 for route enter, skeleton → content, CountUp on the cou
 | `components/charts/ChartStatic.tsx` | Static inline-SVG fallback when the effect slot is not granted | 11C |
 | `components/charts/chartData.ts` | Pure `toRows`, `rowsSignature`, `downsample(rows, 48)`, `summarize`, `xTick`, `yTick` (unit-tested; used by `ViewerChart` and `ChartFigure`) | 11C |
 | `tests/helpers/twitch.ts` | `twitchBody()` and route helpers for the mocked-API e2e; images are the same-origin §11.0 fixture files (§11.C.10) | 11C |
-| `components/analytics/fixtures.ts`, `AnalyticsVisualFixture.tsx` | Fixture states (live, offline, not configured, no access (401), error, stale, followers null, a 60-character category, fewer than 2 samples) and `VIEWER_SERIES_24H` (2880 samples; latest 1,284, peak 1,610 at 21:04 UTC, live average 902). Thumbnail and avatar are the same-origin §11.0 files. `AnalyticsVisualFixture` renders its own `<section id="analytics-visual-test">`, with `AnalyticsView` at `headingLevel={2}` | 11C |
+| `components/analytics/fixtures.ts`, `AnalyticsVisualFixture.tsx` | Fixture states (live, offline, not configured, no access (401), error, stale, followers null, a 60-character category, fewer than 2 samples) and `VIEWER_SERIES_24H` (2880 samples; latest 1,284, peak 1,610 at 21:04 UTC, live average 902). Thumbnail and avatar are the same-origin §11.0 files. The not-configured state's error is `{ status: 503, message: 'TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET are not configured' }`. `AnalyticsVisualFixture` renders its own `<section id="analytics-visual-test">`, with each state's `AnalyticsView` at `headingLevel={2}` in its own `div`. The live state's `div` (with data: `isLive: true`, latest 1,284 viewers, `VIEWER_SERIES_24H` as the persisted samples) carries `data-ready-state="analytics-live"`, and the not-configured state's `div` carries `data-ready-state="analytics-not-patched"`: the §10.5.9 ready-state capture targets, each value once on the page | 11C |
 | `components/states/skeletons/AnalyticsSkeleton.tsx` | §11.C.6 | 11C |
 | `app/styles/analytics.css` | `.an-*`, `.chart-*` rules. The file holds only `@layer components { … }` (§5.1). 11C adds its `@import` line at its §5.1 position | 11C |
 | `public/fixtures/testcard-thumb.jpg`, `public/fixtures/testcard-avatar.png` | §11.0 commands | 11C |
@@ -1377,6 +1468,7 @@ Nothing pulses. LIVE is steady (§6.1 law 4).
 
 **Fixture e2e (`#analytics-visual-test`, fixture)**
 - [ ] With > 1 persisted fixture sample, the chart `h2` reads 'Viewers (last 24h, Convex)' and the meta reads `Last {span}`.
+- [ ] Ready-state targets (§10.5.9; run with `reducedMotion: 'reduce'`, so CountUp shows the final value at once): `[data-ready-state="analytics-live"]` and `[data-ready-state="analytics-not-patched"]` each match exactly one element, both inside `#analytics-visual-test`. In the first, `[data-testid=onair-tally]` has `data-state="live"`, `[data-testid=kpi-viewers] dd` reads `1,284` and `[data-testid=viewer-chart]` and `[data-testid=stream-rail]` exist. In the second, `[data-testid=onair-tally]` has `data-state="not-patched"`, the slate body text equals 'TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET are not configured', and no element has text `OFFLINE`.
 - [ ] With `#analytics-visual-test` scrolled into view and `#audio-library-visual-test` out of view, exactly one `ViewerChart` in the section contains a `canvas` and every other one contains the `ChartStatic` `svg`.
 
 **Unconfigured e2e (no route mocking)**
@@ -1385,11 +1477,14 @@ Nothing pulses. LIVE is steady (§6.1 law 4).
 **Configured QA** (Human operator only, authorized channel; recorded under Verification)
 - [ ] **Needs a live broadcast: Devin never runs a Director session (§1.8 item 3) and records this item under Deferred / blocked as "not run (paid)".** While live, the lamp reads LIVE within 30 s, uptime ticks once per second, and a 30 s poll does not re-sweep the chart. Stopping the stream flips the lamp to OFFLINE within 30 s and the rail plays the standby loop.
 
-**Screenshots:** dark, light and 390 px of the not-configured route and the mocked live and offline states, next to `docs/redesign/baseline/admin_analytics-dark.jpg`.
+**Screenshots.** §15.10 names the files and sets the Before of each row; the dark 1440 Before is `docs/redesign/baseline/admin_analytics-dark.jpg`. The 11C PR Screenshots table has rows for:
+- the **ready-state captures**: `locator.screenshot()` of `#analytics-visual-test [data-ready-state="analytics-live"]` (LIVE with data) and of `#analytics-visual-test [data-ready-state="analytics-not-patched"]` (NOT PATCHED) on `/admin/visual-test?noboot` (the §10.5.9 targets) at a 1440×900 viewport, each once in dark and once in light, with `reducedMotion: 'reduce'`;
+- the route after-screenshots of `/admin/analytics` from `WZRD_AFTER=1` (unconfigured, so they show NOT PATCHED with the real 503 sentence);
+- the mocked live and offline states from `tests/analytics.spec.ts` (full page at 1440 in dark and light, and at 390 in dark), committed as `admin_analytics-mocked-live-<theme>-<width>.png` and `admin_analytics-mocked-offline-<theme>-<width>.png` in the same folder (the form of §15.10's `admin_error-probe-dark-1440.png`).
 
 #### 11.C.11 Cut order
 
-1. The `motion/coast-standby-loop` video in the rail; use its poster (§17 global cut order).
+1. The `motion/coast-standby-loop` video in the rail; use its poster. §17.2 wins and places it last (#41, just before the never-cut list), after items 2–5 here and after every other cut, because it is one of the MiniMax H3 Max clips the owner asked for; the number here only keeps the cross-references stable.
 2. StatTile trend polyline.
 3. X-axis day labels (keep `HH:MM`).
 4. Bloom (`bloom="off"`).
@@ -1599,7 +1694,7 @@ export default function ThrowProbe() {
 - [ ] `find dashboard/app/admin -name loading.tsx | wc -l` prints `7`; `test ! -e dashboard/app/admin/loading.tsx && test ! -e dashboard/app/admin/visual-test/loading.tsx` succeeds; `find dashboard/app/admin -name layout.tsx | wc -l` prints `8`; `test ! -e 'dashboard/app/admin/(live)/layout.tsx'` succeeds.
 - [ ] `grep -c "^import" dashboard/app/global-error.tsx` prints `0`; the file contains `<html lang="en">` and `<body>`; `grep -rn "console\." dashboard/app/not-found.tsx dashboard/app/admin/error.tsx dashboard/app/global-error.tsx dashboard/app/admin/visual-test/ThrowProbe.tsx dashboard/components/states` prints nothing.
 - [ ] `grep -n "components/ui/Button'" dashboard/app/not-found.tsx` prints nothing, and `npm run qa:build` exits 0 with `/_not-found` in its route table (`grep -c "/_not-found" .qa/build.log` prints at least `1`). A server file that called a function from the `'use client'` `Button.tsx` would fail this prerender.
-- [ ] `env $UNSET NEXT_TELEMETRY_DISABLED=1 npm run pages:build` exits 0, and its output contains no line matching `not configured to run with the Edge Runtime` (SH-9).
+- [ ] `: "${UNSET:?run the §1.6 step 2 UNSET= line in this same shell first}" && env $UNSET NEXT_TELEMETRY_DISABLED=1 npm run pages:build` exits 0, and its output contains no line matching `not configured to run with the Edge Runtime` (SH-9).
 - [ ] Unit (`tests/unit/global-error.spec.ts`, a `.ts` file): `renderToStaticMarkup(createElement(component(GlobalError), { error: Object.assign(new Error('x'), { digest: 'd1' }), reset: () => {} }))`, with `component()` from `tests/helpers/pw-jsx.ts` (§15.4), contains `<title>Signal lost · stream.wzrd.tech admin</title>`, `<h1>The admin lost its signal</h1>`, `Digest d1`, two `<button type="button">` (Retry, Reload), and no `<link`, `<script src` or `aria-labelledby`.
 - [ ] dev: `curl -s -o /dev/null -w '%{http_code}' localhost:3107/admin/does-not-exist` prints `404`; the page has one `h1` 'No signal on this channel', the body text 'This page doesn’t exist or has moved.' (U+2019), a link named 'Back to Live Control' with `href="/admin"`, one `banner`, one `navigation` named 'Admin sections', one `contentinfo`, and `document.title === 'Not found · stream.wzrd.tech admin'`.
 - [ ] prod: `curl -s -o /dev/null -w '%{http_code}' localhost:3109/admin/visual-test` prints `404` and `curl -s -o /dev/null -w '%{http_code}' localhost:3109/admin` prints `200`; the `/admin/visual-test` body contains 'No signal on this channel'.

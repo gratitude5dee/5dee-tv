@@ -9,14 +9,14 @@ Working directory (§1.5): commands whose paths start with `dashboard/`, `docs/`
 The harness was run against 845147c in a scratch copy with Node 22.22.2, `@playwright/test` 1.56.1, Chromium 1194 and SwiftShader. These results were verified:
 - With `WZRD_MILESTONE=0`, every dev project passes, and every later gate is skipped.
 - Two consecutive visual runs match in all four viewport projects.
-- `tests/live-extraction.spec.ts` matches its own previous run at `maxDiffPixels: 0`, with an empty DOM diff.
+- `tests/live-extraction.spec.ts`, run with `WZRD_LIVE_OUT` set, matches its own previous run at `maxDiffPixels: 0`, with an empty DOM diff.
 - `grep-gates.sh` reproduces the §15.3 "845147c" column on 845147c and the "Post-D1 (M0 head)" column on 845147c minus the 11 D1 files; `route-sizes.mjs` reproduces the §3.5 numbers.
 - `appendix-a.mjs` finds every Appendix A fragment on 845147c minus the D1 files, with Appendix A as written (A.4.3 writes the two `MAX_ASSET_REFERENCES` values as `{MAX_ASSET_REFERENCES}`).
 - The production project passes, with a median LCP of 132 ms at 845147c.
 
 ### 15.1 The harness: files, dependencies and environment
 
-**When:** M1 part 1A adds everything in this section. M0 verifies with the §1.5 commands only. From 1A on, every PR runs §15.8.
+**When:** M1 part 1A adds everything in this section except `tests/foundations.spec.ts`, which 1B adds with the tokens it checks (§5.21). M0 verifies with the §1.5 commands only. From 1A on, every PR runs §15.8.
 
 **Files** (all new):
 
@@ -30,7 +30,9 @@ dashboard/
     helpers/  env.ts  test.ts  routes.ts  console.ts  probes.ts  react-commits.ts  media.ts  pw-jsx.ts
     lib/      contrast.ts (§5.6, verbatim)  ledger.ts
     routes.spec.ts  visual.spec.ts  a11y.spec.ts  contrast.spec.ts  canvas-audit.spec.ts  boot.spec.ts  lcp.spec.ts
-    live-control.spec.ts  preserved-contract.spec.ts  live-extraction.spec.ts (runs until 6a; 8B deletes it)  perf.spec.ts  reduced-media.spec.ts
+    live-control.spec.ts  preserved-contract.spec.ts  perf.spec.ts  reduced-media.spec.ts
+    live-extraction.spec.ts          the 8A proof: runs only with WZRD_LIVE_OUT set, before 6b; 8B deletes it
+    foundations.spec.ts              added in 1B, not 1A: the §5.21 Playwright items (§15.5)
     unit/ledger.spec.ts
     __screenshots__/<project>/*.png  regression snapshots (committed)
   scripts/checks/  grep-gates.sh  route-sizes.mjs  qa-build.sh  appendix-a.mjs
@@ -63,7 +65,7 @@ dashboard/
   - `@axe-core/playwright` 4.13.0 depends on `axe-core ~4.13.0`, and its peer dependency is `playwright-core >= 1.0.0`.
 - **`overrides`:** without it, npm installs `playwright-core@1.63.0` at the top level for axe's peer, while `@playwright/test` keeps 1.56.1 nested. `new AxeBuilder({ page })` then fails type-checking with TS2740 (verified). The override is not a dependency, and D8 allows both packages.
 - **Type-checking:**
-  - In `tsconfig.json`, change `"exclude"` to `["node_modules", "scripts", "tests", "playwright.config.ts"]`. `"scripts"` lands here in 1A, not in 3B: §13.3.2 relies on it, 3B does not edit the file, and BC-11 checks it.
+  - In `tsconfig.json`, change `"exclude"` to `["node_modules", "scripts", "tests", "playwright.config.ts"]`. `"scripts"` lands here in 1A, not in 3B: §13.3.2 relies on it, 3B does not edit the file, and §13.9 BC-11 checks it.
   - That keeps `next build`, and every Cloudflare Pages build, independent of the test devDependencies. `npm run typecheck` still checks the tests through `tests/tsconfig.json`:
 
 ```json
@@ -75,9 +77,26 @@ dashboard/
 }
 ```
 
-**`.gitignore`** (dashboard/): append `test-results/`, `playwright-report/` and `.qa/`.
+**`.gitignore`** (dashboard/): append these four lines. The last one keeps the 8A proof captures (§14.12 step 7) out of every commit:
 
-**Install:**
+```text
+test-results/
+playwright-report/
+.qa/
+tests/__screenshots__/desktop-dark/live-*.png
+```
+
+**Adding the devDependencies** (1A only, from `dashboard/`, §14.7 step 1). Install both with exact versions, then add the `overrides` block and the `scripts` above by hand and run `npm install`:
+
+```bash
+npm i -D -E @playwright/test@1.56.1 @axe-core/playwright@4.13.0
+# now add the "overrides" block and the "scripts" above to package.json by hand, then:
+npm install
+```
+
+`-E` saves `1.56.1` and `4.13.0`. Without it npm saves `^1.56.1` and `^4.13.0`, which the §15.11 version check rejects.
+
+**Install** (every PR from 1A, from `dashboard/`, on Node ≥ 22.18; `dashboard/.nvmrc` pins 22.22.2 from 0A, §1.5):
 1. Run `npm ci`.
 2. Run `npx playwright install chromium`. On a fresh Linux image, run `npx playwright install --with-deps chromium`.
 3. If the browser download is blocked, follow the §1.6 pitfall and record the gap under Verification.
@@ -88,8 +107,9 @@ dashboard/
 |---|---|---|
 | `WZRD_MILESTONE` | `0`…`5`, `6a`, `6b`, `7`, `8`, `9` (default `9`) | Which gates are enforced. `since('<m>')` skips a test until the branch reaches that milestone. §14.2 says which value each PR uses |
 | `WZRD_PROD` | `1` | Runs the `prod` project against `next start` (edge-only) on `WZRD_PROD_PORT`. Run `npm run qa:build` first |
-| `WZRD_AFTER` | `1` | `tests/visual.spec.ts` also writes after-screenshots to `docs/redesign/after/m<id>/` (§15.10) |
-| `WZRD_LIVE_OUT` | a directory | `tests/live-extraction.spec.ts` writes normalised `main` HTML there (§14.12) |
+| `WZRD_AFTER` | `1` or `ready` | `1`: `tests/visual.spec.ts` also writes the route after-screenshots to `docs/redesign/after/m<id>/`. `ready`: only its ready-state capture tests run and write `ready-<name>-<theme>.png` there (§15.10) |
+| `WZRD_AFTER_ID` | `0`…`5`, `6a`, `6b`, `7`, `8`, `9` (default: the value of `WZRD_MILESTONE`) | The after-screenshot folder: `docs/redesign/after/m<WZRD_AFTER_ID>/`. Set it to the milestone the part belongs to (§14.1) whenever the part runs at the previous milestone's `WZRD_MILESTONE`: 5A and 5B → `5`, 9A–10E → `7`, 11A and 11B → `8` |
+| `WZRD_LIVE_OUT` | a directory | `tests/live-extraction.spec.ts` runs only when it is set, and writes the normalised `main` HTML there (§14.12 step 7) |
 | `WZRD_REUSE_SERVER` | `1` | Reuses a server that is already listening. Use it only for a server you started with the §1.6 `env -u` list (the 8A parent run) |
 | `WZRD_DEV_PORT`, `WZRD_PROD_PORT` | default `3107`, `3109` | The §1.6 ports |
 
@@ -99,7 +119,7 @@ dashboard/
 |---|---|---|
 | `unit` | no browser | `tests/unit/**` |
 | `desktop-dark` | 1440×900, dark | every dev spec except `reduced-media` |
-| `desktop-light` | 1440×900, light | routes, visual, a11y, preserved-contract, live-control and the chapter page specs |
+| `desktop-light` | 1440×900, light | routes, visual, a11y, preserved-contract, live-control, foundations and the chapter page specs |
 | `laptop` | 1280×800, dark | routes, visual, preserved-contract, live-control |
 | `mobile` | 390×844, dark, fine pointer | routes, visual, a11y, preserved-contract, live-control |
 | `reduced-motion` | 1440×900, dark, `reducedMotion: 'reduce'` | canvas-audit (zero rAF), reduced-media |
@@ -296,10 +316,10 @@ if (failures.length) { console.error('\nroute sizes: FAIL\n' + failures.map((f) 
 console.log('route sizes: ok')
 ```
 
-`scripts/checks/appendix-a.mjs` (C7) checks every double-quoted value in Appendix A.1–A.11: visible text, accessible names, titles, placeholders, error and log text, including the configured-mode strings that `tests/preserved-contract.spec.ts` cannot reach. The Convex names (A.9) and fal endpoints (A.10) are code spans, which A.14's own greps check. It reads the chapter file `docs/redesign/spec/appendix-a-preserved-contract.md`, never `goal.md`.
+`scripts/checks/appendix-a.mjs` (§15.2 C7) checks every double-quoted value in Appendix A.1–A.11: visible text, accessible names, titles, placeholders, error and log text, including the configured-mode strings that `tests/preserved-contract.spec.ts` cannot reach. The Convex names (A.9) and fal endpoints (A.10) are code spans, which A.14's own greps check. It reads the chapter file `docs/redesign/spec/appendix-a-preserved-contract.md`, never `goal.md`.
 - **Scope.** It searches `app components lib hooks`, plus `middleware.ts` and `convex/`. Those two are never touched (§1.4), but A.1.5's three 401 bodies live in `middleware.ts` and A.3's "Two prompt-expansion jobs are already running; try again shortly" lives in `convex/promptExpansion.ts:62`, so without them the check could not pass at 845147c.
 - **Interpolated values.** A value whose source builds it from a constant is written with `{…}` in Appendix A (A.4.3: "This library item already has the {MAX_ASSET_REFERENCES}-image reference limit." and "{n}/{MAX_ASSET_REFERENCES} · drop or choose"), so its fragments are literal in `ReferenceAssetManager.tsx:49` and `:123`.
-- **Measured** on 845147c minus the 11 D1 files, with Appendix A as written: 466 values and 474 fragments, 0 missing. Replacing one preserved string (for example 'Send direction' → 'Send prompt') makes it exit 1 and name the fragment; applying an A.12 change (for example L5's `COAST ORIGINALS · {n} TRACKS`) passes with `ok (A.12 L5)` under `--verbose`, and `--diff 845147c` lists the lost literal with its A.12 row.
+- **Measured** on 845147c minus the 11 D1 files, with Appendix A as written: 466 values and 474 fragments, 0 missing. Replacing one preserved string (for example 'Send direction' → 'Send prompt') makes it exit 1 and name the fragment; applying an A.12 change (for example Appendix A A.12 L5's `COAST ORIGINALS · {n} TRACKS`) passes with `ok (A.12 L5)` under `--verbose`, and `--diff 845147c` lists the lost literal with its A.12 row.
 
 ```js
 #!/usr/bin/env node
@@ -629,6 +649,7 @@ echo "grep gates: ok"
   - Never use `mask` on the carrier (§14.3 R11).
   - Never install the fake clock on a page that has started a Director session. Measured on 845147c: after a failed start, the SDK's timers spin under the fake clock, and screenshots time out.
 - **Milestone gating:** `since('<m>')` at the start of a test. `reached('<m>')` chooses between old and new expectations.
+- **`WZRD_MILESTONE` on every command:** every Playwright command in a PR (`npx playwright test …`, `npm run test:e2e`, `npm run test:prod`), including each one in a step, a definition of done and an acceptance item, sets `WZRD_MILESTONE=<id>` explicitly, with the PR's §14.2 value unless the item names another (for example `WZRD_MILESTONE=1 npx playwright test tests/visual.spec.ts`). Unset, `tests/helpers/env.ts` defaults to `9`: every gate is then enforced, `settle()` waits up to 15 s for `__wzrdDitherReady` (which the app sets only from M3), and the M7 fixture snapshots are compared, so a run on an earlier branch fails for the wrong reason. Unit-only runs (`--project=unit`) set it too, for uniformity.
 - **`role="alert"`:** Next's route announcer is also `role="alert"` (measured: `getByRole('alert')` returns an empty announcer on `/admin`). Always scope alerts. Live Control's AlertTray carries the role itself (`<div data-testid="lc-alert-tray" role="alert">`, §8.4), so its selector is `[data-testid="lc-alert-tray"][role="alert"]`.
 - **'Start Director':** every test that clicks it first stubs the fal proxy, so no request can reach fal and every run fails the same way: `await page.route('**/api/fal/**', (r) => r.fulfill({ status: 401, contentType: 'application/json', body: '{"detail":"qa-stub"}' }))`. The servers never have `FAL_KEY` either (§1.6), and Devin never runs a live Director session (§1.8 item 3).
 - **No `.env.local`:** `tests/global-setup.ts` throws when `dashboard/.env.local` exists (§1.6 step 0), because `next dev` and `next start` would load it.
@@ -764,7 +785,7 @@ export type Route = {
   slug: string            // file-name form: '/admin/shotboard' → 'admin_shotboard' (same as docs/redesign/baseline/)
   title: string           // metadata.title from M4 (docs/redesign/spec/07-primitives-and-shell.md §7.7)
   h1: string              // the route's only h1 (an interim sr-only h1 with the same text until the page milestone, goal.md §14.3 R4)
-  h1From?: Milestone      // default '4'; characters and locations get their h1 with their page (R4)
+  h1From?: Milestone      // default '4'; characters and locations get their h1 with their page (goal.md §14.3 R4)
   page: Milestone         // milestone whose PR redesigns the route (full-page axe and page specs switch on here)
   devOnly?: boolean       // notFound() in production
 }
@@ -884,7 +905,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
 body > div.fixed.-z-10 canvas { visibility: hidden !important; } /* carrier frame (time-based wave); the host, veil and fallback stay */
 nextjs-portal { display: none !important; }                      /* next dev indicator ("N" badge) */
 [data-testid="status-clock"] { visibility: hidden !important; }  /* StatusRail HH:MM:SS (M4+) */
-.morph-slider-stage canvas { visibility: hidden !important; }   /* MorphSlider art: loops every frame until the M5 render-on-demand patch */
+.morph-slider-stage canvas { visibility: hidden !important; }   /* MorphSlider art: loops every frame until the M5 render-on-demand patch, and keeps its autoplay after it (D3) */
 ```
 
 `tests/helpers/probes.ts`:
@@ -1136,7 +1157,7 @@ test.describe('404', () => {
 })
 ```
 
-`tests/visual.spec.ts`: after-screenshots for human review against the JPEG baseline, and PNG regression snapshots from M1.
+`tests/visual.spec.ts`: after-screenshots for human review against the JPEG baseline, PNG regression snapshots from M1, and the ready-state captures (§15.10) of the §10.5.9 fixture targets, from 8B.
 
 ```ts
 // dashboard/tests/visual.spec.ts — after-screenshots for the PR (human, vs the JPEG baseline) and PNG regression snapshots.
@@ -1148,12 +1169,15 @@ import { FIXED_NOW, MILESTONE, since } from './helpers/env'
 
 const PROD = process.env.WZRD_PROD === '1'
 const AFTER = process.env.WZRD_AFTER === '1'
+const READY = process.env.WZRD_AFTER === 'ready'
 // dashboard/ → repo root → docs/redesign/after/m<id>/
-const AFTER_DIR = path.resolve(__dirname, '..', '..', 'docs', 'redesign', 'after', `m${MILESTONE}`)
+const AFTER_ID = process.env.WZRD_AFTER_ID ?? MILESTONE // §15.4: the part's own milestone, not its gate level
+const AFTER_DIR = path.resolve(__dirname, '..', '..', 'docs', 'redesign', 'after', `m${AFTER_ID}`)
 
 for (const r of [...ROUTES, NOT_FOUND]) {
   test(r.slug, async ({ page, theme }, info) => {
     test.skip(PROD && Boolean(r.devOnly), 'dev-only route')
+    test.skip(READY, 'WZRD_AFTER=ready runs only the ready-state captures')
     test.setTimeout(180_000) // full-page captures under SwiftShader take 5–15 s each; toHaveScreenshot needs two identical ones
     // Fake clock from the first script: the page loads with time flowing, then time jumps to a fixed instant and stops.
     // Stopping it freezes rAF (the carrier stops drawing), timers and every clock readout, so two captures are identical.
@@ -1166,9 +1190,52 @@ for (const r of [...ROUTES, NOT_FOUND]) {
       fs.mkdirSync(AFTER_DIR, { recursive: true })
       await page.screenshot({ path: path.join(AFTER_DIR, `${r.slug}-${theme}-${width}.png`), fullPage: true, animations: 'disabled' })
     }
-    // Regression snapshots from M1; the dev-only fixture only from its own milestone (before M7 it autoplays and animates).
+    // Regression snapshots from M1; the dev-only fixture only from its own milestone (before M7 its images load from
+    // blocked hosts). Its MorphSlider keeps autoplay (D3): the paused clock freezes it, and screenshot.css hides its canvas.
     since(r.devOnly ? r.page : '1')
     await expect(page).toHaveScreenshot(`${r.slug}.png`, { fullPage: true, timeout: 60_000 })
+  })
+}
+
+// Ready-state captures (docs/redesign/spec/15-verification-and-qa.md §15.10): element screenshots of the
+// docs/redesign/spec/10-characters-locations.md §10.5.9 targets on /admin/visual-test, 1440×900, dark and light, reduced
+// motion, the real carrier, no fake clock (the Shotboard target needs a running generation). Only with WZRD_AFTER=ready;
+// a part selects its own targets with -g "ready-state capture <name>" (the §15.10 table).
+const READY_TARGETS: { name: string; target: string }[] = [
+  { name: 'live-standby', target: '#live-control-visual-test [data-ready-state="live-standby"]' },
+  { name: 'live-preview', target: '#live-control-visual-test [data-ready-state="live-preview"]' },
+  { name: 'live-onair', target: '#live-control-visual-test [data-ready-state="live-onair"]' },
+  { name: 'shotboard', target: '#shotboard-visual-test [data-ready-state="shotboard"]' },
+  { name: 'characters', target: 'section#characters-visual-test' },
+  { name: 'locations', target: 'section#locations-visual-test' },
+  { name: 'clips', target: '#clips-visual-test [data-ready-state="clips"]' },
+  { name: 'recordings', target: '#recordings-visual-test [data-ready-state="recordings"]' },
+  { name: 'analytics-live', target: '#analytics-visual-test [data-ready-state="analytics-live"]' },
+  { name: 'analytics-not-patched', target: '#analytics-visual-test [data-ready-state="analytics-not-patched"]' },
+]
+
+for (const r of READY_TARGETS) {
+  test(`ready-state capture ${r.name}`, async ({ page, theme }, info) => {
+    test.skip(!READY || PROD, 'only with WZRD_AFTER=ready, dev server')
+    test.skip(!['desktop-dark', 'desktop-light'].includes(info.project.name), '1440 dark and light only')
+    test.setTimeout(180_000)
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    await gotoRoute(page, '/admin/visual-test')
+    const target = page.locator(r.target)
+    await expect(target, `${r.target} (docs/redesign/spec/10-characters-locations.md §10.5.9)`).toHaveCount(1)
+    if (r.name === 'shotboard') {
+      // docs/redesign/spec/10-characters-locations.md §10.5.9 "The three Shotboard steps": hold generation, start SC02 · SH01,
+      // capture while it runs.
+      const host = page.locator('#shotboard-visual-test')
+      await host.getByRole('switch', { name: 'Hold generation', exact: true }).click()
+      const frame = target.locator('[role="gridcell"][data-testid="shot-frame"]').filter({ hasText: 'SC02 · SH01' })
+      await frame.click()
+      await host.getByRole('button', { name: /^(Generate image|Regenerate image)$/ }).click()
+      await expect(frame).toHaveAttribute('data-phase', 'running')
+    }
+    await target.scrollIntoViewIfNeeded()
+    fs.mkdirSync(AFTER_DIR, { recursive: true })
+    await target.screenshot({ path: path.join(AFTER_DIR, `ready-${r.name}-${theme}.png`), animations: 'disabled' })
   })
 }
 ```
@@ -1179,7 +1246,8 @@ for (const r of [...ROUTES, NOT_FOUND]) {
   - Each changed file is listed in the PR's Screenshots table with its cause.
   - A snapshot that changes on a route the part does not touch is a regression.
   - Playwright sanitises `_` to `-` in snapshot file names (`admin_shotboard.png` is stored as `admin-shotboard.png`).
-  - `/admin/visual-test` snapshots start at M7 (10F). Before that, its MorphSlider autoplays and its gallery images fail against blocked hosts, so no two captures match.
+  - `/admin/visual-test` snapshots start at M7 (10F). Before that, its gallery images fail against blocked hosts, so no two captures match. The fixture's MorphSlider keeps `autoplay autoplayDelay={6}` (D3); in the comparison the paused fake clock freezes it and `tests/screenshot.css` hides its canvas.
+- **Ready-state captures** (§15.10): the `ready-state capture <name>` tests run only with `WZRD_AFTER=ready`, in desktop-dark and desktop-light, and fail when their §10.5.9 target is missing. A part selects its own targets with `-g`, for example `-g "ready-state capture clips"`.
 
 `tests/a11y.spec.ts`: `@axe-core/playwright` with the tags `wcag2a`, `wcag2aa`, `wcag21a`, `wcag21aa` and `wcag22aa`. A serious or critical violation fails the test.
 - From M4, it checks the shell (`header`, `footer`) on every route.
@@ -1377,6 +1445,95 @@ test('mutation: a lighter text-3 fails', () => {
 })
 ```
 
+`tests/foundations.spec.ts` (added in **1B**, not 1A; desktop-dark and desktop-light, so each test runs once per theme; from M1). It holds one test per §5.21 Playwright item, and the first also covers §0.3's `--c-accent` item:
+- the accent (`45 84 136` light, `122 165 224` dark), `--dither-veil` with `data-broadcast="on-air"` (`.72` light, `.62` dark), and under emulated `prefers-reduced-transparency: reduce` `--a-panel` `1` and `--dither-veil` `.80`;
+- `.px-resolve` animates as `px-resolve`, freezes to `none` under the air lock, and keeps `px-resolve` with `[data-air-allow]`; `.skeleton-dither`'s `::after` animates and its `content` is `none` under the lock. In 1B the test sets `data-lock="air"` on `html` itself; from 3A it publishes `{ director: 'live', firstFrame: true }` through the dev store (§7.17), which writes the attribute;
+- the body `font-weight` is `400`; from M2 the body font family starts with `focal` and `html` carries both `next/font` variable classes.
+
+The probe elements use the classes that §5.15's `safelist` keeps even when no page uses them.
+
+```ts
+// dashboard/tests/foundations.spec.ts — the Playwright items of docs/redesign/spec/05-foundations.md §5.21, one test per item
+// (the first also covers goal.md §0.3's --c-accent item). Added in 1B. Runs in desktop-dark and desktop-light: the theme comes
+// from the project. Dev server, /admin?noboot.
+import type { Page } from '@playwright/test'
+import { test, expect } from './helpers/test'
+import { gotoRoute } from './helpers/routes'
+import { reached, since } from './helpers/env'
+import { emulatePrefs } from './helpers/media'
+
+type DevStore = { __wzrd: { broadcast: { publish: (patch: Record<string, unknown>) => void } } }
+const cssVar = (page: Page, n: string) => page.evaluate((name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim(), n)
+
+/** Computed animation state of the safelisted .px-resolve and .skeleton-dither classes on throwaway probe elements. */
+const probe = (page: Page) => page.evaluate(() => {
+  const make = (cls: string, airAllow = false) => {
+    const el = document.createElement('div')
+    el.className = cls
+    el.style.cssText = 'width:40px;height:40px'
+    if (airAllow) el.setAttribute('data-air-allow', '')
+    document.body.appendChild(el)
+    return el
+  }
+  const resolve = make('px-resolve')
+  const allowed = make('px-resolve', true)
+  const skeleton = make('skeleton-dither')
+  const out = {
+    resolve: getComputedStyle(resolve).animationName,
+    allowed: getComputedStyle(allowed).animationName,
+    skeletonAfter: getComputedStyle(skeleton, '::after').animationName,
+    skeletonAfterContent: getComputedStyle(skeleton, '::after').content,
+  }
+  for (const el of [resolve, allowed, skeleton]) el.remove()
+  return out
+})
+
+/** The air lock: set by hand in 1B; from 3A through the dev-only store, whose publish writes html[data-lock] (docs/redesign/spec/07-primitives-and-shell.md §7.17). */
+async function setAirLock(page: Page): Promise<void> {
+  if (reached('3')) {
+    await page.evaluate(() => (window as unknown as DevStore).__wzrd.broadcast.publish({ director: 'live', firstFrame: true }))
+  } else {
+    await page.evaluate(() => { document.documentElement.dataset.lock = 'air' })
+  }
+  await expect(page.locator('html')).toHaveAttribute('data-lock', 'air')
+}
+
+test.beforeEach(async ({ page }) => {
+  since('1')
+  await gotoRoute(page, '/admin')
+})
+
+test('accent, on-air veil and reduced-transparency tokens', async ({ page, theme }) => {
+  const dark = theme === 'dark'
+  expect(await cssVar(page, '--c-accent')).toBe(dark ? '122 165 224' : '45 84 136')
+  await page.evaluate(() => { document.documentElement.dataset.broadcast = 'on-air' })
+  expect(Number(await cssVar(page, '--dither-veil'))).toBe(dark ? 0.62 : 0.72)
+  await emulatePrefs(page, { reducedTransparency: 'reduce' })
+  expect(Number(await cssVar(page, '--a-panel'))).toBe(1)
+  expect(Number(await cssVar(page, '--dither-veil'))).toBe(0.8)
+})
+
+test('px-resolve and the skeleton sweep freeze under the air lock; data-air-allow keeps resolving', async ({ page }) => {
+  const idle = await probe(page)
+  expect(idle.resolve).toBe('px-resolve')
+  expect(idle.allowed).toBe('px-resolve')
+  expect(idle.skeletonAfter).not.toBe('none')
+  await setAirLock(page)
+  const air = await probe(page)
+  expect(air.resolve).toBe('none')
+  expect(air.allowed).toBe('px-resolve')
+  expect(air.skeletonAfterContent).toBe('none')
+})
+
+test('body weight 400; from M2 Focal and both next/font variables', async ({ page }) => {
+  expect(await page.evaluate(() => getComputedStyle(document.body).fontWeight)).toBe('400')
+  if (reached('2')) {
+    expect(await page.evaluate(() => getComputedStyle(document.body).fontFamily)).toMatch(/^"?focal"?(,|$)/)
+    expect(await page.evaluate(() => (document.documentElement.className.match(/__variable_/g) ?? []).length)).toBe(2)
+  }
+})
+```
+
 `tests/canvas-audit.spec.ts`:
 - One live WebGL context per route, plus one when the slot owner is `morph`.
 - `window.__wzrd.slots` is present from M4.
@@ -1476,7 +1633,7 @@ test.describe('carrier', () => {
 - the overlay is removed by 1617 ms after navigation start (1600 ms at 60 Hz plus at most one frame; `tEnd ≤ 1617`, and `#wzrd-boot` is gone at 1650 ms), provided the script started by 600 ms (`t0 ≤ 600`, §6.2);
 - the layout-shift sum over 0–2000 ms is 0;
 - the boot is skipped under `navigator.webdriver` and `?noboot`;
-- the first-visit → channel-flip session logic (`tEnd − t0 ≤ 257`: 224 ms plus the script start and one frame);
+- the 12 h logic of `localStorage['wzrd:boot']` (§6.2.4): a first load plays the POST and writes the epoch-ms timestamp; a reload plays the channel flip (`tEnd − t0 ≤ 257`: 224 ms plus the script start and one frame) and keeps the timestamp; a timestamp 43 200 000 ms old or older plays the POST again;
 - the reduced-motion static card;
 - the gzipped inline sizes.
 
@@ -1532,16 +1689,25 @@ test('Playwright default (navigator.webdriver) and ?noboot skip the boot', async
   expect((await boot(page))?.mode).toBe('skip')
 })
 
-test('session logic (?boot=auto): first load POST, reload channel flip ≤ 257 ms', async ({ page }) => {
+test('12 h logic (?boot=auto): first load POST writes the timestamp, reload flips ≤ 257 ms, 12 h later POST again', async ({ page }) => {
+  const stamp = () => page.evaluate(() => localStorage.getItem('wzrd:boot'))
   await page.goto(url('/admin', 'auto'), { waitUntil: 'commit' })
   await at(page, 1_700)
   expect((await boot(page))?.mode).toBe('post')
-  expect(await page.evaluate(() => sessionStorage.getItem('wzrd:boot'))).toBe('1')
+  const written = await stamp()
+  const age = await page.evaluate((v) => Date.now() - Number(v), written)
+  expect(age, 'localStorage wzrd:boot is the epoch-ms time of the POST').toBeGreaterThanOrEqual(0)
+  expect(age).toBeLessThanOrEqual(5_000)
   await page.reload({ waitUntil: 'commit' })
   await at(page, 1_000)
   const b = await boot(page)
   expect(b?.mode).toBe('flip')
   expect(b!.tEnd - b!.t0).toBeLessThanOrEqual(257)
+  expect(await stamp(), 'a flip never extends the 12 h').toBe(written)
+  await page.evaluate(() => localStorage.setItem('wzrd:boot', String(Date.now() - 43_200_001)))
+  await page.reload({ waitUntil: 'commit' })
+  await at(page, 1_700)
+  expect((await boot(page))?.mode).toBe('post')
 })
 
 test('reduced motion: static card, gone ≤ 450 ms after the script starts', async ({ page }) => {
@@ -1593,7 +1759,7 @@ test.describe('/admin', () => {
     await expect(start).toBeVisible()
     await expect(page.getByRole('button', { name: 'Record', exact: true })).toHaveCount(0)
     await expect(premise(page)).toHaveValue('A continuous original live-action stream following a group of friends as they explore a new city.')
-    if (reached('6b')) await expect(start).toBeInViewport({ ratio: 1 }) // B4: idle, fully inside the viewport at every project size
+    if (reached('6b')) await expect(start).toBeInViewport({ ratio: 1 }) // docs/redesign/spec/08-live-control.md §8.10 B4: idle, fully inside the viewport at every project size
   })
 
   test('failed start shows an error and restores "Start Director"', async ({ page }) => {
@@ -1736,13 +1902,14 @@ for (const [path, entries] of Object.entries(PAGES)) {
 }
 ```
 
-`tests/live-extraction.spec.ts` is the 8A parity proof (§14.12, §14.3 R12). 1A creates it with the rest of the harness, 8A runs it without changing it, and 8B deletes it. It runs only while `WZRD_MILESTONE` is below `6b`. Its failed-start case stubs the fal proxy (§15.4), types the constant suffix ` qa-parity`, and waits for 1000 ms without network traffic before it normalises and captures, so late log lines land in both runs.
+`tests/live-extraction.spec.ts` is the 8A parity proof (§14.12, §14.3 R12). 1A creates it with the rest of the harness, 8A runs it without changing it, and 8B deletes it. It runs only while `WZRD_MILESTONE` is below `6b` **and** `WZRD_LIVE_OUT` is set, so every other `test:e2e` run from 1A to 8A skips it. Its `live-*.png` captures are proof artifacts that `dashboard/.gitignore` ignores (§15.1). Without that skip, a fresh checkout would write missing captures and fail, and a later run would compare against a stale local PNG. Its failed-start case stubs the fal proxy (§15.4), types the constant suffix ` qa-parity`, and waits for 1000 ms without network traffic before it normalises and captures, so late log lines land in both runs.
 
 ```ts
 // dashboard/tests/live-extraction.spec.ts — the M6a (PR 8A) no-change proof, docs/redesign/spec/08-live-control.md §8.5.4
 // steps 1–4, in one spec. Run it twice (goal.md §14.12 step 7): against the parent commit's dev server (WZRD_REUSE_SERVER=1,
 // WZRD_LIVE_OUT=.qa/live-before, --update-snapshots), then against the 8A branch (WZRD_LIVE_OUT=.qa/live-after).
 // `diff -r .qa/live-before .qa/live-after` must print nothing and every capture must match at maxDiffPixels 0.
+// Skipped unless WZRD_LIVE_OUT is set; its live-*.png captures are gitignored and never committed.
 // No fake clock here: with Playwright's clock installed, the SDK's failure path spins on timers and starves the renderer
 // (measured on 845147c). Time-dependent text is normalised in the DOM instead, and tests/screenshot.css hides the carrier
 // canvas and the StatusRail clock.
@@ -1782,6 +1949,7 @@ for (const c of CASES) {
   test(`8A parity ${c.name}`, async ({ browser, baseURL }, info) => {
     test.skip(info.project.name !== 'desktop-dark', 'desktop-dark only (the spec sets its own viewports and themes)')
     test.skip(reached('6b'), 'the 8A proof only; 8B changes the page on purpose')
+    test.skip(!OUT, 'the 8A proof only: set WZRD_LIVE_OUT (goal.md §14.12 step 7)')
     test.setTimeout(180_000)
     const origin = new URL(baseURL ?? 'http://localhost:3107').origin
     const context = await browser.newContext({ baseURL, viewport: { width: c.width, height: c.height }, locale: 'en-US', timezoneId: 'UTC',
@@ -1811,11 +1979,9 @@ for (const c of CASES) {
         n.nodeValue = v.replace(/\d{1,2}:\d{2}:\d{2}( ?[AP]M)?/g, 'T')
       }
     })
-    if (OUT) {
-      const html = await page.evaluate(() => document.querySelector('main')!.outerHTML)
-      fs.mkdirSync(OUT, { recursive: true })
-      fs.writeFileSync(path.join(OUT, `${c.name}.html`), html)
-    }
+    const html = await page.evaluate(() => document.querySelector('main')!.outerHTML)
+    fs.mkdirSync(OUT!, { recursive: true })
+    fs.writeFileSync(path.join(OUT!, `${c.name}.html`), html)
     await expect(page).toHaveScreenshot(`live-${c.name}.png`, { fullPage: true, maxDiffPixels: 0, timeout: 60_000 })
     await context.close()
   })
@@ -1826,6 +1992,7 @@ for (const c of CASES) {
 
 | Spec | Added in | Projects |
 |---|---|---|
+| `tests/foundations.spec.ts` (§5.21; the file is above) | 1B | desktop-dark and desktop-light |
 | `tests/whip-truth.spec.ts` (pure `nextAir`) | 8C | desktop-dark |
 | `tests/shotboard.spec.ts`; `tests/unit/{shotboard-load,shot-prompt,shot-model,director-transfer,frame-geometry,shot-strings}.spec.ts` | 9A–9D | desktop-dark and desktop-light; unit |
 | `tests/library.spec.ts`; `tests/unit/{clip-status,format-media}.spec.ts` | 11A | desktop-dark and desktop-light; unit |
@@ -2025,7 +2192,8 @@ WZRD_MILESTONE=<id> npm run test:e2e                     # all dev projects + un
 npm run qa:build                                         # unconfigured production build → .qa/build.log
 node scripts/checks/route-sizes.mjs --milestone <id> .qa/build.log
 WZRD_MILESTONE=<id> npm run test:prod                    # from M4: boot, LCP, routes on next start (edge-only) :3109
-WZRD_MILESTONE=<id> WZRD_AFTER=1 npx playwright test tests/visual.spec.ts   # after-screenshots (§15.10)
+WZRD_MILESTONE=<id> WZRD_AFTER_ID=<this part's milestone> WZRD_AFTER=1 npx playwright test tests/visual.spec.ts   # after-screenshots (§15.10)
+WZRD_MILESTONE=<id> WZRD_AFTER_ID=<this part's milestone> WZRD_AFTER=ready npx playwright test tests/visual.spec.ts -g "ready-state capture <names>"   # from 8B: this part's ready-state captures (§15.10 table)
 ```
 
 - Run `test:e2e` and `test:prod` one after the other, never at the same time: both use `.next/`.
@@ -2040,7 +2208,7 @@ Automation cannot prove these. Run the steps that apply to the PR's scope, and r
 1. **Side-by-side review.** Open each after-screenshot next to its §3.6 baseline. Confirm that every visible defect listed in §3.6 for that route is gone, and that nothing else regressed. Write one line per route in the Screenshots table.
 2. **Boot in a real browser** (from M4). Use desktop Chrome, not headless, with a fresh profile, at 1440×900:
    1. The first visit shows the POST, the wordmark resolve and the flight into the bug.
-   2. A reload inside the same tab shows the 240 ms channel flip.
+   2. A reload, and a second tab opened on `/admin`, each show the 224 ms channel flip (§6.2.8): the POST plays at most once per 12 h per browser (`localStorage['wzrd:boot']`, §6.2.4). After `localStorage.removeItem('wzrd:boot')` in the DevTools console, the next load plays the POST again.
    3. Pressing ⌘K or Ctrl+K during the POST interrupts it, and the palette opens.
    4. Under the OS reduced-motion setting, the static card shows.
 3. **Keyboard only** (from M4). On every route, walk the tab order, with no mouse:
@@ -2061,19 +2229,57 @@ Automation cannot prove these. Run the steps that apply to the PR's scope, and r
    2. Run the §15.6 DevTools Profiler cross-check.
    3. The TallyBar shows PVW, and never ON AIR.
 9. **ON AIR** is verified only through the fixture's simulator (§10.5.9 `ds-simulator`, §8.10 C-series). **Never press 'Go live on Twitch' with a real stream key** (§1.6, §16): Twitch output is public.
-10. **Brand finals** (M9 `brand`). The contact sheet is reviewed against the §13.10 rubric by a human and by Coast. Devin never approves a likeness (§1.8 item 4).
+10. **Brand finals** (M9 `brand`). The owner (and, in mode 3, Coast) review the contact sheet: the likeness, and the PX blue-ramp stylisation of the Coast assets. A rejected stylisation is rebuilt with the "PX-natural" quantise (§13.5, §13.6). Devin's `approve` choices are technical only and are never a likeness decision (§1.8 item 4).
 
 ### 15.10 After-screenshots and the PR Screenshots table
 
 **Naming:**
 - The path is `docs/redesign/after/m<id>/<slug>-<theme>-<width>.png`.
-  - `<id>` is the §14.2 milestone id: `0`…`9`, `6a` or `6b`.
+  - `<id>` is `WZRD_AFTER_ID` (default `WZRD_MILESTONE`): the §14.2 id of the milestone the part belongs to, `0`…`9`, `6a` or `6b`. A part that runs at the previous milestone's `WZRD_MILESTONE` sets `WZRD_AFTER_ID` to its own milestone (§15.4 table), so 5A/5B write to `m5/`, 9A–10E to `m7/` and 11A/11B to `m8/`.
   - `<slug>` is the route path without its leading slash, with `/` replaced by `_`, the same as the baseline names (`admin`, `admin_shotboard`, `admin_does-not-exist`).
   - `<theme>` is `dark` or `light`, and `<width>` is `1440`, `1280` or `390`.
 - `WZRD_AFTER=1` makes `tests/visual.spec.ts` write them from the `desktop-dark`, `desktop-light`, `laptop` and `mobile` projects: full page, CSS animations disabled, the real carrier visible, and the fake clock paused.
 - **Other captures** use the same folder and the name `<surface>-<state>-<theme>.png`: `boot-post-dark.png` (M4), `live-fixture-onair-dark.png` (6b), `admin_error-probe-dark-1440.png` (4D), and the brand contact sheets (`brand-placeholders-contact-sheet.png` in 3B, `docs/redesign/after/brand-contact-sheet.png` in M9). Both are written by `npm run brand:check -- --contact-sheet <path>` run from `dashboard/` (§14.9 step 11, §13.10 step 9).
+- Chapter-specific captures named in the §8.10–§11.D.10 acceptance criteria (for example §11's `-390` fixture variants and the `admin_analytics-mocked-*` captures) follow the same folder and naming rules and are rows of that part's Screenshots table.
 - Commit them in the separate `M<n>: after-screenshots` commit.
 - A part commits the captures of every route it changes, in all four projects. The last part of M1, M4 and M9 commits the complete set.
+
+**Ready-state captures** (required). Route after-screenshots are taken unconfigured, so most routes show their NOT CONFIGURED or empty slate there. The owner judges each redesigned route in its ready state through element captures of the §10.5.9 fixture targets (§10.5.9 owns the section ids and `data-ready-state` values; fixture data only, no network):
+- **Name:** `docs/redesign/after/m<id>/ready-<name>-<theme>.png`, with `<theme>` `dark` or `light`, in the same folder as the part's other after-screenshots.
+- **How:** 1440×900, dark and light (the desktop-dark and desktop-light projects), reduced motion, the real carrier, no fake clock: the `ready-state capture <name>` tests of `tests/visual.spec.ts` (§15.5), which run only with `WZRD_AFTER=ready` and fail when their target is missing. Each part captures the names in its row with the command for that part in the block below, and commits the files in its `M<n>: after-screenshots` commit:
+
+| Part | `<name>` values (the §10.5.9 target) |
+|---|---|
+| 8B | `live-standby`, `live-preview`, `live-onair` (Live Control: standby, preview, on air) |
+| 9B | `shotboard` (the board: 3 scenes and 7 shots, one frame generating, one failed) |
+| 10D | `characters` (@coast selected, with placeholder or brand art) |
+| 10E | `locations` (the 4:3 contact wall) |
+| 11A | `clips` (the grid with CAPTURING, UPLOADING and FAILED) |
+| 11B | `recordings` (the rows) |
+| 11C | `analytics-live`, `analytics-not-patched` (LIVE with data; NOT PATCHED) |
+| sweep | all 10 names: 20 files under `after/m9/` |
+
+```bash
+# §15.10 ready-state captures, from dashboard/, keyed by the part.
+# 8B
+WZRD_MILESTONE=6b WZRD_AFTER=ready npx playwright test tests/visual.spec.ts -g "ready-state capture live-"
+# 9B
+WZRD_MILESTONE=6b WZRD_AFTER_ID=7 WZRD_AFTER=ready npx playwright test tests/visual.spec.ts -g "ready-state capture shotboard"
+# 10D
+WZRD_MILESTONE=6b WZRD_AFTER_ID=7 WZRD_AFTER=ready npx playwright test tests/visual.spec.ts -g "ready-state capture characters"
+# 10E
+WZRD_MILESTONE=6b WZRD_AFTER_ID=7 WZRD_AFTER=ready npx playwright test tests/visual.spec.ts -g "ready-state capture locations"
+# 11A
+WZRD_MILESTONE=7 WZRD_AFTER_ID=8 WZRD_AFTER=ready npx playwright test tests/visual.spec.ts -g "ready-state capture clips"
+# 11B
+WZRD_MILESTONE=7 WZRD_AFTER_ID=8 WZRD_AFTER=ready npx playwright test tests/visual.spec.ts -g "ready-state capture recordings"
+# 11C
+WZRD_MILESTONE=8 WZRD_AFTER=ready npx playwright test tests/visual.spec.ts -g "ready-state capture analytics"
+# sweep
+WZRD_MILESTONE=9 WZRD_AFTER=ready npx playwright test tests/visual.spec.ts -g "ready-state capture"
+```
+
+- **In the PR:** each part's Screenshots table has one row per ready-state capture it commits (below), and the 5A and 8B `DESIGN REVIEW` comments (§14.2) embed their captures in the same `?raw=true` form.
 
 **PR Screenshots table rules** (the §1.4 template):
 - One row per changed route × theme × width. The "Route · theme · width" cell reads like `/admin/clips · dark · 1440`.
@@ -2083,6 +2289,7 @@ Automation cannot prove these. Run the steps that apply to the PR's scope, and r
   - 390 → `<slug>-mobile.jpg` (Live Control, Shotboard and Characters only).
   - Otherwise, Before is the previous milestone's after-screenshot, for example `docs/redesign/after/m3/admin_clips-dark-1280.png`.
 - **After** is the new file's path. Embed it as `![](https://github.com/gratitude5dee/5dee-tv/blob/<branch>/<path>?raw=true)`, so the reviewer sees it inline (§13.10 uses the same form).
+- **Ready-state rows** (8B, 9B, 10D, 10E, 11A, 11B, 11C): one row per capture, with the cell `ready: <route> · <state> · <theme> · 1440`, for example `ready: /admin/clips · clips · dark · 1440`. **Before** is that route's §3.6 baseline at 1440 in the same theme (`docs/redesign/baseline/<slug>-dark.jpg`; `-light.jpg` exists for Live Control and Shotboard only). Without one, it is the route's latest after-screenshot at 1440 in that theme. **After** is the capture, embedded like any other.
 - Add one more row per changed regression snapshot: `tests/__screenshots__/<project>/<file>` → `expected: <cause>`.
 - A PR with no rendered change carries the single row "n/a — no rendered change", plus the evidence (M0, 8A).
 
@@ -2090,18 +2297,23 @@ Automation cannot prove these. Run the steps that apply to the PR's scope, and r
 
 Working directory (§1.5): commands whose paths start with `dashboard/`, `docs/`, `.agents/`, `goal.md` or `README.md`, and `git` commands with such pathspecs, run from the repository root. Every other command runs from `dashboard/`.
 
-- [ ] After 1A: every file in §15.1 exists. `node -p "const p=require('./package.json');[p.devDependencies['@playwright/test'],p.devDependencies['@axe-core/playwright'],p.overrides['playwright-core']].join(' ')"` prints `1.56.1 4.13.0 1.56.1`, and `npm ls playwright-core` lists only 1.56.1.
-- [ ] `git diff main...HEAD -- package.json` adds nothing under `"dependencies"` (D8), and `npm run typecheck` checks `tests/tsconfig.json`.
-- [ ] 1A: `WZRD_MILESTONE=0 npm run test:e2e` has 0 failed on the 1A branch, and two consecutive `npx playwright test tests/visual.spec.ts` runs pass without `--update-snapshots`.
+- [ ] After 1A: every file in §15.1 exists, except `tests/foundations.spec.ts`, which exists from 1B. `node -p "const p=require('./package.json');[p.devDependencies['@playwright/test'],p.devDependencies['@axe-core/playwright'],p.overrides['playwright-core']].join(' ')"` prints `1.56.1 4.13.0 1.56.1`, and `npm ls playwright-core` lists only 1.56.1.
+- [ ] With `BASE` set per §1.4 (this PR's base branch), `git diff "$BASE"...HEAD -- package.json` adds nothing under `"dependencies"` (D8), and `npm run typecheck` checks `tests/tsconfig.json`.
+- [ ] Exact devDependency versions (no `^` or `~`): after 1B, `node -p "require('./package.json').devDependencies['postcss-import']"` prints `15.1.0`; after 3B, `node -p "require('./package.json').devDependencies.sharp"` prints `0.34.5`. Each was installed with `npm i -D -E` (§14.7, §14.9).
+- [ ] 1A: `WZRD_MILESTONE=0 npm run test:e2e` has 0 failed on the 1A branch (`tests/live-extraction.spec.ts` skipped: `WZRD_LIVE_OUT` unset), and two consecutive `WZRD_MILESTONE=1 npx playwright test tests/visual.spec.ts` runs pass without `--update-snapshots`.
 - [ ] 1A mutation proofs, pasted and not committed. In each case, revert the injected change afterwards:
-  1. Adding `className="text-violet-500"` to any component makes `npm run gates -- --milestone 1` print `FAIL` for G1 and exit 1.
-  2. Adding `useEffect(() => { console.log('qa') }, [])` to `app/admin/clips/page.tsx` makes routes.spec fail on `/admin/clips`, with `log: qa` listed.
-  3. Setting light `--c-text-3` to `120 130 150` (from 1B) fails contrast.spec, and `npx playwright test --project=unit` fails `tests/unit/ledger.spec.ts` when its `DARK['--c-text-3']` is set to `60 66 80`.
+  1. Adding `useEffect(() => { console.log('qa') }, [])` to `app/admin/clips/page.tsx` makes `WZRD_MILESTONE=0 npx playwright test tests/routes.spec.ts -g "/admin/clips"` fail on `/admin/clips`, with `log: qa` listed.
+  2. Setting `DARK['--c-text-3']` to `60 66 80` in `tests/unit/ledger.spec.ts` makes `WZRD_MILESTONE=0 npx playwright test --project=unit tests/unit/ledger.spec.ts` fail.
+- [ ] 1B mutation proofs, pasted and not committed, once §15.3 G1 reads `0` (before 1B, G1 counts 57 and every M1 gate already fails, so the proof would pass whether or not the gate works). In each case, revert the injected change afterwards:
+  1. Adding `className="text-violet-500"` to any component makes `npm run gates -- --milestone 1` print a `FAIL` line for `G1 violet / stray hex`, then `grep gates: FAIL`, and exit 1.
+  2. Setting light `--c-text-3` to `120 130 150` in `app/styles/tokens.css` makes `WZRD_MILESTONE=1 npx playwright test tests/contrast.spec.ts` fail (§5.21).
+- [ ] 1B: `WZRD_MILESTONE=1 npx playwright test tests/foundations.spec.ts` passes in desktop-dark and desktop-light (3 tests each).
 - [ ] `bash scripts/checks/grep-gates.sh --milestone 0` run on the 1A branch prints the §15.3 "Post-D1 (M0 head)" column and exits 0.
 - [ ] `node scripts/checks/appendix-a.mjs` exits 0 on the 1A branch, and replacing one preserved string with text that does not contain it (for example 'Send direction' → 'Send prompt' in `components/DirectorPlayer.tsx`) makes it exit 1 and name that fragment (reverted afterwards, not committed). The check matches substrings, so an edit that keeps the old string inside the new one ('Send directions') still passes.
 - [ ] `node scripts/checks/route-sizes.mjs --milestone 0 .qa/build.log` exits 0 on the 1A branch, and `--milestone 5` on that same build fails on three.js and gsap in `/admin` (proving the leak check).
-- [ ] Every PR from 1A on pastes the §15.8 outputs, starting with `test ! -e .env.local`. `git ls-files test-results playwright-report .qa` prints nothing.
+- [ ] Every PR from 1A on pastes the §15.8 outputs, starting with `test ! -e .env.local`. `git ls-files test-results playwright-report .qa 'tests/__screenshots__/desktop-dark/live-*.png'` prints nothing.
 - [ ] No spec in `tests/` calls `test.only`, and `forbidOnly: true` is set. No spec uses `mask:` on the carrier host (`grep -rn "mask:" tests` prints nothing).
 - [ ] Every spec that clicks 'Start Director' installs the `**/api/fal/**` 401 stub first: `grep -l "name: 'Start Director'" tests/*.spec.ts | xargs -r grep -L "api/fal"` prints nothing.
 - [ ] From M4, `WZRD_MILESTONE=<id> npm run test:prod` passes, including LCP ≤ 1800 ms and the boot removed by 1617 ms after navigation start (1600 ms at 60 Hz plus at most one frame) with CLS 0.
 - [ ] The M9 sweep runs every project with `WZRD_MILESTONE=9` and `npm run gates -- --milestone 9`, with 0 failed and 0 gate failures.
+- [ ] The M9 sweep's `WZRD_MILESTONE=9 WZRD_AFTER=ready npx playwright test tests/visual.spec.ts -g "ready-state capture"` passes 20 tests (10 targets in desktop-dark and desktop-light) and writes the 20 `docs/redesign/after/m9/ready-*.png` files (§15.10).

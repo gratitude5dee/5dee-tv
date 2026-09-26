@@ -56,7 +56,7 @@ This is the master contract. It merges and deduplicates §8.9, §9.9, §10.9 and
 | The `try`/`catch` WebGL-unavailable bail-out | behaviour | `components/reactbits/Dither.jsx:132-139` |
 | `waveSpeed` 0.04 · `waveFrequency` 2.6 · `waveAmplitude` 0.4 · `colorNum` 4 · `pixelSize` 2 | props (half resolution with `pixelSize` 1 is the visual equivalent, §12.3.1) | `components/DitherBackground.tsx:25-27`, `:30-31` |
 | Dark wave `[0.2, 0.34, 0.66]`, bg `[0.02, 0.03, 0.06]`; light wave `[0.5, 0.63, 0.86]`, bg `[0.98, 0.98, 1.0]` (now `--dither-wave`/`--dither-bg`, with the same values) | props → tokens | `components/DitherBackground.tsx:28-29` |
-| `.dither-container` | class | `components/reactbits/Dither.jsx:141`, `:198`; `Dither.css:1` |
+| `.dither-container` on the carrier canvas and on its host `<div>`. The canvas keeps it and gains a second class, `dither-canvas` (`canvas.className = 'dither-container dither-canvas'`, §12.3.1); the class is never removed or renamed | class | `components/reactbits/Dither.jsx:141` (canvas), `:198` (host); `Dither.css:1` |
 
 **A.1.5 Platform, middleware, API, Convex provider**
 
@@ -208,7 +208,7 @@ This is the master contract. It merges and deduplicates §8.9, §9.9, §10.9 and
 | The fallback `<img className="morph-slider-fallback">` when WebGL fails; the caption's `aria-live="polite"` | behaviour | `MorphSlider.tsx:546`, `:548` |
 | "Previous song artwork" · "Next song artwork" | aria-label | `MorphSlider.tsx:550-551` |
 | "Song artwork" `role="tablist"`; tabs `` `Show ${item.caption ?? `cover ${itemIndex + 1}`}` `` | aria-label | `MorphSlider.tsx:553-554` |
-| The `activeIndex` / `onIndexChange` props (the contract stays; TrackManager keeps passing `onIndexChange={selectSliderTrack}`, so explicit artwork navigation still arms that track, DEC-8-04) | props | `MorphSlider.tsx`; `TrackManager.tsx:142` |
+| The `activeIndex` / `onIndexChange` / `autoplay` / `autoplayDelay` props (the component contract stays; TrackManager keeps `autoplayDelay={6}`, and its `onIndexChange` handler becomes display-only, so no slide change arms a track: A.12 L8, DEC-8-04, §0.4 BC-15) | props | `MorphSlider.tsx`; `TrackManager.tsx:138-139`, `:142` |
 | `` `Paste ${kind} URL` `` · "Upload" · "Clear" · the thumbnail's `alt=""` | placeholder, button, aria-label, `alt` | `AssetUrlInput.tsx:50`, `:71`, `:79`, `:87` |
 
 **A.2.8 Live Control behaviour (media pipeline and protocol)**
@@ -427,7 +427,7 @@ This is the master contract. It merges and deduplicates §8.9, §9.9, §10.9 and
 | `?transfer=<directorTransferId>` on `/admin` | URL | preserved | `ScriptTemplatePicker.tsx:50`; `ShotboardPage.tsx:260` |
 | `?code&state` on `/admin` | URL | preserved | `TwitchBroadcast.tsx:58-65` |
 | `NEXT_PUBLIC_CONVEX_URL` · `NEXT_PUBLIC_TWITCH_CHANNEL` · `NEXT_PUBLIC_TWITCH_CLIENT_ID` | env names read by the client | preserved | `ConvexClientProvider.tsx:37`; `ChatSteerer.tsx:29`; `TwitchBroadcast.tsx:54` |
-| `wzrd:boot` | sessionStorage | new (§6.2) | — |
+| `wzrd:boot` (the epoch-ms timestamp of the last full POST, as a decimal string; §0.4 BC-1) | localStorage | new (§6.2.4) | — |
 | `wzrd:density` · `wzrd:dock` · `wzrd:shotboard` | localStorage | new (§7.14, §8, §9) | — |
 | `wzrd:dither-ready` · `wzrd:twitch-auth` | window events | new (§6.2.11, §7.10) | — |
 | `?noboot` · `?boot=1` · `?boot=flip` · `?boot=auto` · `?throw=render` (dev only, `/admin/visual-test`) | URL (test hooks) | new (§6.2.15, §11.D.10) | — |
@@ -493,7 +493,7 @@ Every name and argument shape below stays unchanged; the backend is never edited
 
 ### A.12 Allowed changes (D6, exhaustive)
 
-These are the only changes allowed to Appendix A items, and each one names the section that authorises it. Any change not listed here is a §1.8 item 1 stop-and-ask. Moves that do not change text (a string relocated to a new component, breakpoint or sr-only span) are not listed; the page ledgers track them.
+These are the only changes allowed to Appendix A items, and each one names the section that authorises it. Any change not listed here is a §1.8 item 1 stop-and-ask. Moves that do not change text (a string relocated to a new component, breakpoint or sr-only span) are not listed; the page ledgers track them. A row that changes behaviour names its §0.4 row. When the owner vetoes that row with `OVERRIDE D10: <BC-id>` (§2.2 D10), the 845147c behaviour stays, and so does the Appendix A item it would have changed.
 
 **Every surface**
 
@@ -511,27 +511,27 @@ These are the only changes allowed to Appendix A items, and each one names the s
 | G4 | The h1 "Stream Admin" (`app/layout.tsx:51-53`) → the same text in a non-heading brand block. Each route supplies its own single h1 (Live Control's is the sr-only "Live Control") | §7.8, §8.2 |
 | G5 | The header `<img src="/wzrdtechlogo.png">` → a `Wordmark` `<picture>` from `/brand/wordmark/*` with the same `alt`, "WZRD.TECH" | §7.5, §13.6.11 |
 | G6 | AdminNav moves into the CommandBar (`git mv` to `components/shell/AppNav.tsx`). The active link gains `aria-current="page"`. At 1024–1439 px, inactive links are icon-only, with their exact label as sr-only text (accessible names unchanged) | §7.8, §7.9 |
-| G7 | ThemeToggle (one button with a `title`) → ThemeSwitch: a `role="radiogroup"` "Theme" with the radios "System", "Light" and "Dark" (the Light and Dark segments keep the existing titles). Below 768 px it is one IconButton, "Theme: System" / "Theme: Light" / "Theme: Dark". Choosing System removes `localStorage['theme']` | §7.13 |
+| G7 | ThemeToggle (one button with a `title`) → ThemeSwitch: a `role="radiogroup"` "Theme" with the radios "System", "Light" and "Dark" (the Light and Dark segments keep the existing titles). Below 768 px it is one IconButton, "Theme: System" / "Theme: Light" / "Theme: Dark". Choosing System removes `localStorage['theme']` | §7.13; §0.4 BC-8 |
 | G8 | `themeInit` gains appended blocks (`wzrd:density`, `data-platform`, `data-theme-pref`, `data-dock`); the theme lines stay byte-identical | §7.6 |
 | G9 | Through the `--dither-*` tokens, the carrier speed becomes 0.055 while connecting and 0.02 on air, and the veil alpha becomes .72 (light) / .62 (dark) on air; the rest values are unchanged | §5.5, §6.7 |
 | G10 | Deleted: `.fade-in` (`layout.tsx:64`, `globals.css:167`); `.connection-*` (`globals.css:213-227`, with `analytics/page.tsx:146-147` migrating to TallyLight in 11C); and the `.fal-*` shims (each with its last call site, and the aliases in M9) | §5.18, §7.6, §11.C.2 |
 | G11 | `ConvexNotConfigured` renders `<NotConfigured feature size="route">` with the title "Convex is not configured" and the body "Set `NEXT_PUBLIC_CONVEX_URL` to enable {feature}. Run `npx convex dev` in `dashboard/` to create a deployment." (the body's rendered `textContent` is unchanged) | §7.5, §11.D.7 |
 | G12 | `TwitchBroadcast` dispatches the `window` event `wzrd:twitch-auth` after it writes or removes `wzrd_twitch_auth` (the storage format is unchanged) | §7.10 |
-| G13 | `public/favicon.ico` is replaced in place by the derived Coast or placeholder icon. `app/icon.svg`, `app/apple-icon.png`, `app/manifest.ts`, `app/opengraph-image.png` and `app/twitter-image.png` are added | §13.6.9, §13.6.10 |
+| G13 | `public/favicon.ico` is replaced in place by the derived icon: Coast, no-likeness or placeholder, per the D5 brand mode (§2.1). `app/icon.svg`, `app/apple-icon.png`, `app/manifest.ts`, `app/opengraph-image.png` and `app/twitter-image.png` are added | §13.6.9, §13.6.10 |
 
 **Live Control (§8.9.6)**
 
 | # | Old → new | Authorised by |
 |---|---|---|
-| L1 | "Live · {n}s" (`DirectorPlayer.tsx:1148-1149`) → "Live · HH:MM:SS" (`'Live · ' + tc(elapsed)`) | D6, §4.4 O15, §8.9.6 #1 |
+| L1 | "Live · {n}s" (`DirectorPlayer.tsx:1148-1149`) → "Live · HH:MM:SS" (`'Live · ' + tc(elapsed)`) | D6, §4.4.3 O15, §8.9.6 #1 |
 | L2 | The raw state text `idle`/`opening`/`live`/`closing`/`failed`/`closed` (`:1069`) → the words "Standby", "Tuning", "Preview", "Stopping", "Failed", "Off air". The raw value stays in `data-state` on `[data-testid="lc-state-word"]` | §8.9.6 #2 |
 | L3 | Heading levels only: "Director (realtime WebRTC)" h3 → h2 (plus `aria-label="Director"` on its section); "Audio library" h2 → h3; "Twitch broadcast" `<span>` → h3 | §8.9.6 #3 |
 | L4 | The coloured "●" before queue rows (`:1181`) → an `<Led>` (the status word stays visible). The "●" in "● pushing to Twitch ingest…" stays | §8.9.6 #4 |
 | L5 | "Coast originals · {n} tracks", rendered through `uppercase` → the authored "COAST ORIGINALS · {n} TRACKS" with the class removed (the rendered case is identical); `backdrop-blur` removed | §8.9.6 #5, §5.20.5 |
 | L6 | The failed-start error region gains `role="alert"` and a 'Dismiss error' control (DEC-8-05) | §8.9.6 #7, live.md L3 |
-| L7 | The behaviour decisions DEC-8-01 … DEC-8-14: the composer lifecycle; Stop click-guarded; Go live needs the first frame; MorphSlider autoplay off, explicit navigation still arms; a dismissible error; the pushing line only on air; Leave and stop runs `disconnect()`; `closed` shows the standby slate without 'Cancel'; a 500-entry log with debug hidden; radio track rows; client beat ids stripped before the wire; the template picker skeleton; `!frame`/`!snap` throttled 10 s global, 8 s per user (DEC-8-13); while on air, 'Stop' first confirms with 'Stop the Director?', and it ignores activations for 600 ms after mounting (DEC-8-14) | §8.9.6 #7 |
-| L8 | TrackManager stops passing `autoplay` and `autoplayDelay={6}` to MorphSlider (`TrackManager.tsx:138-139`), and the fixture stops passing `autoplay autoplayDelay={6}` (`AssetStudioVisualFixture.tsx:45`) | D3, §12.4 |
-| L9 | 'Stop broadcast' remains the transport control; the stalled chyron's new action is "End broadcast" | §6.7 (see B.6 R-7) |
+| L7 | The behaviour decisions DEC-8-01 … DEC-8-14, each with its §0.4 row where it has one: the composer lifecycle (DEC-8-01, §0.4 BC-10); Stop click-guarded (DEC-8-02, BC-11); Go live needs the first frame (DEC-8-03, BC-6); the artwork carousel is display-only with autoplay kept (DEC-8-04, BC-15); a dismissible error (DEC-8-05); the pushing line only on air, with `air` from the truth gate and no teardown of an unconfirmed cue (DEC-8-06, BC-7); Leave and stop runs `disconnect()` (DEC-8-07, BC-3); `closed` shows the standby slate without 'Cancel' (DEC-8-08); a 500-entry log with debug hidden (DEC-8-09, BC-12); radio track rows whose first radio, 'No track', disarms (DEC-8-10, BC-14); client beat ids stripped before the wire (DEC-8-11); the template picker skeleton (DEC-8-12); `!frame`/`!snap` throttled 10 s global, 8 s per user (DEC-8-13, BC-13); while on air, 'Stop' first confirms with 'Stop the Director?', and it ignores activations for 600 ms after mounting (DEC-8-14, BC-11) | §8.9.6 #7; §0.4 |
+| L8 | TrackManager's `onIndexChange={selectSliderTrack}` (`TrackManager.tsx:142`; `selectSliderTrack` at `:91`), which armed whichever slide was shown → removed in 5C; from 8B `onIndexChange={setShownIndex}` records only the slide shown. `autoplay` (`:138`) → `autoplay={autoplayOn}` (8B), false under the air lock, under reduced motion, while the Dock is collapsed, while the Audio tab is hidden and while the page is hidden; `autoplayDelay={6}` (`:139`) stays. The fixture keeps `autoplay autoplayDelay={6}`, and its `onIndexChange={setTrack}` (`AssetStudioVisualFixture.tsx:45`) → a handler that records only the slide shown, with 'Arm this track' arming (10F). Under `OVERRIDE D3: autoplay off`, both callers drop `autoplay` and `autoplayDelay` instead | D3, §0.4 BC-15, §8.5.10, §10.5.9, §12.4.1, §14.3 R5 |
+| L9 | 'Stop broadcast' remains the transport control; the new action of the stalled chyron ('Twitch ingest lost') and of the cue warning chyron ('Twitch ingest not confirmed') is "End broadcast" | §6.7 (see B.6 R-7); §0.4 BC-7 |
 
 **Shotboard (§9.9.4)**
 
@@ -544,12 +544,12 @@ These are the only changes allowed to Appendix A items, and each one names the s
 | S5 | "{n} beats · {s}s runtime." → "{n} beats · {s}s runtime" (the trailing "." is dropped, `:287`) | §9.9.4 #5 |
 | S6 | The amber status line (`:290`) → each message moves verbatim to an inline `role="alert"` (plus a chyron when off-screen). Errors become danger; advisories stay warning | §9.9.4 #6 |
 | S7 | The Director-expansion sentence (`:288`) moves unchanged to the TransferSheet preflight | §9.9.4 #7 |
-| S8 | Library characters (`boardId` undefined) become read-only on this route: no rename, no portrait generation, no 'Delete character' | §9.9.4 #8 |
-| S9 | Undoing a deleted scene or shot re-creates the rows through `createScene`/`createShot` (new Convex ids; every field restored) | §9.9.4 #9 |
-| S10 | 'Expand' is `aria-disabled` in local mode, with the preserved reason sentence | §9.9.4 #10 |
-| S11 | Generation ignores `shot.imageModel` when choosing the model (the value is still written on success) | §9.9.4 #11 |
+| S8 | Library characters (`boardId` undefined) become read-only on this route: no rename, no portrait generation, no 'Delete character' | §9.9.4 #8; §0.4 BC-17 |
+| S9 | Undoing a deleted scene or shot re-creates the rows through `createScene`/`createShot` (new Convex ids; every field restored) | §9.9.4 #9; §0.4 BC-16 |
+| S10 | 'Expand' is `aria-disabled` in local mode, with the preserved reason sentence | §9.9.4 #10; §0.4 BC-18 |
+| S11 | Generation ignores `shot.imageModel` when choosing the model (the value is still written on success) | §9.9.4 #11; §0.4 BC-18 |
 | S12 | 'New board' starts title editing; 'Board style…' is disabled while a style is set | §9.9.4 #12 |
-| S13 | `?board=` is written back with `router.replace(…, { scroll: false })` in Convex mode (the read-once semantics are unchanged) | §9.9.4 #13 |
+| S13 | `?board=` is written back with `router.replace(…, { scroll: false })` in Convex mode (the read-once semantics are unchanged) | §9.9.4 #13; §0.4 BC-18 |
 | S14 | `<Suspense>` gains a `fallback` (the Shotboard skeleton) | §9.2 |
 | S15 | The `ImageModelSelect` selects gain an `aria-label` equal to each existing `title` | §9.2 |
 
@@ -561,12 +561,12 @@ These are the only changes allowed to Appendix A items, and each one names the s
 | C2 | `assetPlaceholder()` drops the in-image text "visual fixture · add approved reference" and the Arial/violet art, with the same signature | §10.9.6 #2 |
 | C3 | Notices and errors move from the bottom `<p>`s to chyrons and the inline Darkroom alert (text and roles unchanged) | §10.9.6 #3 |
 | C4 | The identity checkbox becomes a Switch with the same label | §10.9.6 #4 |
-| C5 | Sheet history lists only `role: 'sheet'` rows, and a click opens the viewer; promotion uses 'Use as primary reference' | §10.9.6 #5 |
-| C6 | Save payloads omit `referenceStorageIds` (a data-loss fix) | §10.9.6 #6 |
-| C7 | @coast is pinned first, the wall is ordered by `_creationTime` descending, and the first item is auto-selected | §10.9.6 #7 |
+| C5 | Sheet history lists only `role: 'sheet'` rows, and a click opens the viewer; promotion uses 'Use as primary reference' | §10.9.6 #5; §0.4 BC-20 |
+| C6 | Save payloads omit `referenceStorageIds` (a data-loss fix) | §10.9.6 #6; §0.4 BC-20 |
+| C7 | @coast is pinned first, the wall is ordered by `_creationTime` descending, and the first item is auto-selected | §10.9.6 #7; §0.4 BC-20 |
 | C8 | 'New character' / 'New location' render as secondary buttons, and 'Load SF starters' as ghost | §10.9.6 #8 |
 | C9 | The header band (eyebrow, h1, description) also renders in the not-configured and auth states (additive) | §10.9.6 #9 |
-| C10 | Fixture: the nested `<main>` → `<div>`; the `sleek-opossum-939.convex.cloud` artwork URLs (`AssetStudioVisualFixture.tsx:23-26`) → local `/brand/slate/*.webp`; autoplay off; inert copies become the real components; violet removed | §10.9.6 #10 |
+| C10 | Fixture: the nested `<main>` → `<div>`; the `sleek-opossum-939.convex.cloud` artwork URLs (`AssetStudioVisualFixture.tsx:23-26`) → local `/brand/slate/*.webp`; the MorphSlider keeps `autoplay autoplayDelay={6}` but becomes display-only, arming only through 'Arm this track' (L8); inert copies become the real components; violet removed | §10.9.6 #10; §0.4 BC-15 |
 
 **Clips (§11.A.9)**
 
@@ -590,8 +590,8 @@ These are the only changes allowed to Appendix A items, and each one names the s
 | V3 | The title fallback `` `${recording.model} recording` `` → "{Model} session · {stamp}" (for example "Director session · Sep 24, 21:04") | §11.B.9 |
 | V4 | `toLocaleString()` → the visible `stamp()`, with the full value in `title` | §11.B.9 |
 | V5 | The plate "Type" + the raw MIME → "Format" + `formatMime()`; the raw MIME stays in `title` | §11.B.9 |
-| V6 | The download filename `recording-${id}.webm` → `recording-${id}.${extFromMime(mimeType)}`, fetched as a Blob | §11.B.9 |
-| V7 | `confirm('Delete this recording permanently?')` → a ConfirmDialog with that exact title; `remove({ recordingId })` is awaited | §11.B.9 |
+| V6 | The download filename `recording-${id}.webm` → `recording-${id}.${extFromMime(mimeType)}`, fetched as a Blob | §11.B.9; §0.4 BC-21 |
+| V7 | `confirm('Delete this recording permanently?')` → a ConfirmDialog with that exact title; `remove({ recordingId })` is awaited | §11.B.9; §0.4 BC-22 |
 
 **Twitch Analytics (§11.C.9)**
 
@@ -606,6 +606,12 @@ These are the only changes allowed to Appendix A items, and each one names the s
 | T6 | The `.connection-*` pill → `TallyLight` (G10) | §11.C.2 |
 
 **New strings.** Each new string a chapter introduces (kickers, lamp words, slates, dialogs, chyrons, announcements, fixture labels) belongs to that chapter's "New strings" list (§8.9.6, §9.9, §10.9.6, §11.A.9, §11.B.9, §11.C.9, §11.D, §6.2, §7). It is not preserved until it merges.
+
+These new strings come with the §0.4 behaviour changes and the Recordings Session disclosure. Each belongs to the list named here. None reuses a preserved accessible name (§16.2 A13):
+- 'No track', the first radio of the 'Armed track' radiogroup, which disarms (§8.9.6; §0.4 BC-14);
+- 'Arm this track', 'Expand artwork' and the Sheet title 'Coast originals artwork' (§8.9.6; §0.4 BC-15);
+- the cue warning chyron 'Twitch ingest not confirmed', with 'End broadcast' and 'Dismiss', and the lamp text `CUE {MM:SS}` (§6.7; §0.4 BC-7);
+- on the Recordings Session disclosure: 'session clips' (sr-only), 'Session clips, oldest first' and 'Clips for this session are older than the latest 100' (§11.B.9).
 
 > Note: **conflicts resolved conservatively.**
 > 1. An earlier §5.20.5 draft wrote 'Generate' as `GENERATE` (removing the class) at `CharacterLibraryPage.tsx:160`, at `LocationLibraryPage.tsx:151` and in the fixture, while §10 keeps the `uppercase` class on all three. The three 'Generate' eyebrows keep `uppercase` (D6: no chapter lists a change), and the uppercase allowlist total is ≤ 9 (§5.20.5, B.6 R-2). L5 and S1 are allowed because §8.9.6 and §9.9.4 list them and their surfaces are rebuilt; no chapter lists 'Generate', so it keeps its text and its class.
@@ -631,7 +637,7 @@ These are the only changes allowed to Appendix A items, and each one names the s
 
 Working directory (§1.5): commands whose paths start with `dashboard/`, `docs/`, `.agents/`, `goal.md` or `README.md`, and `git` commands with such pathspecs, run from the repository root. Every other command runs from `dashboard/`.
 
-- [ ] `node scripts/checks/appendix-a.mjs` (§15.1, run per §15.2 in every PR from M1) exits 0 on the PR's head. It reads this file (`docs/redesign/spec/appendix-a-preserved-contract.md`) and checks every double-quoted A.1–A.11 value, or its A.12 replacement. Its extraction rules and search scope are §15.2's (gate C7). The M9 `sweep` PR pastes the full report, with zero misses.
+- [ ] `node scripts/checks/appendix-a.mjs` (§15.1, run per §15.2 in every PR from M1) exits 0 on the PR's head. It reads this file (`docs/redesign/spec/appendix-a-preserved-contract.md`) and checks every double-quoted A.1–A.11 value, or its A.12 replacement. Its extraction rules and search scope are §15.2's (gate §15.2 C7). The M9 `sweep` PR pastes the full report, with zero misses.
 - [ ] Every A.12 change is present on the M9 build, and `git diff 845147c...HEAD` makes no other change to an A.1–A.11 value. Review this with `node scripts/checks/appendix-a.mjs --diff 845147c`, which prints every A-listed literal present at 845147c and absent at HEAD.
 - [ ] `getByRole` counts on the M9 build:
   - exactly one button named 'Start Director' (idle);

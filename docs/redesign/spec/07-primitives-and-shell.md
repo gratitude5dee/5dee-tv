@@ -51,7 +51,7 @@ This section defines every shared hook, primitive and shell component: its API, 
 | effect slot | `lib/effectSlot.tsx` | `<EffectSlotProvider>`, `useEffectCanvasSlot(id: string, priority: number, want: boolean): boolean` | §7.16 | Live, Analytics |
 | commands | `lib/commands.ts` | `useRegisterCommand({ id, group, label, shortcut?, enabled, reason?, palette?, run })`, `commands.run(id)`, `useCommands()`, `useGlobalShortcuts()` | A module registry read with `useSyncExternalStore`. Registration happens in an effect, and `run` is held in a ref so re-renders do not re-register. `palette: false` hides a command from the palette (shortcut-only, for example `director.cancel` and `twitch.stop`). `reason` is shown on disabled rows | Shell, Live, Shotboard |
 | announce | `lib/announce.ts` | `announce(text: string, mode: 'polite' \| 'assertive' = 'polite'): void` | Writes to the single LiveRegion pair (§7.15). It clears the region, then sets the text 50 ms later so repeats are spoken, and drops an identical text within 1000 ms | All |
-| chyron store | `lib/chyron.ts` | `chyron.push({ tone: 'info'\|'success'\|'warning'\|'error', title, body?, action?: { label, run }, sticky?, ttlMs? }): string`, `chyron.dismiss(id)` | §6.10. Under the lock, non-errors go to `statusMessage` | All |
+| chyron store | `lib/chyron.ts` | `chyron.push({ tone: 'info'\|'success'\|'warning'\|'error', title, body?, action?: { label, run }, sticky?, ttlMs?, airAllow?: boolean }): string`, `chyron.dismiss(id)` | §6.10. Under the lock, non-errors go to `statusMessage`, unless `airAllow` is `true` (default `false`): that chyron still floats and carries `data-air-allow`. Only BroadcastProvider's cue warning passes `airAllow` (§6.7) | All |
 | status message | `lib/statusMessage.ts` | `statusMessage.set({ tone, text, ttlMs = 6000 })`, `statusMessage.clear()` | One slot; a new message replaces the old one with a cut | Shell, Live |
 | format | `lib/format.ts` | §5.20.4 (M2) and §11.0 (11A additions) | §5.20.4 owns `tc`, `tcShort`, `duration`, `bytes` and `formatMime`; §11.0 owns the 11A helpers | Live, Recordings, Clips, Analytics |
 
@@ -93,7 +93,7 @@ This section defines every shared hook, primitive and shell component: its API, 
 | Primitive | API | Spec | Used by |
 |---|---|---|---|
 | **TallyLight** | `<TallyLight kind="program"\|"preview"\|"rec"\|"cue"\|"standby"\|"stalled"\|"fault"\|"stale" lit label srLabel size="sm"\|"md" readout? steady? …rest>` | Root `.tally[data-kind][data-lit]`, `data-air-allow`. `...rest` (`data-*`, `id`) is spread onto the `.tally` root, so `data-testid` and `data-state` reach the DOM. `steady` sets `data-steady`: a `stalled` lamp without the blink (TallyCluster). Housing `bg-bezel border border-white/[.08] rounded-screen`. **md:** 20 px tall, 8 px horizontal padding, 8×8 LED, label as `PixelFace` at a 2 px cell. **sm:** 16 px tall, 6 px LED, `micro` label. Lit program/preview: the face fills with the tally colour and the label is `tally-ink`. rec: a 1.5 px ring + label in `tally-rec`, never filled. cue: amber ring + label, steady. standby: grey ring, label `text-on-screen-2`. Unlit: `tally-off` ring, label `text-on-screen-2`. stalled: red outline, hatch `repeating-linear-gradient(135deg, rgb(var(--c-tally-program)/.35) 0 2px, transparent 2px 4px)`, red label, `led-stall` × 5 unless `data-steady`. **fault** (11A): a 1.5 px `--c-tally-program` ring and label, never filled, no hatch, no animation. **stale** (11A): a `--c-tally-standby` ring, the hatch `repeating-linear-gradient(135deg, rgb(var(--c-tally-standby)/.35) 0 2px, transparent 2px 4px)`, a `text-on-screen-2` label, no animation. Both are theme-invariant on the bezel (§11.C.5). A lit change re-keys `.tally-face` with `.px-resolve` (160 ms, once; reduced motion: a cut). `srLabel` is spoken ("Preview", "On air"). `readout` sits outside the face in `readout` `text-on-screen` | Live, Shell, Analytics |
-| **TallyBar** | `<TallyBar snapshot?: BroadcastState />` (reads the store; `snapshot` overrides it, for fixtures) | 28 px inside the monitor bezel. Left: the `STBY`/`PVW` lamp, then the `REC` lamp + readout `REC {bytes} · HH:MM:SS`. Right: the ON AIR lamp, moving through `OFF AIR` → `CUE` → `ON AIR` → `STALLED 00:06` → `OFF AIR` (3 s) → `OFF AIR` dim (§6.7) | Live |
+| **TallyBar** | `<TallyBar snapshot?: BroadcastState />` (reads the store; `snapshot` overrides it, for fixtures) | 28 px inside the monitor bezel. Left: the `STBY`/`PVW` lamp, then the `REC` lamp + readout `REC {bytes} · HH:MM:SS`. Right: the ON AIR lamp, moving through `OFF AIR` → `CUE` (→ `CUE 00:10`, counting, while the cue is not confirmed) → `ON AIR` → `STALLED 00:06` → `OFF AIR` (3 s) → `OFF AIR` dim (§6.7) | Live |
 | **TallyCluster** | `<TallyCluster compact? snapshot?: BroadcastState />` (reads the store; `snapshot` overrides it) | Three sm lamps: `PVW`, `REC` and `AIR`. **AIR maps `air`:** `off` → kind `program`, unlit, label `AIR`; `cue` → kind `cue`, label `CUE`; `on` → kind `program`, lit, label `ON AIR`; `stalled` → kind `stalled` with `steady` (no blink: only the TallyBar lamp blinks, §6.1 law 4), label `STALLED`; `offair` → unlit `AIR`. The four labels share one grid cell, width-locked to `STALLED`, so it **never** reads ON AIR while stalled. `compact` (below 1024): one lamp showing the highest state, STALLED > ON AIR > CUE > REC > PVW > STBY | Shell |
 | **Led** | `<Led tone="off"\|"accent"\|"success"\|"warning"\|"danger" label labelHidden?>` | 8×8 `rounded-lamp`, `data-air-allow`. Off: 1 px `border-line-control`. Lit: fill + `box-shadow: 0 0 0 2px rgb(tone/.22)`. The label is always present, visible or sr-only | Shell, Live, Shotboard, Characters, Analytics |
 | **Readout** | `<Readout label value unit? tone?>` | Label `label` `text-fg-3`; value `readout` `.nums` in a fixed `ch` slot. Updates ≤ 1 Hz and **snaps** | Live, Recordings, Analytics |
@@ -233,7 +233,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 | `components/shell/ChyronHost.tsx` | Client | §7.15 |
 | `components/shell/RouteProgress.tsx` | Client | §6.4.3 |
 | `components/shell/OfflineBanner.tsx` | Client | Reads `useOnline()` (§7.2). While offline: `InlineBanner tone="warning" kicker="NO CARRIER"` with 'Network offline' (copy §11.D.7), at `position: fixed; top: var(--h-chrome); left: var(--gutter); right: var(--gutter)`, 36 px tall, `z-bar`. It is the only writer of `html[data-offline]`, which sets `--h-offline: 36px` (§5.2) so sticky tops and `scroll-padding-top` clear it |
-| `components/shell/BroadcastProvider.tsx` | Client | Every side effect of the store, all in 4B: the title and favicon swap, the announcements, the stalled chyron (its only publisher), the recovery and off-air messages (§6.7), and the `beforeunload` and mouse-button guards (§6.12). 8C adds the publishers and verifies them end to end. Renders `children` only |
+| `components/shell/BroadcastProvider.tsx` | Client | Every side effect of the store, all in 4B: the title and favicon swap, the announcements, the stalled chyron and the cue warning chyron (the only publisher of both), the recovery and off-air messages (§6.7), and the `beforeunload` and mouse-button guards (§6.12). 8C adds the publishers and verifies them end to end. Renders `children` only |
 | `components/shell/TallyCluster.tsx` | Re-export of `components/broadcast/TallyCluster` | — |
 | `app/styles/shell.css` | Surface stylesheet | The §7.8 `@layer components` block, imported at its §5.1 position |
 
@@ -388,6 +388,8 @@ The StatusRail is 24 px tall (`--h-status`), `surface-chassis` with a `line-subt
 
 ### 7.11 CommandPalette and ShortcutSheet
 
+Behaviour change: §0.4 BC-9, with §7.12. It applies by default; the owner vetoes it with `OVERRIDE D10: BC-9` (§2.2 D10), and Devin then keeps the 845147c behaviour and records it under Decisions.
+
 **CommandPalette** (`components/shell/CommandPalette.tsx`): loaded only by `PaletteHost` (§7.6) with `next/dynamic` `ssr: false`, mounted on first open, and prefetched with `(window.requestIdleCallback ?? ((cb) => setTimeout(cb, 1)))(() => import('./CommandPalette'))`.
 
 | Part | Spec |
@@ -431,6 +433,8 @@ WCAG 2.1.4: **no global single-character shortcuts**, and no ⌘⇧L or ⌘. cho
 | ←/→, Shift+←/→ | A focused chart | Crosshair ±1 / ±10 | Analytics (§11) |
 
 ### 7.13 ThemeProvider and ThemeSwitch
+
+Behaviour change: §0.4 BC-8, the System option. It applies by default; the owner vetoes it with `OVERRIDE D10: BC-8` (§2.2 D10), and Devin then keeps the 845147c behaviour and records it under Decisions.
 
 **Storage contract (invariant):** `localStorage['theme']` holds exactly `'dark'` or `'light'`, and choosing System **removes** the key. `.dark` on `<html>` and `document.documentElement.style.colorScheme` follow the resolved theme. The pre-paint `themeInit` theme logic is unchanged (§7.6). Tailwind stays `darkMode: 'class'`.
 
@@ -490,7 +494,7 @@ export function useEffectCanvasSlot(id: string, priority: number, want: boolean)
 |---|---|
 | Placement | One provider in `app/admin/layout.tsx`. It persists across admin routes; requests unregister on unmount |
 | Registration | `useLayoutEffect` registers `{ id, priority, want, seq }` (`seq` = registration order) and updates it on change; the cleanup unregisters |
-| Grant | Among requests with `want === true`, the highest `priority` wins, and ties go to the lowest `seq`. The hook returns `owner === id` |
+| Grant | Among requests with `want === true`, the highest `priority` wins, and ties go to the lowest `seq`. Exactly one registration is granted: the hook returns `true` only for the winning registration (its `seq`), so two callers that register the same `id` (for example the `#audio-library-visual-test` MorphSlider specimen and the `#live-control-visual-test` TrackDeck, both `morph`) never hold the slot together. `owner` is the winner's `id` |
 | Obligations | A component creates its canvas or context **only while granted**, and unmounts it in the same commit when the grant is revoked. A loser renders its static fallback; for example, the idle SymbolRaster renders `<BrandImage id="standby/coast-16x9">` with `image-rendering: pixelated` |
 | Dev audit | When `process.env.NODE_ENV !== 'production'`, every change writes `window.__wzrd.slots = { owner: string \| null, requests: Array<{ id, priority, want }> }` |
 
@@ -499,7 +503,7 @@ export function useEffectCanvasSlot(id: string, priority: number, want: boolean)
 | Id | Component | Priority | Route |
 |---|---|---|---|
 | `symbol-raster` | SymbolRaster: priority 3 while acquiring and during its 320 ms clear; 1 while idle (standby). One id, whose priority changes with the phase | 3 / 1 | Live |
-| `morph` | MorphSlider (Audio dock tab visible, dock open) | 2 | Live, visual-test |
+| `morph` | MorphSlider, the single instance: in the Audio dock tab (tab visible, dock open) or in the 'Expand artwork' Sheet while it is open (§8.5.10) | 2 | Live, visual-test |
 | `chart` | Analytics AreaChart (its perpetual 2D loop) | 1 | Analytics |
 | `pixel-card` | PixelCard specimen behind its 'Show PixelCard' switch | 0 | visual-test only |
 
@@ -515,11 +519,13 @@ export interface BroadcastState {
   air: Air
   airSince?: number
   stalledSince?: number
+  cueSince?: number          // Date.now() when the WHIP session arrived while air === 'cue' (the 10 000 ms window, §8.5.6)
+  cueUnconfirmed?: boolean   // true once a cue is not confirmed (disconnected, or 10 000 ms with no truth gate); air stays 'cue'
   whip?: { kbps: number; fps: number; rttMs: number }
 }
 export const broadcast: {
   get(): BroadcastState
-  publish(partial: Partial<BroadcastState>): void   // shallow merge; nested objects are replaced, never mutated
+  publish(partial: Partial<BroadcastState>): void   // shallow merge; nested objects are replaced, never mutated; drops cueSince/cueUnconfirmed when the merged air is not 'cue'
   subscribe(fn: () => void): () => void
   reset(): void                                      // back to the initial state
   setLeaveHandler(fn: (() => Promise<void>) | null): void  // DirectorPlayer registers its disconnect (8C); null clears it
@@ -530,7 +536,7 @@ export function deriveBroadcast(s: BroadcastState): 'idle' | 'connecting' | 'pre
 export function deriveLock(s: BroadcastState): boolean
 ```
 
-The initial state is `{ director:'idle', firstFrame:false, rec:{ active:false, bytes:0 }, air:'off' }`. The module lands in 3A with no publishers. In development only (`process.env.NODE_ENV !== 'production'`), it also sets `window.__wzrd.broadcast = { publish, get }` (typed in §6.2.11), which the (dev, lock) acceptance items and §15 use to set the air lock. `setLeaveHandler` and `leave` are first used in 8C (§6.12).
+The initial state is `{ director:'idle', firstFrame:false, rec:{ active:false, bytes:0 }, air:'off' }`. **Cue fields invariant:** after every merge, when `air !== 'cue'`, `publish` deletes `cueSince` and `cueUnconfirmed`, so no publisher has to clear them and neither field outlives the cue. The module lands in 3A with no publishers. In development only (`process.env.NODE_ENV !== 'production'`), it also sets `window.__wzrd.broadcast = { publish, get }` (typed in §6.2.11), which the (dev, lock) acceptance items and §15 use to set the air lock. `setLeaveHandler` and `leave` are first used in 8C (§6.12).
 
 **Derivation:**
 
@@ -556,11 +562,11 @@ const deriveLock = (s) => deriveBroadcast(s) !== 'idle' || s.rec.active
 | `director` | DirectorPlayer | Every change of its `state` (`DirectorPlayer.tsx:128`) |
 | `firstFrame` | DirectorPlayer's first-frame gate (§6.5) | `true` on the first decoded frame; `false` when `connect()` starts and on `disconnect()` |
 | `rec` | DirectorPlayer | Recorder start (`startedAt`), stop, and `bytes` at ≤ 1 Hz |
-| `air` (`cue`, `off`, `offair`) | `useTwitchBroadcast` (8C) | `cue` on commit; `off` when the negotiation throws; `offair` on stop and on session end, then `off` (with `airSince: undefined`) 3000 ms later if `air` is still `offair` |
-| `air` (`on`, `stalled`, recovery `on`, `off` from `cue`), `airSince`, `stalledSince`, `whip` | `useWhipTruth` (8C) | Truth gate, stall and recovery; `off` from `cue` on negotiation failure (§6.7) |
+| `air` (`cue`, `off`, `offair`) | `useTwitchBroadcast` (8C) | `cue` on commit; `off` when the negotiation throws; `offair` on stop ('Stop broadcast', or 'End broadcast' on either chyron, also from a `cue` that is not confirmed) and on session end, then `off` (with `airSince: undefined`) 3000 ms later if `air` is still `offair` |
+| `air` (`on`, `stalled`, recovery `on`, `off` from `cue`), `airSince`, `stalledSince`, `cueSince`, `cueUnconfirmed`, `whip` | `useWhipTruth` (8C) | Truth gate, stall and recovery. While `cue`: `cueSince` when the session arrives; `cueUnconfirmed: true` on `connectionState === 'disconnected'` or 10 000 ms after `cueSince` with no truth gate (`air` stays `cue`); `off` only on `connectionState === 'failed'` (§6.7, §8.5.6) |
 | everything | DirectorPlayer unmount | `broadcast.reset()`, so the lock never outlives Live Control |
 
-The stalled chyron is not a store field: `BroadcastProvider` derives it from `air === 'stalled'` and is its only publisher (§6.7).
+The stalled chyron and the cue warning chyron are not store fields: `BroadcastProvider` derives them from `air === 'stalled'` and from `air === 'cue' && cueUnconfirmed === true`, and is the only publisher of both (§6.7).
 
 Consumers: TallyBar, TallyCluster, StatusRail, BroadcastProvider, DitherBackground (re-reads `--dither-*` on change), AppNav (lock), ChyronHost and `chyron.push` (lock), `useDensity` (lock), and every hook-enforced row of §6.12.
 
@@ -615,3 +621,4 @@ Consumers: TallyBar, TallyCluster, StatusRail, BroadcastProvider, DitherBackgrou
 - [ ] (dev) With one chyron visible (`window.__wzrd.broadcast.publish({ air: 'stalled', stalledSince: Date.now() })` makes BroadcastProvider push the stalled chyron on any route; `window.__wzrd.broadcast.reset()` afterwards), ChyronHost's bounding box matches the §7.15 table (±1 px) at 1440×900 on `/admin/clips`, 1440×900 on `/admin` (left 16, width 264), 1280×800 on `/admin` (left 16, width 248), 1024×768 on `/admin` (left 16, width 304), 900×800 on `/admin`, and 390×844 on `/admin/clips`.
 - [ ] (dev) `window.__wzrd.slots.owner` is `null` or one id on every route. Two canvases with a WebGL or looping context never exist inside `main` at the same time.
 - [ ] (fixture) Simulator: `director:'opening'` → `data-broadcast="connecting"` and `data-lock="air"`. `director:'live', firstFrame:true` → `preview`. `rec:{active:true, bytes:0}` with `director:'idle'` → `data-rec` present and `data-lock="air"`. `reset()` removes `data-rec` and `data-lock` and sets `idle`.
+- [ ] (dev) Cue fields invariant: after `window.__wzrd.broadcast.publish({ air: 'cue', cueSince: 1, cueUnconfirmed: true })`, a `publish({ whip: { kbps: 1, fps: 1, rttMs: 1 } })` keeps `cueSince === 1` and `cueUnconfirmed === true`; a `publish({ air: 'offair' })` leaves `'cueSince' in get() === false` and `'cueUnconfirmed' in get() === false`. `reset()` afterwards.

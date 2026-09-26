@@ -805,7 +805,7 @@ The body state is computed in the order of this table. The slate bar renders in 
 - the fake `sb` (a `ShotboardState` built from fixture data) has a fixture-only Switch 'Reject writes', off by default. While it is on, `addScene`, `addShot`, `addCharacter`, `restoreShot` and `restoreScene` reject with `Error('fixture write rejected')`.
 
 It renders:
-1. The editor with a fixture board in `persistent: true` mode: 3 scenes and 7 shots, every one with a prompt and 3 with a current Director prompt; 2 board-local characters and 1 library character, @coast (`handle: 'coast'`, no `imageUrl`, `identityLocked: true`), tagged on SC01 · SH02; 16:9; board model `nano-banana`; one shot with `imageModel: 'gpt-sunburst'`.
+1. The editor with a fixture board in `persistent: true` mode: 3 scenes and 7 shots, every one with a prompt and 3 with a current Director prompt; 2 board-local characters and 1 library character, @coast (`handle: 'coast'`, no `imageUrl`, `identityLocked: true`), tagged on SC01 · SH02; 16:9; board model `nano-banana`; one shot with `imageModel: 'gpt-sunburst'`. From 9B it also carries §10.5.9's "Shotboard ready board" additions: the 3/2/2 shot layout, SC03 · SH02 with persisted `imageStatus: 'failed'`, and the fixture-only Switch 'Hold generation' (off by default) beside 'Reject writes'. The element wrapping this editor carries `data-ready-state="shotboard"`, the ready-state capture target of §10.5.9 and §15.10, which 9B captures after §10.5.9's three Shotboard steps.
 2. A `ShotFrame` matrix: empty, queued (no position), queued 03, running at 0.5×ETA, done, failed (persisted `imageStatus: 'failed'`, no job) and interrupted, each at 16:9 1× (128 px, compact forms) and again at 16:9 2× (256 px, long forms); 9:16 and 1:1 pictures; and a 24 s hold.
 3. The S4, S5, S6b, S7, S8 and S9 bodies side by side.
 
@@ -957,19 +957,21 @@ The route runs **no effect canvas**:
 
 #### 9.9.4 Allowed changes on this route (D6 list; nothing else changes)
 
+Items tagged `§0.4 BC-<n>` are behaviour changes listed in goal.md §0.4. Each applies by default; the owner vetoes one with `OVERRIDE D10: <BC-id>` (§2.2 D10), and Devin then keeps the 845147c behaviour for that row and records it under Decisions.
+
 1. The shot card label (`ShotCard.tsx:71-72`; 'Shot {n}' under CSS `uppercase` at 845147c, authored as `SHOT {n}` with no `uppercase` class in M2, §5.20.5) is removed with ShotCard in 9B. Frames show the authored-uppercase slate tag `SC02 · SH03 · 8s`, and the inspector title renders "Shot {n}" with no `text-transform`. `ShotCard.tsx` is never an uppercase-allowlist entry (§5.20.5), so the allowlist does not change.
-2. 'Choose from character gallery' (`ShotCard.tsx:169`) is removed with the per-card AccordionGallery; cast chips replace it.
+2. 'Choose from character gallery' (`ShotCard.tsx:169`) is removed with the per-card AccordionGallery; cast chips replace it (§0.4 BC-19).
 3. 'Scene keyframe (drives the gallery strip)' becomes 'Scene keyframe (drives the scene rail thumbnail)' (`SceneSidebar.tsx:82`), because the strip no longer exists.
 4. The placeholder '$HANDLE' becomes 'handle', and the title 'Prompt anchor (e.g. $COAST)' becomes 'Prompt anchor (e.g. @coast)' (`CharacterPanel.tsx:88-89`), as the audit asks. Handles are normalised to `[a-z0-9_-]`.
 5. The runtime pattern loses the sentence's trailing '.' (`:287`); the pattern itself is unchanged.
 6. The amber status line (`:290`) is removed in 9B (9A keeps it as one `role="alert"` line, §9.2). Each message moves verbatim to an inline alert (plus a chyron when off-screen). Errors become `danger`; advisories stay `warning`.
 7. The Director-expansion sentence (`:288`) moves from the header to the TransferSheet preflight, unchanged.
-8. Library characters (`boardId` undefined) become read-only on this route: no rename, no portrait generation and no 'Delete character' (B8). Board-local characters keep every control.
-9. Undo of a deleted scene or shot re-creates the rows through `createScene`/`createShot`, so they get **new Convex ids**. `shotNumber`, `order`, `sceneNumber` and every other field are restored from the snapshot.
-10. 'Expand' is `aria-disabled` in local mode (today it is enabled and fails on click); its reason is the preserved sentence.
-11. Generation ignores `shot.imageModel` when choosing a model (B3). The value is still written on success, as provenance.
+8. Library characters (`boardId` undefined) become read-only on this route: no rename, no portrait generation and no 'Delete character' (B8; §0.4 BC-17). Board-local characters keep every control.
+9. Undo of a deleted scene or shot re-creates the rows through `createScene`/`createShot`, so they get **new Convex ids**. `shotNumber`, `order`, `sceneNumber` and every other field are restored from the snapshot (§0.4 BC-16).
+10. 'Expand' is `aria-disabled` in local mode (today it is enabled and fails on click); its reason is the preserved sentence (§0.4 BC-18).
+11. Generation ignores `shot.imageModel` when choosing a model (B3; §0.4 BC-18). The value is still written on success, as provenance.
 12. 'New board' drops the operator into editing the title. 'Board style…' is disabled while a style is set (B17); clearing it needs a backend sentinel, which is a §17 follow-up.
-13. `?board=` is written back to the URL with `router.replace(…, { scroll: false })` when the Convex board selection changes. Its read-once semantics are unchanged.
+13. `?board=` is written back to the URL with `router.replace(…, { scroll: false })` when the Convex board selection changes. Its read-once semantics are unchanged (§0.4 BC-18).
 
 #### 9.9.5 Recorded for §17 (out of scope here; no `convex/` change)
 
@@ -1006,9 +1008,9 @@ Every visible string, accessible name, tooltip reason and announcement that §9.
 - [ ] Each aria-label and title in §9.9.1 is present on the stated element in the §9.6.3 fixture (Playwright `getByRole`/`getByTitle`).
 - [ ] `npm run lint`, `npm run typecheck` and `npm run build` exit 0.
 - [ ] In the PR's route table, `/admin/shotboard` First Load JS minus "First Load JS shared by all" is ≤ 93 kB (baseline 196 − 103; gsap leaves the route along with AccordionGallery and ChromaGrid).
-- [ ] `npx playwright test tests/contrast.spec.ts` (§15.5) passes in both themes, and every text colour used under `.sb-root` (slate bar, rail meta `micro text-fg-3`, tag row, cluster row, TransferSheet) is the foreground of a §5.6 ledger row for the surface it sits on.
+- [ ] `WZRD_MILESTONE=6b npx playwright test tests/contrast.spec.ts` (§15.5) passes in both themes, and every text colour used under `.sb-root` (slate bar, rail meta `micro text-fg-3`, tag row, cluster row, TransferSheet) is the foreground of a §5.6 ledger row for the surface it sits on.
 
-**Unit (`npx playwright test tests/unit`)**
+**Unit (`WZRD_MILESTONE=6b npx playwright test tests/unit`)**
 - [ ] `boardLoadState` returns:
   - local with a board → `ready`;
   - local with no board, even with a `?board=` id → `idle`;

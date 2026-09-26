@@ -5,18 +5,25 @@
 Paths are relative to `dashboard/`, and a leading `../` marks a repo-root path (`../.agents/`, `../docs/`, `../streaming_pipeline/`). Line references are **as of 845147c**.
 - The "Milestone" column follows the §14 plan. The chapter PR id (for example `8A` or `10C`) says which part of the milestone lands the file.
 - If §14 and this appendix disagree on **placement**, §14 wins. On **paths and names**, this appendix wins, and B.6 records every resolution.
-- At the end of each milestone, run `git diff --name-status 845147c...HEAD -- dashboard .agents` (from the repository root) and check it against B.1–B.3. B.4 is checked by the §1.4 never-touch check, which diffs against `main`: `docs/redesign/{audit,baseline}/**`, `docs/redesign/component-prompts.csv` and the spec itself were committed after 845147c, so a diff from 845147c always lists them.
+- At the end of each milestone, run `git diff --name-status 845147c...HEAD -- dashboard .agents` (from the repository root) and check it against B.1–B.3a. B.4 is checked by the §1.4 never-touch check, which diffs against `main`: `docs/redesign/{audit,baseline}/**`, `docs/redesign/component-prompts.csv` and the spec itself were committed after 845147c, so a diff from 845147c always lists them.
 
 ### B.1 New files
+
+**Toolchain (§1.5)**
+
+| Path | Purpose | Milestone | Chapter |
+|---|---|---|---|
+| `.nvmrc` | The Node pin: one line, `22.22.2`. Node ≥ 22.18 is required, because the `.mjs` checks and `scripts/brand` import `.ts` files through Node's type stripping (§1.5) | M0 (0A) | §1.5, §14.6 |
 
 **Harness, foundations, styles and checks (§5, §15)**
 
 | Path | Purpose | Milestone | Chapter |
 |---|---|---|---|
 | `scripts/checks/{grep-gates.sh,route-sizes.mjs,qa-build.sh,appendix-a.mjs}` | Gates. `appendix-a.mjs` is the Appendix A check (A.14): it reads `../docs/redesign/spec/appendix-a-preserved-contract.md` and must exit 0 on the 1A branch | M1 (1A) | §15.1–§15.3 |
-| `playwright.config.ts`, `tests/global-setup.ts`, `tests/screenshot.css`, `tests/helpers/*`, `tests/lib/*` and the core specs (§15.1 list) | The §15 harness. §15.1 owns the full list | M1 (1A) | §15.1, §15.4, §15.5 |
+| `playwright.config.ts`, `tests/global-setup.ts`, `tests/screenshot.css`, `tests/helpers/*`, `tests/lib/*` and the core specs (§15.1 list) | The §15 harness. §15.1 owns the full list; every file in it lands in 1A except `tests/foundations.spec.ts` (1B, row below) | M1 (1A) | §15.1, §15.4, §15.5 |
 | `tests/contrast.spec.ts`, `tests/lib/contrast.ts` | The contrast ledger over #5555AA (maths: §5.6) | M1 (1A) | §5.6, §15.4 |
-| `tests/live-extraction.spec.ts` | Transient: the 8A parity proof. Created in 1A, run unchanged by 8A, deleted in 8B (B.3) | M1 (1A) | §15.5, §8.5.4 |
+| `tests/foundations.spec.ts` | The §5.21 Playwright items, one test per item, in desktop-dark and desktop-light: the accent and veil variable values per theme (the first test also covers §0.3's `--c-accent` item), `.px-resolve` and `.skeleton-dither` under `data-lock="air"` (set on `html` by hand in 1B, and through the dev store from 3A), and the body `font-weight` 400. It runs from M1 (`since('1')`) | M1 (1B) | §5.21, §15.5 |
+| `tests/live-extraction.spec.ts` | Transient: the 8A parity proof. Created in 1A, run unchanged by 8A, deleted in 8B (B.3). It runs only while `WZRD_LIVE_OUT` is set, and its `tests/__screenshots__/desktop-dark/live-*.png` captures are gitignored and never committed (§14.3 R12) | M1 (1A) | §15.5, §8.5.4 |
 | `app/styles/tokens.css` | Every global custom property plus the base element rules, in `@layer base` | M1 (1B) | §5.2 |
 | `app/styles/bayer.css` | 16 Bayer mask tiles (generated, B.5) | M1 (1B) | §5.13 |
 | `app/styles/keyframes.css` | Every `@keyframes` except the `boot-*` keyframes, which `BOOT_CSS` owns | M1 (1B) | §5.14 |
@@ -42,12 +49,12 @@ Paths are relative to `dashboard/`, and a leading `../` marks a repo-root path (
 | `scripts/brand/{generate,assets,prompts,endpoints,fal,pricing,quantize,encode,video,placeholders,manifest,check,util}.mts`, `no-network.mjs`, `pricing.fallback.json`, `tsconfig.json` | The offline pipeline. The keyless commands (`build`, `check`, `plan`), `placeholders.mts` and `no-network.mjs` land in 3B; the paid path (`run`, `approve`) runs only in the M9 `brand` part (B.6 R-10) | M3 (3B), M9 (`brand`) | §13.3 |
 | `scripts/brand/approved.json` | Provenance, committed: `{ "version": 1, "sheet": null, "assets": {} }` until a D5 run fills it | M3 (3B), M9 (`brand`) | §13.3.5 |
 | `scripts/brand/spend.jsonl` | Committed spend ledger; first written by the M9 `brand` run | M9 (`brand`) | §13.3.4 |
-| `public/brand/**`, `public/brand/manifest.json`, `lib/brandAssets.ts` | Built outputs (B.5): every placeholder and derived file from the keyless build in 3B; approved finals replace the placeholders in the M9 `brand` part when the D5 secrets exist | M3 (3B), M9 (`brand`) | §13.6, §13.8 |
+| `public/brand/**`, `public/brand/manifest.json`, `lib/brandAssets.ts` | Built outputs (B.5): every placeholder and derived file from the keyless build in 3B. The M9 `brand` part runs only with `FAL_KEY` and replaces the placeholders with approved finals: the no-likeness set (`likeness:false`) without a Coast input, or the Coast set with `COAST_SHEET_URL` or `COAST_REF_URLS` (D5 brand modes 2 and 3, §2.1). `loader/coast-boot` comes from MiniMax H3 Max (8 frames of a Sunburst still's image-to-video loop), with the Sunburst 4×2 grid as its fallback; the file names, sizes and budgets are the same either way (§13.6.2) | M3 (3B), M9 (`brand`) | §13.6, §13.8 |
 | `components/boot/masks.ts` | 1-bit wordmark masks (generated, B.5) | M3 (3B) | §6.2.1, §13.6.11 |
 | `lib/pixelFont.json` | The PX5×7 glyph table shared by PixelFace and the brand build (content: §12.3.4) | M3 (3B) | §12.3.4, §13.6.10 |
 | `components/brand/{Wordmark,CoastLoader,BrandImage,BrandVideo}.tsx` | Brand components (the shell, route fallbacks and slates use them from M4) | M3 (3B) | §7.5, §13.8 (BrandImage/BrandVideo API) |
 | `app/icon.svg`, `app/apple-icon.png`, `app/opengraph-image.png`, `app/opengraph-image.alt.txt`, `app/twitter-image.png`, `app/twitter-image.alt.txt` | Metadata files (B.5), from the same keyless build | M3 (3B), M9 (`brand`) | §13.6.9 |
-| `app/manifest.ts` | Web app manifest, written by hand once (BC-13 needs it from the first `brand:check`) | M3 (3B) | §13.6.10 |
+| `app/manifest.ts` | Web app manifest, written by hand once (§13.9 BC-13 needs it from the first `brand:check`) | M3 (3B) | §13.6.10 |
 
 **Shell, boot and route states (§6, §7, §11.D)**
 
@@ -108,7 +115,7 @@ No `app/admin/loading.tsx` and no `app/admin/visual-test/loading.tsx` ever exist
 | `components/director/{constants,useDirectorSession,eventLog,firstFrame,useTwitchBroadcast}.ts` | The extracted engine, moved verbatim. 8C adds `useTwitchBroadcast`'s `whip` state, `air` publishes, `onNegotiationFailed` and the `twitch.stop` command (§8.2) | M6 (8A, 8C) |
 | `components/director/{MonitorLabelStrip,DirectorStage,TransportBar,TelemetryStrip,AlertTray,SessionSheet,Rundown,Dock}.tsx` | Instrument parts (legacy markup in 8A, restyled in 8B/8C) | M6 (8A–8C) |
 | `components/states/skeletons/LiveSkeleton.tsx` | Layout-exact skeleton; swaps into `app/admin/(live)/loading.tsx` | M6 (8B) |
-| `components/director/preflight.ts`, `LiveControlVisualFixture.tsx` | Preflight rows; the `#live-control-visual-test` fixture | M6 (8B) |
+| `components/director/preflight.ts`, `LiveControlVisualFixture.tsx` | Preflight rows; the `#live-control-visual-test` fixture, with the §10.5.9 ready-state targets `live-standby`, `live-preview` and `live-onair` | M6 (8B) |
 | `components/director/diagnostic.ts` | Pure `formatDiagnostic(d)`: the ConnectPlate diagnostic line, with its detail-key allowlist and address masking (§8.5.6) | M6 (8B) |
 | `tests/unit/diagnostic.spec.ts` | `formatDiagnostic` cases, run in the §15 `unit` project (§8.5.6, §8.10 B32) | M6 (8B) |
 | `app/styles/live-control.css` | `.lc-*` rules; its line goes at its §5.1 position | M6 (8B) |
@@ -123,9 +130,9 @@ No `app/admin/loading.tsx` and no `app/admin/visual-test/loading.tsx` ever exist
 | `components/states/skeletons/ShotboardSkeleton.tsx` | Layout-exact skeleton; swaps into `app/admin/shotboard/loading.tsx` | M7 (9A) |
 | `components/shotboard/{useDirectorTransfer,useShotGeneration,usePromptExpansion}.ts` | Transfer, generation and expansion hooks | M7 (9A, 9C) |
 | `components/shotboard/{useShotboardSelection,useUndoDelete}.ts` | Selection and undo | M7 (9B) |
-| `components/shotboard/{SlateBar,SceneRail,CastStrip,TrackCanvas,SceneTrack,ShotFrame,TransferSheet,ShotboardVisualFixture}.tsx` | Layout and fixture | M7 (9B, 9C) |
+| `components/shotboard/{SlateBar,SceneRail,CastStrip,TrackCanvas,SceneTrack,ShotFrame,TransferSheet,ShotboardVisualFixture}.tsx` | Layout and fixture. The fixture's ready board (the §10.5.9 `shotboard` target, 9B) has a persisted failed frame, and its fixture-only 'Hold generation' switch keeps a frame generating for the ready-state capture | M7 (9B, 9C) |
 | `components/shotboard/inspector/{Inspector,ShotInspector,SceneInspector,CharacterInspector,BoardInspector,PromptLineage,ModelChip,MentionCombobox,LocationPicker}.tsx` | Inspector | M7 (9B, 9C) |
-| `components/shotboard/ShotContactSheet.tsx` | Contact-sheet view (cut item 20) | M7 (9D) |
+| `components/shotboard/ShotContactSheet.tsx` | Contact-sheet view (§17.2 #18) | M7 (9D) |
 | `app/styles/shotboard.css` | `.sb-*` rules; its line goes at its §5.1 position | M7 (9B) |
 | `tests/shotboard.spec.ts`, `tests/unit/{shotboard-load,shot-prompt,shot-model,director-transfer,frame-geometry,shot-strings}.spec.ts` | Specs | M7 (9A–9D) |
 
@@ -140,19 +147,19 @@ No `app/admin/loading.tsx` and no `app/admin/visual-test/loading.tsx` ever exist
 | `components/asset-studio/{CharacterStudioView,RosterRail,StudioAvatar,TalentBible}.tsx` | Characters "Casting" | M7 (10D) |
 | `components/asset-studio/{LocationStudioView,ScoutWall,ScoutPlate,ScoutReport,CompareSheet,TimeOfDayKeys}.tsx` | Locations "Scout wall" | M7 (10E) |
 | `app/styles/studio.css` | `.asset-studio` grid rules; its line goes at its §5.1 position | M7 (10C) |
-| `lib/fixtures/assetStudio.ts` | Frozen fixture data | M7 (10F) |
+| `lib/fixtures/assetStudio.ts` | Frozen fixture data: 10D creates it with the characters for `section#characters-visual-test`, 10E adds the locations for `section#locations-visual-test` (the §10.5.9 ready-state targets), and 10F adds the tracks, runs and the seeded Coast row | M7 (10D, 10E, 10F) |
 
 **Clips, Recordings, Analytics (§11)**
 
 | Path | Purpose | Milestone |
 |---|---|---|
-| `components/media/{ClipsView,SessionGroup,SessionReel,MediaCard,MediaScreen,MediaViewer,LibraryVisualFixture}.tsx`; `useClipsLibrary.ts`, `fixtures.ts`, `layout.ts` | Clips | M8 (11A) |
+| `components/media/{ClipsView,SessionGroup,SessionReel,MediaCard,MediaScreen,MediaViewer,LibraryVisualFixture}.tsx`; `useClipsLibrary.ts`, `fixtures.ts`, `layout.ts` | Clips. `SessionReel` also has a read-only mode, which the Recordings Session disclosure renders (11B, §11.B.5). The fixture carries the §10.5.9 ready-state targets `clips` (11A) and `recordings` (11B) | M8 (11A, 11B) |
 | `components/states/skeletons/ClipsSkeleton.tsx` | Layout-exact skeleton; swaps into `app/admin/clips/loading.tsx` | M8 (11A) |
 | `components/media/{RecordingsView,RecordingRow}.tsx`, `useRecordings.ts` | Recordings | M8 (11B) |
 | `components/states/skeletons/RecordingsSkeleton.tsx` | Layout-exact skeleton; swaps into `app/admin/recordings/loading.tsx` | M8 (11B) |
 | `lib/clips.ts`, `lib/download.ts`, `lib/media/posterQueue.ts`, `lib/media/fixInfiniteDuration.ts` | Library logic | M8 (11A) |
 | `app/styles/library.css`, `app/styles/analytics.css` | `.lib-*`, `.media-*`, …; `.an-*`, `.chart-*`; each line goes at its §5.1 position | M8 (11A, 11C) |
-| `components/analytics/{useTwitchAnalytics,lampState,fixtures}.ts`; `{ConvexHistory,AnalyticsView,OnAirStrip,OnAirLamp,UptimeReadout,StreamRail,AnalyticsVisualFixture}.tsx` | Analytics | M8 (11C) |
+| `components/analytics/{useTwitchAnalytics,lampState,fixtures}.ts`; `{ConvexHistory,AnalyticsView,OnAirStrip,OnAirLamp,UptimeReadout,StreamRail,AnalyticsVisualFixture}.tsx` | Analytics. The fixture carries the §10.5.9 ready-state targets `analytics-live` and `analytics-not-patched` | M8 (11C) |
 | `components/states/skeletons/AnalyticsSkeleton.tsx` | Layout-exact skeleton; swaps into `app/admin/analytics/loading.tsx` | M8 (11C) |
 | `components/charts/{ChartFigure,ChartStatic}.tsx`, `chartData.ts` | Accessible chart | M8 (11C) |
 | `public/fixtures/testcard-thumb.jpg`, `public/fixtures/testcard-avatar.png` | Same-origin fixture images for the mocked-API e2e | M8 (11C) |
@@ -163,11 +170,11 @@ No `app/admin/loading.tsx` and no `app/admin/visual-test/loading.tsx` ever exist
 
 | Path | Nature of change | Milestone |
 |---|---|---|
-| `package.json`, `package-lock.json` | Remove `recharts` and `@fal-ai/serverless-client` (0A). Add the devDependencies `@playwright/test` 1.56.1, `@axe-core/playwright` 4.13.0 and the §15.1 scripts (1A); `postcss-import` 15.1.0 (1B); `sharp` 0.34.5 and the `brand:*` scripts (3B). No runtime dependency (D8) | M0 (0A), M1 (1A, 1B), M3 (3B) |
+| `package.json`, `package-lock.json` | Remove `recharts` and `@fal-ai/serverless-client` (0A). Add the devDependencies `@playwright/test` 1.56.1, `@axe-core/playwright` 4.13.0 and the §15.1 scripts (1A); `postcss-import` 15.1.0 (1B); `sharp` 0.34.5 and the `brand:*` scripts (3B). Each devDependency is saved as an exact version with `npm i -D -E` (no `^`). No runtime dependency (D8) | M0 (0A), M1 (1A, 1B), M3 (3B) |
 | `postcss.config.js` | `postcss-import` first | M1 (1B) |
 | `tailwind.config.js` | Rewritten: token colours and the collision fix (1B); `fontFamily`/`fontWeight` (M2); the deprecated `fal-*` aliases deleted (M9 `sweep`) | M1 (1B), M2, M9 (`sweep`) |
 | `tsconfig.json` | `"exclude": ["node_modules", "scripts", "tests", "playwright.config.ts"]` (§15.1). 3B only verifies that `"scripts"` is present | M1 (1A) |
-| `.gitignore` | 1A appends `test-results/`, `playwright-report/` and `.qa/`; 3B appends `scripts/brand/.cache/` (before the first `brand:gen`) (B.6 R-19) | M1 (1A), M3 (3B) |
+| `.gitignore` | 1A appends `test-results/`, `playwright-report/`, `.qa/` and `tests/__screenshots__/desktop-dark/live-*.png` (the 8A proof captures); 3B appends `scripts/brand/.cache/` (before the first `brand:gen`) (B.6 R-19) | M1 (1A), M3 (3B) |
 | `app/globals.css` | Becomes the import list only (§5.1). Each surface PR adds its line at its §5.1 position: `shell.css` 4B, `live-control.css` 8B, `shotboard.css` 9B, `studio.css` 10C, `library.css` 11A, `analytics.css` 11C | M1 (1B), M4 (4B), M6 (8B), M7 (9B, 10C), M8 (11A, 11C) |
 | `app/layout.tsx` | Font classes (M2); ThemeProvider and the veil (3A); the shell, metadata, viewport and appended `themeInit` blocks, with the footer and header removed (4B); the boot and the wordmark preload (4C) | M2, M3 (3A), M4 (4B, 4C) |
 | `app/admin/layout.tsx` | AdminNav removed; `EffectSlotProvider`; `metadata.title` with the default 'Live Control' and the admin template (text: §7.7) | M4 (4B) |
@@ -175,19 +182,19 @@ No `app/admin/loading.tsx` and no `app/admin/visual-test/loading.tsx` ever exist
 | `app/admin/shotboard/page.tsx` | Interim sr-only `<h1>` (4B); `<Suspense fallback>` (9A); the interim h1 deleted (9B) | M4 (4B), M7 (9A, 9B) |
 | `app/admin/clips/page.tsx`, `recordings/page.tsx`, `analytics/page.tsx` | Interim sr-only `<h1>` (4B); containers only, gates and queries unchanged, with the interim h1 deleted (11A–11C) | M4 (4B), M8 (11A–11C) |
 | `app/admin/visual-test/page.tsx` | The `notFound()` line stays byte-identical. §10.5.9 owns the final file; each owning PR adds only its own import and element: `<Suspense fallback={null}>` and `<ThrowProbe />` (4D), `DesignSystemFixture` (5A), `LiveControlVisualFixture` (8B), `ShotboardVisualFixture` (9B), `LibraryVisualFixture` (11A), `AnalyticsVisualFixture` (11C) | M4 (4D), M5 (5A), M6 (8B), M7 (9B), M8 (11A, 11C) |
-| `components/DitherBackground.tsx`, `components/reactbits/Dither.jsx`, `Dither.css` | Carrier hardening; header line 5 added to `Dither.jsx` (§12.3.1) | M3 (3A) |
+| `components/DitherBackground.tsx`, `components/reactbits/Dither.jsx`, `Dither.css` | Carrier hardening; header line 5 added to `Dither.jsx` (§12.3.1). The canvas keeps the preserved `dither-container` class and gains a second one, `dither-canvas` (`Dither.jsx:141`); `Dither.css:1` stays the `.dither-container` rule, and the canvas rules target `canvas.dither-canvas` (Appendix A A.1.4) | M3 (3A) |
 | `components/ThemeToggle.tsx` | Rewired to ThemeProvider (one theme writer) until 4B deletes it (B.3) | M3 (3A) |
-| `components/reactbits/MorphSlider.tsx` | Render-on-demand patch, live reduced motion, `loseContext()` after `dispose()` (§12.4.1; §8 makes no edit) | M5 (5C) |
+| `components/reactbits/MorphSlider.tsx` | Render-on-demand and autoplay-pause patch (autoplay kept, D3; it pauses under the air lock, under live reduced motion and while the page is hidden), `loseContext()` after `dispose()` (§12.4.1; §8 makes no edit) | M5 (5C) |
 | `components/reactbits/MorphSlider.css` | Remove `backdrop-filter` (`:39-40`, `:65-66`) and retint the violet (§5.10); line 44 keeps `uppercase` | M1 (1B) |
 | `components/ConvexClientProvider.tsx` | Additive `useConvexAuthState()` export only | M4 (4A) |
 | `components/ConvexNotConfigured.tsx` | Thin wrapper over `NotConfigured` | M5 (5A) |
-| `components/DirectorPlayer.tsx` | Composition root ≤ 320 lines; re-exports `DIRECTOR_MODEL`; 8C adds the leave handler and the Stop confirm (DEC-8-14) | M6 (8A–8C) |
-| `components/DirectorSettingsForm.tsx`, `ScriptEditor.tsx`, `ScriptTemplatePicker.tsx`, `ChatSteerer.tsx`, `TrackManager.tsx`, `TwitchBroadcast.tsx`, `AssetUrlInput.tsx` | Live Control restyle and additive props (§8.2); 8C adds the ScriptTemplatePicker link guards. `TrackManager.tsx` also changes in 1B (the `:144` backdrop and violet classes), M2 (the authored `COAST ORIGINALS · {n} TRACKS`) and 5C (the `autoplay` props removed; MorphSlider through `next/dynamic`) | M1 (1B), M2, M5 (5C), M6 (8B, 8C) |
+| `components/DirectorPlayer.tsx` | Composition root ≤ 320 lines; re-exports `DIRECTOR_MODEL`; 8C adds the leave handler (DEC-8-07, §0.4 BC-3) and the Stop confirm (DEC-8-14, §0.4 BC-11) | M6 (8A–8C) |
+| `components/DirectorSettingsForm.tsx`, `ScriptEditor.tsx`, `ScriptTemplatePicker.tsx`, `ChatSteerer.tsx`, `TrackManager.tsx`, `TwitchBroadcast.tsx`, `AssetUrlInput.tsx` | Live Control restyle and additive props (§8.2); 8C adds the ScriptTemplatePicker link guards. `TrackManager.tsx` also changes in 1B (the `:144` backdrop and violet classes), M2 (the authored `COAST ORIGINALS · {n} TRACKS`), 5C (`onIndexChange={selectSliderTrack}` and `selectSliderTrack` deleted, `autoplay autoplayDelay={6}` kept; MorphSlider through `next/dynamic`; §14.3 R5) and 8B (the pure `TrackDeck` and `ArtworkSlider` in the same file: `onIndexChange={setShownIndex}`, `autoplay={autoplayOn}`, the 'Armed track' radiogroup with 'No track' first, 'Arm this track' and the 'Expand artwork' Sheet; §8.5.10) | M1 (1B), M2, M5 (5C), M6 (8B, 8C) |
 | `components/shotboard/ShotboardPage.tsx` | Gate only | M7 (9A) |
 | `components/shotboard/useShotboard.ts` | Additive only: the load-state fix for `:373`, `syncState`, `settled()`, `reload()`, reorder/restore, ids returned | M7 (9A, 9B, 9D) |
 | `components/shotboard/ImageModelSelect.tsx` | `Select` restyle; `aria-label` = `title` | M7 (9B) |
 | `components/CharacterLibraryPage.tsx`, `LocationLibraryPage.tsx` | Prettier only (0B); containers (10A–10E) | M0 (0B), M7 |
-| `components/AssetStudioVisualFixture.tsx` | Prettier only (0B); root `<main>` → `<div>` (4B); drops `autoplay autoplayDelay={6}` with the MorphSlider patch (5C, D3); the rebuilt fixture (10F) | M0 (0B), M4 (4B), M5 (5C), M7 (10F) |
+| `components/AssetStudioVisualFixture.tsx` | Prettier only (0B); root `<main>` → `<div>` (4B); MorphSlider through `next/dynamic` and the specimen attribute, keeping `autoplay autoplayDelay={6}` (5C, D3); `section#characters-visual-test` (10D) and `section#locations-visual-test` (10E), the Characters and Locations ready-state targets (§10.5.9); the rebuilt fixture with display-only arming through 'Arm this track' (10F, §0.4 BC-15) | M0 (0B), M4 (4B), M5 (5C), M7 (10D, 10E, 10F) |
 | `components/ReferenceAssetManager.tsx`, `ImageGenerationControls.tsx` | Restyle; additive `roles` prop | M7 (10C) |
 | `components/ViewerChart.tsx` | Rewritten on `ChartFigure`; keeps `ViewerSample` and the default export | M8 (11C) |
 | `lib/utils.ts` | `cn` via `extendTailwindMerge` | M1 (1B) |
@@ -254,6 +261,24 @@ grep -rn "RouteSkeleton" app components
 
 **Never deleted:** `components/ViewerChart.tsx`, `components/ImageGenerationControls.tsx`, `components/reactbits/{AccordionGallery,ChromaGrid,PixelCard}.{jsx,css}`, `public/wzrdtechlogo.png`, every file in `fonts/focal/`, `types.ts`, and anything with a live importer at implementation time.
 
+### B.3a Unchanged on purpose
+
+These files stay byte-identical to 845147c through M9, although the routes they serve are redesigned. No part edits them, and a diff that touches one is explained under "Decisions".
+
+| Path | Why it stays |
+|---|---|
+| `app/page.tsx` | The `/` → `/admin` redirect (`redirect('/admin')`, Appendix A A.1.1) |
+| `app/admin/characters/page.tsx`, `app/admin/locations/page.tsx` | Server wrappers (an import and a one-line component, no `'use client'`) that render `CharacterLibraryPage` and `LocationLibraryPage`. The redesign lives in those components and `components/asset-studio/**` (§10), the route titles in the new `layout.tsx` files (§7.7), and the h1 in the studio header band (§14.3 R4 (c)) |
+| `types.ts` | Shared types. Its `GenerationHistoryProps` (`types.ts:91`) is a type name, not an import of a D1 file (B.3) |
+
+`components/DirectorPanel.tsx`, `components/useDirectorPersistence.ts` and the retained vendored `components/reactbits/{AccordionGallery,ChromaGrid,PixelCard}.{jsx,css}` are unchanged as well; they are B.4 never-touch files.
+
+The B.3a check (from the repository root, at the end of every milestone): prints nothing.
+
+```bash
+git diff --name-only 845147c...HEAD -- dashboard/app/page.tsx dashboard/app/admin/characters/page.tsx dashboard/app/admin/locations/page.tsx dashboard/types.ts
+```
+
 ### B.4 Never-touch files
 
 **Global.** No PR's `git diff --name-only main...HEAD` lists any row. The §1.4 never-touch check (run from the repository root, in every PR) tests exactly this list, and its regex and this table must stay identical.
@@ -291,17 +316,17 @@ Never edit these by hand. Regenerate them, then commit the output in the same PR
 | Output | Generator | Command (from `dashboard/`) | Header / check |
 |---|---|---|---|
 | `app/styles/bayer.css` | `scripts/gen-bayer.mjs` | `node scripts/gen-bayer.mjs` | Starts `/* GENERATED by scripts/gen-bayer.mjs. …`; `node scripts/gen-bayer.mjs --check` exits 0 |
-| `components/boot/masks.ts` | `scripts/brand/manifest.mts` (derived from `public/wzrdtechlogo.png`; no key) | `npm run brand:build` | Starts `// Generated by scripts/brand (build). Do not edit.`; BC-14 |
-| `lib/brandAssets.ts` | `scripts/brand/manifest.mts` | `npm run brand:build` | Starts `` // Generated by `npm run brand:build` (scripts/brand/manifest.mts). Do not edit by hand. ``; BC-10 |
-| `public/brand/manifest.json` | `scripts/brand/manifest.mts` | `npm run brand:build` | BC-10, BC-15 |
-| `public/brand/{wordmark,loader,avatar,standby,talent,motion,slate,icons}/**` | The `scripts/brand` build: approved raws (D5) through `quantize.mts`/`encode.mts`/`video.mts`, or `placeholders.mts` without keys; the wordmark and icons are always derived | `npm run brand:build` | `npm run brand:check` (BC-01…BC-16); a second `build` leaves `git status --porcelain` unchanged |
-| `public/favicon.ico`, `app/icon.svg`, `app/apple-icon.png`, `app/opengraph-image.png` (+ `.alt.txt`), `app/twitter-image.png` (+ `.alt.txt`) | The `scripts/brand` build (`encode.mts` `writeIco`, the SVG rect writer, and a sharp composite with the real wordmark) | `npm run brand:build` | BC-02, BC-11, BC-13 |
-| `scripts/brand/approved.json` | `scripts/brand` `approve` | `node scripts/brand/generate.mts approve …` | BC-09 (no `http`, no `Key `, no `COAST_REF_URLS` value) |
+| `components/boot/masks.ts` | `scripts/brand/manifest.mts` (derived from `public/wzrdtechlogo.png`; no key) | `npm run brand:build` | Starts `// Generated by scripts/brand (build). Do not edit.`; §13.9 BC-14 |
+| `lib/brandAssets.ts` | `scripts/brand/manifest.mts` | `npm run brand:build` | Starts `` // Generated by `npm run brand:build` (scripts/brand/manifest.mts). Do not edit by hand. ``; §13.9 BC-10 |
+| `public/brand/manifest.json` | `scripts/brand/manifest.mts` | `npm run brand:build` | §13.9 BC-10, BC-15 |
+| `public/brand/{wordmark,loader,avatar,standby,talent,motion,slate,icons}/**` | The `scripts/brand` build: approved raws (D5 brand modes 2 and 3, `likeness:false` or `likeness:true`) through `quantize.mts`/`encode.mts`/`video.mts` (including the loader's 8-frame pick from its H3 Max clip), or `placeholders.mts` for every asset with no approved final; the wordmark and icons are always derived | `npm run brand:build` | `npm run brand:check` (§13.9 BC-01…BC-16); a second `build` leaves `git status --porcelain` unchanged |
+| `public/favicon.ico`, `app/icon.svg`, `app/apple-icon.png`, `app/opengraph-image.png` (+ `.alt.txt`), `app/twitter-image.png` (+ `.alt.txt`) | The `scripts/brand` build (`encode.mts` `writeIco`, the SVG rect writer, and a sharp composite with the real wordmark) | `npm run brand:build` | §13.9 BC-02, BC-11, BC-13, and BC-15 for the two `.alt.txt` files (the §13.6.9 text for the entry's `generated` and `likeness`, never `Pixel-art`) |
+| `scripts/brand/approved.json` | `scripts/brand` `approve` | `node scripts/brand/generate.mts approve …` | §13.9 BC-09 (no `http`, no `Key `, no `COAST_SHEET_URL` or `COAST_REF_URLS` value) |
 | `components/boot/bootScript.generated.ts` | `scripts/gen-boot.mjs` (minifies `components/boot/boot.src.js` with Next's bundled terser) | `node scripts/gen-boot.mjs` | `export const BOOT_SCRIPT_BODY = '…'`; `node scripts/gen-boot.mjs --check` exits 0 |
-| `scripts/brand/spend.jsonl` | The `scripts/brand` ledger (one line per paid submit, M9 `brand`) | Appended by `run`; never edited | BC-09 |
+| `scripts/brand/spend.jsonl` | The `scripts/brand` ledger (one line per paid submit, M9 `brand`) | Appended by `run`; never edited | §13.9 BC-09 |
 | `public/fixtures/testcard-320x180-2s.webm`, `.mp4` | `ffmpeg` via `ffmpeg-static` (installed `--no-save`), run once in 5C | The §11.0 `ffmpeg -f lavfi -i testsrc2=size=320x180:rate=15 -t 2 …` commands | ≤ 40 KB each |
 | `public/fixtures/testcard-thumb.jpg`, `testcard-avatar.png` | `ffmpeg` via `ffmpeg-static` (installed `--no-save`), run once in 11C | The §11.0 `testsrc2` single-frame commands | ≤ 20 KB each |
-| `scripts/brand/.cache/**`, `.qa/**`, `.next/**`, Playwright reports | tools | — | Never committed (§16.6 N10) |
+| `scripts/brand/.cache/**`, `.qa/**`, `.next/**`, Playwright reports, the 8A proof captures `tests/__screenshots__/desktop-dark/live-*.png` | tools | — | Never committed (§16.6 N10) |
 
 `app/manifest.ts` and `lib/pixelFont.json` are written by hand once; they are not generated.
 
@@ -314,11 +339,11 @@ Never edit these by hand. Regenerate them, then commit the output in the same PR
 | R-3 | `bytes()` above 1 GiB: an earlier §5.20.4 draft (C15) switched the REC readout to GB; §7.2 forbids it | §7.2 wins: `bytes(n)` reproduces `DirectorPlayer.tsx:76-79` at every size, and only Recordings passes `{ gb: true }` (§5.20.4; Appendix A.12 Note 2) |
 | R-4 | `formatMime()` output: an earlier §5.20.4 draft printed every codec, uppercased (`WebM · VP8, OPUS`, `MP4 · AVC1, MP4A`); §11.0 maps only the first codec (`WebM · VP9`, `avc1.*` → `H.264`) | One function, `formatMime` in `lib/format.ts` (§5.20.4, M2), with §11.0's first-codec mapping. Its only consumer is the Recordings 'Format' plate, and the raw MIME stays in `title`. `format.mjs` asserts `'video/webm;codecs=vp8,opus'` → `WebM · VP8`, `'video/webm;codecs=vp9,opus'` → `WebM · VP9`, `'video/mp4; codecs="avc1.42E01E, mp4a.40.2"'` → `MP4 · H.264`, `'video/mp4'` → `MP4` and `''` → `—` |
 | R-5 | Effect-slot ids: §7.16 named `raster-connect` (3) and `raster-idle` (1); §8.5.11 uses one id, `symbol-raster`, whose priority follows the phase | `symbol-raster` (§8.5.11, §7.16), which §8.10 B18 checks. `morph` (2) and `chart` (1) are unchanged, and `pixel-card` (0) exists only on `/admin/visual-test` (§7.16) |
-| R-6 | `motion/react` confinement: §12.1 allows it only in `components/shell/AppNav.tsx`; §9.5.7 uses `Reorder` in SceneRail and SceneTrack (9D) | The allowed files are `components/shell/AppNav.tsx` and, only while 9D ships, `components/shotboard/SceneRail.tsx` and `SceneTrack.tsx`. §12.7's grep accepts exactly that list. If drag reorder is cut (§17.2 #19), the list is AppNav only |
+| R-6 | `motion/react` confinement: §12.1 allows it only in `components/shell/AppNav.tsx`; §9.5.7 uses `Reorder` in SceneRail and SceneTrack (9D) | The allowed files are `components/shell/AppNav.tsx` and, only while 9D ships, `components/shotboard/SceneRail.tsx` and `SceneTrack.tsx`. §12.7's grep accepts exactly that list. If drag reorder is cut (§17.2 #17), the list is AppNav only |
 | R-7 | The stalled-ingest chyron: §6.7 labelled its action "Stop now" and pushed it from `BroadcastProvider`; §8.5 labelled it "End broadcast" and pushed it from `useTwitchBroadcast` | **'End broadcast'**, pushed only by `BroadcastProvider` (§6.7); `twitch.stop` is registered by `useTwitchBroadcast` (`palette: false`, `run: stopBroadcast`), and the action runs it (§8.5.6) |
-| R-8 | 'Leave and stop': §6.12 confirmed with `router.push(href)` and relied on unmount; §8 (DEC-8-07) runs `disconnect()` first | DEC-8-07 (§16.5 item 6): the confirm awaits `broadcast.leave()`, which runs the `disconnect()` DirectorPlayer registers in 8C, then navigates (§6.12) |
+| R-8 | 'Leave and stop': §6.12 confirmed with `router.push(href)` and relied on unmount; §8 (DEC-8-07) runs `disconnect()` first | DEC-8-07 (§16.5 item 6; §0.4 BC-3): the confirm awaits `broadcast.leave()`, which runs the `disconnect()` DirectorPlayer registers in 8C, then navigates (§6.12) |
 | R-9 | OG image format: the design draft named `.jpg`; §13.6.9 ships `.png` | `app/opengraph-image.png` and `app/twitter-image.png` (§13 owns the brand files), with `.alt.txt` siblings |
-| R-10 | Boot assets before the brand milestone: §6.2.1 needs `wordmark/wzrdtech-640.webp`, `masks.ts` and the loader strip in 4C, and the M4 route states show `/brand/slate/*` art, while the bible puts §13 last | Keyless pipeline, placeholders, brand components, `lib/pixelFont.json`, `components/boot/masks.ts` and the metadata files land in 3B: the `scripts/brand` modules (including `no-network.mjs`); `brand:build`, `brand:check` and `brand:plan`; `placeholders.mts`; the committed outputs of one keyless `brand:build` (every placeholder and derived file, the icons, the OG images, `app/manifest.ts`); `approved.json`; and the `.gitignore` line. `brand:check` passes from 3B. The D5 finals are the M9 `brand` part (`run`, select, `approve`, rebuild, the first `spend.jsonl` lines), opened only when the secrets exist; otherwise no `brand` PR is opened, and the M9 `sweep` PR records "Brand art is placeholder (`generated:false`)" under Deferred / blocked (§14.15) |
+| R-10 | Boot assets before the brand milestone: §6.2.1 needs `wordmark/wzrdtech-640.webp`, `masks.ts` and the loader strip in 4C, and the M4 route states show `/brand/slate/*` art, while the bible puts §13 last | Keyless pipeline, placeholders, brand components, `lib/pixelFont.json`, `components/boot/masks.ts` and the metadata files land in 3B: the `scripts/brand` modules (including `no-network.mjs`); `brand:build`, `brand:check` and `brand:plan`; `placeholders.mts`; the committed outputs of one keyless `brand:build` (every placeholder and derived file, the icons, the OG images, `app/manifest.ts`); `approved.json`; and the `.gitignore` line. `brand:check` passes from 3B. The D5 finals are the M9 `brand` part (`run`, select, `approve`, rebuild, the first `spend.jsonl` lines), opened only when `FAL_KEY` exists: the no-likeness set without a Coast input (mode 2), or the Coast set with `COAST_SHEET_URL` or `COAST_REF_URLS` (mode 3). Without `FAL_KEY` no `brand` PR is opened, and the M9 `sweep` PR records "Brand art is placeholder (`generated:false`)" under Deferred / blocked (§14.15) |
 | R-11 | §11.0 created `hooks/useOnline.ts` and `hooks/useInView.ts` in 11A, but the M4 StatusRail NET LED and OfflineBanner read `useOnline()` (§7.10) | Both are §7.2 rows and land in 4A |
 | R-12 | The `.pixel-card` variable block: §11.A.2 kept it "in `app/globals.css`"; §5.1 makes `globals.css` an import list and moves `.pixel-card*` to `app/styles/components.css` | The block lives in `app/styles/components.css` (`@layer components`, §5.18) with B1's values (`--pixel-card-active-color: rgb(var(--c-hover))`). It is permanent, and §11 does not edit it |
 | R-13 | `.connection-*` deletion: §11.C.2 deletes the classes "from `app/globals.css` (`:213-227`)", but after M1 they are shims in `components.css` (and `.connection-connecting` is already gone in M1) | 11C deletes the three shims from `app/styles/components.css`, in the same PR that migrates `analytics/page.tsx:146-147` |
@@ -327,9 +352,9 @@ Never edit these by hand. Regenerate them, then commit the output in the same PR
 | R-16 | `app/admin/visual-test/page.tsx` is edited by §11.D (4D), §10 (5A, 10F), §8 (8B), §9 (9B) and §11 (11A, 11C) | §10 owns the file (§10.5.9 final text); each owning PR adds its own import and element; each fixture component renders its own section |
 | R-17 | `useWhipTruth`: §7.2 lists `lib/broadcast/useWhipTruth.ts`, and §8.2 creates it in 8C "if §7 has not" | The path is fixed at `lib/broadcast/useWhipTruth.ts`. It is created in 8C per §8.5.6, which owns the algorithm, the publishers and the tests; §7.2 lists only its signature |
 | R-18 | `components/director/constants.ts` holds `DIRECTOR_MODEL`, but `components/DirectorPlayer.tsx` must still export it | `DirectorPlayer.tsx` re-exports it (`export { DIRECTOR_MODEL } from './director/constants'`); the literal appears once in `components/` (§8.10 A2) |
-| R-19 | `.qa/` (the `qa-build.sh` build log and the 8A parity scratch) and the Playwright output are not gitignored at 845147c | 1A appends `test-results/`, `playwright-report/` and `.qa/` to `dashboard/.gitignore` (§15.1); 3B appends `scripts/brand/.cache/` |
+| R-19 | `.qa/` (the `qa-build.sh` build log and the 8A parity scratch), the Playwright output and the 8A proof captures are not gitignored at 845147c | 1A appends `test-results/`, `playwright-report/`, `.qa/` and `tests/__screenshots__/desktop-dark/live-*.png` to `dashboard/.gitignore` (§15.1); 3B appends `scripts/brand/.cache/` |
 | R-20 | The audits list `--pixel-card-active-color` as a `globals.css` variable | It exists only as a fallback in `PixelCard.css:28`. R-12's block defines it, and it stays available to the fixture specimen |
-| R-21 | The pre-LCP wordmark allowlist: the design draft allowed 160/320 and the loader strip, but §6.2.1 preloads `wzrdtech-640.webp` | §13.9's allowlist includes `wzrdtech-640.webp` (BC-12) |
+| R-21 | The pre-LCP wordmark allowlist: the design draft allowed 160/320 and the loader strip, but §6.2.1 preloads `wzrdtech-640.webp` | §13.9's allowlist includes `wzrdtech-640.webp` (§13.9 BC-12) |
 | R-22 | ImageGenerationControls is "shared with the Shotboard" (assets.md A11) | False at 845147c (§10.2 Note); the props are unchanged either way |
 | R-23 | Removing `components/ThemeToggle.tsx`: §7 lists it with the shell (4B), ThemeProvider lands with the carrier in 3A, and two theme writers must never coexist | ThemeProvider lands in 3A, and ThemeToggle is rewired to it (one writer), not deleted. 4B replaces it with ThemeSwitch in the CommandBar and deletes the file once the grep shows no importer |
 | R-24 | The M4 route states (`not-found.tsx`, `ErrorState`) use `Button`/`buttonClassName`, `Slate` and `PixelFace`, which §7 and §12 otherwise place with the M5 primitives | `lib/pixelFont.json` lands in 3B; `px5x7.ts`, PixelFace, Button, `components/ui/buttonClassName.ts` and the rest of the §14.3 R3 set land in 4A; Slate lands in 4D. The rest of the M5 set is unchanged |
@@ -352,12 +377,13 @@ Working directory (§1.5): commands whose paths start with `dashboard/`, `docs/`
   - the generated outputs of B.5.
   
   Any other path is explained under "Decisions" in the PR that added it.
-- [ ] The §1.4 never-touch check (from the repository root) prints nothing in every PR, so no PR changes a global B.4 path.
-- [ ] The 0A PR body contains the B.3 D1 grep block and its output, and `test ! -e dashboard/utils` succeeds after 0A.
+- [ ] The §1.4 never-touch check (from the repository root) prints nothing in every PR, so no PR changes a global B.4 path, and the B.3a check prints nothing at the end of M9.
+- [ ] The 0A PR body contains the B.3 D1 grep block and its output, `test ! -e dashboard/utils` succeeds after 0A, and `cat dashboard/.nvmrc` prints exactly `22.22.2` (B.1 Toolchain).
 - [ ] On the M9 build, `node scripts/gen-bayer.mjs --check`, `node scripts/gen-boot.mjs --check`, `npm run brand:build` (run twice, with `git status --porcelain` unchanged) and `npm run brand:check` exit 0.
 - [ ] The code reflects every B.6 resolution:
   - `grep -rlE "from ['\"]motion/react['\"]" app components --exclude-dir=dither-kit` prints only the R-6 files;
   - `window.__wzrd.slots` reports `symbol-raster` on idle `/admin`;
   - the stalled chyron's button is named 'End broadcast';
   - the uppercase allowlist total is ≤ 9 (`node scripts/checks/uppercase.mjs` exits 0);
+  - `git check-ignore -q dashboard/tests/__screenshots__/desktop-dark/live-idle-dark.png` (from the repository root) exits 0 (R-19);
   - the R-1 checks (block under B.6) print `7`, `ok` and `8`.

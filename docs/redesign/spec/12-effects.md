@@ -130,7 +130,7 @@ This section owns every component derived from `docs/redesign/component-prompts.
 | 12 | Amo hover button (2) | Arlan study | https://arlan.me/vault/amo | `components/effects/HoverClipButton.tsx` | "Play ident" on HoloCard | none |
 | 13 | Apple's corners (3) | Arlan study | https://arlan.me/vault/squircle | `.sq` in `app/styles/utilities.css` + radii tokens (§5) | Panels, keys, inputs, chips, sheets, dialogs, slates | none |
 | 14 | Count Up (163) | CountUp | https://www.reactbits.dev/text-animations/count-up | `components/effects/CountUp.tsx` | Analytics KPIs, Clips and Recordings totals, Shotboard runtime (first reveal only) | none |
-| 15 | Shiny Text (180) | ShinyText | https://www.reactbits.dev/text-animations/shiny-text | The glint inside `components/boot/bootScript.ts` (`BOOT_CSS`), concept only | The wordmark in the boot, once per session | none |
+| 15 | Shiny Text (180) | ShinyText | https://www.reactbits.dev/text-animations/shiny-text | The glint inside `components/boot/bootScript.ts` (`BOOT_CSS`), concept only | The wordmark in the full boot POST, at most once per 12 h per browser (§6.2.4) | none |
 
 ### 12.3 Per-pick specifications
 
@@ -139,9 +139,9 @@ Each pick has a spec card, its API, the implementation detail Devin cannot infer
 Every "Acceptance criteria" block in §12.3 and §12.4 uses these rules:
 - **Working directory (§1.5):** commands whose paths start with `dashboard/`, `docs/`, `.agents/`, `goal.md` or `README.md`, and `git` commands with such pathspecs, run from the repository root. Every other command runs from `dashboard/`. No command mixes both forms. A path that contains `(live)` is quoted.
 - **Run modes (§1.6):**
-  - **dev** is `env $UNSET NEXT_TELEMETRY_DISABLED=1 npx next dev -p 3107`. `window.__wzrd.frames`, `.carrier` and `.slots` exist only in dev.
+  - **dev** is `: "${UNSET:?run the §1.6 step 2 UNSET= line in this same shell first}" && env $UNSET NEXT_TELEMETRY_DISABLED=1 npx next dev -p 3107` (from `dashboard/`). `window.__wzrd.frames`, `.carrier` and `.slots` exist only in dev.
   - **Fixture** is dev at `/admin/visual-test?noboot`, plus the specimen's host section from §12.1 rule 9 (for example `#ds-effects`). The route returns 404 in prod, so fixture items never run on prod.
-  - **Prod** is `npm run qa:build`, then `env $UNSET ADMIN_AUTH_MODE=edge-only NEXT_TELEMETRY_DISABLED=1 npx next start -p 3109`. A plain `next start` returns 401 and is never a prod check.
+  - **Prod** is `npm run qa:build`, then `: "${UNSET:?run the §1.6 step 2 UNSET= line in this same shell first}" && env $UNSET ADMIN_AUTH_MODE=edge-only NEXT_TELEMETRY_DISABLED=1 npx next start -p 3109` (both from `dashboard/`). A plain `next start` returns 401 and is never a prod check.
   - "The simulator holding the lock" means the fixture's broadcast simulator (`ds-simulator`, §10.5.9). On `/admin` in dev, set the lock with `window.__wzrd.broadcast.publish({ director: 'live', firstFrame: true })` (§7.17).
 
 #### 12.3.1 Dither: the carrier, hardened (`components/reactbits/Dither.jsx`, `Dither.css`, `components/DitherBackground.tsx`)
@@ -184,7 +184,7 @@ type DitherProps = {
 | 116–125 | Props | Add `renderScale = 0.5, maxFps = 30, paused = false, tweenMs = 0, onFirstFrame` |
 | 128–196 | One effect whose deps are the 8 props (`:196`), so every change of an inline array recreates the renderer | One effect with `[]` deps: **the renderer is created once per mount**. Props flow in through `paramsRef` and a second, dependency-free effect that calls `engine.update()` |
 | 134–139 | `new THREE.WebGLRenderer({ antialias: true })` inside `try`; failure returns silently | Probe `canvas.getContext('webgl2', {…})` with explicit attributes (`antialias:false`, `powerPreference:'low-power'`, `alpha/depth/stencil:false`), then hand the context to three with `{ canvas, context: gl }`. On failure: add `.dither-fallback`, call `onFirstFrame({ webgl: false })`, return. The probe means three never logs a creation error, and it creates no extra context: three 0.169 needs WebGL 2 anyway |
-| 141 | `renderer.domElement.className = 'dither-container'` | Canvas class becomes `dither-canvas` |
+| 141 | `renderer.domElement.className = 'dither-container'` | The canvas **keeps** `dither-container` (preserved, Appendix A A.1.4) and gains a second class: `canvas.className = 'dither-container dither-canvas'`. `dither-canvas` is the hook for the canvas rules in `Dither.css`; `dither-container` is never removed from the canvas or renamed |
 | 146–156 | Uniforms from props | The `waveSpeed` uniform is fixed at `1`, because speed is integrated into `time` (see below). `pixelSize` becomes `pixelSize × renderScale` (2 × 0.5 = 1 backing px = 2 CSS px, the same look) |
 | 163–167 | `setSize(w, h)` at full resolution | `bw = ceil(w × renderScale)`, `bh = ceil(h × renderScale)`, `setSize(bw, bh, false)`, CSS size `bw / renderScale` × `bh / renderScale` px (an exact integer 2× scale, where 1 px of overflow is clipped by the host), `resolution = (bw, bh)`, then **draw synchronously**, because `setSize` clears the drawing buffer |
 | 172–186 | A perpetual `tick` that re-sets every uniform every frame | A frame gate of `1000 / maxFps − 2` ms, phase integration, the colour/speed tween, the visibility pause and static mode (code below) |
@@ -228,7 +228,7 @@ export default function Dither({
       return undefined;
     }
     renderer.setPixelRatio(1);
-    canvas.className = 'dither-canvas';
+    canvas.className = 'dither-container dither-canvas';   // keeps the preserved class; adds the canvas hook
     host.appendChild(canvas);
 
     const p0 = paramsRef.current;
@@ -352,14 +352,14 @@ export default function Dither({
 }
 ```
 
-**`components/reactbits/Dither.css`** (replaces `:1-5`). It holds only the container, canvas, `[data-ready]` and `[data-boot]` rules. `.dither-fallback` and its `::before` live only in `components.css` (§5.14), which the safelist always emits (§5.15):
+**`components/reactbits/Dither.css`** (replaces `:1-5`). It holds only the container, canvas, `[data-ready]` and `[data-boot]` rules. `.dither-fallback` and its `::before` live only in `components.css` (§5.14), which the safelist always emits (§5.15). Line 1 stays the preserved `.dither-container` rule (Appendix A A.1.4). Both the host `<div>` and the canvas carry `dither-container`, so the canvas rules are written as `canvas.dither-canvas` (specificity 0,1,1), which beats `.dither-container` (0,1,0) on the canvas whatever the source order. `resize()` sets the canvas's width and height inline, which overrides the host rule's `100%`:
 
 ```css
 .dither-container { position: relative; width: 100%; height: 100%; overflow: hidden; }
-.dither-canvas { position: absolute; top: 0; left: 0; display: block; image-rendering: pixelated;
-  opacity: 0; transition: opacity 600ms var(--ease-out); }
-.dither-canvas[data-ready] { opacity: 1; }
-:root[data-boot] .dither-canvas { transition: none; }   /* under the boot overlay the carrier appears at once (docs/redesign/spec/06-motion-and-loading.md §6.2.2 L1) */
+canvas.dither-canvas { position: absolute; top: 0; left: 0; display: block; image-rendering: pixelated;
+  opacity: 0; transition: opacity 600ms var(--ease-out); }   /* the canvas also carries .dither-container; this selector outranks it */
+canvas.dither-canvas[data-ready] { opacity: 1; }
+:root[data-boot] canvas.dither-canvas { transition: none; }   /* under the boot overlay the carrier appears at once (docs/redesign/spec/06-motion-and-loading.md §6.2.2 L1) */
 ```
 
 **`components/DitherBackground.tsx`** (replaces `:1-35`). The `MutationObserver` (`:13-20`) and the inline arrays (`:28-29`) go away. Theme comes from `useTheme()` (§7.13) and state from the broadcast store (§7.17). Both write their `<html>` attributes **before** notifying subscribers, so `getComputedStyle` inside the effect already sees the new tokens.
@@ -431,13 +431,14 @@ The veil (`.dither-veil`, its opacities and its 1200 ms transition) is §5. `pau
 - [ ] The shader block is unchanged. From the repo root this exits 0: `node -e "const cp=require('child_process'),fs=require('fs');const cut=s=>s.slice(s.indexOf('const vertexShader'),s.indexOf('export default function Dither')).trim();const a=cut(cp.execSync('git show 845147c:dashboard/components/reactbits/Dither.jsx').toString());process.exit(fs.readFileSync('dashboard/components/reactbits/Dither.jsx','utf8').includes(a)?0:1)"`.
 - [ ] `grep -rn "forceContextLoss" dashboard/app dashboard/components` prints nothing.
 - [ ] `grep -c "dither-fallback" dashboard/components/reactbits/Dither.css` prints `0`: the class lives only in `components.css` (§5.14).
-- [ ] Prod, `/admin`, 1440×900: `document.querySelectorAll('canvas.dither-canvas').length === 1`; `canvas.width === 720`; `canvas.style.width === '1440px'`; `getComputedStyle(canvas).imageRendering === 'pixelated'`; `canvas.getContext('webgl2').getContextAttributes()` has `antialias === false` and `powerPreference === 'low-power'`.
+- [ ] The preserved `.dither-container` class is kept, never renamed (Appendix A A.1.4): `head -1 dashboard/components/reactbits/Dither.css` prints `.dither-container { position: relative; width: 100%; height: 100%; overflow: hidden; }`, `grep -c "'dither-container dither-canvas'" dashboard/components/reactbits/Dither.jsx` prints `1`, and `grep -c "className = 'dither-canvas'" dashboard/components/reactbits/Dither.jsx` prints `0`.
+- [ ] Prod, `/admin`, 1440×900: `document.querySelectorAll('canvas.dither-canvas').length === 1`; that canvas has `classList.contains('dither-container') === true` and `getComputedStyle(canvas).position === 'absolute'`; `document.querySelectorAll('.dither-container').length === 2` (the host `div` and the canvas); `canvas.width === 720`; `canvas.style.width === '1440px'`; `getComputedStyle(canvas).imageRendering === 'pixelated'`; `canvas.getContext('webgl2').getContextAttributes()` has `antialias === false` and `powerPreference === 'low-power'`.
 - [ ] Theme identity (dev): keep a reference to the canvas node, click the ThemeSwitch 10 times, then check the node is still the same (`===`), `querySelectorAll('canvas.dither-canvas').length === 1`, and there are zero console messages. After a toggle to light, `__wzrd.carrier` (dev) equals `{ wave:[0.5,0.63,0.86], bg:[0.98,0.98,1], speed:0.04, tweenMs:300 }`.
 - [ ] State (fixture): with the broadcast simulator (`ds-simulator`, §10.5.9), publishing `director:'opening'` makes `__wzrd.carrier.speed === 0.055` and `tweenMs === 1200` within 100 ms. Publishing `director:'live', firstFrame:true, air:'on'` gives `speed === 0.02`.
 - [ ] Frame cap (dev): over 2000 ms of idle, `__wzrd.frames.carrier` increases by at least 1 and at most 62.
 - [ ] Hidden (dev): after `Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true}); document.dispatchEvent(new Event('visibilitychange'))`, the counter increases by 0 over 1000 ms. Restoring `'visible'` resumes it.
 - [ ] Reduced motion (dev; `emulateMedia({ reducedMotion:'reduce' })`, then reload): the counter increases by 0 between 1000 ms and 3000 ms. One theme toggle increases it by exactly 1.
-- [ ] Chromium with `--disable-webgl --disable-3d-apis`: the host `div` has class `dither-fallback`; `window.__wzrdDitherReady` deep-equals `{ webgl:false }`; no `canvas.dither-canvas` exists; and the console holds zero entries beyond the §1.6 allowed list.
+- [ ] Chromium with `--disable-webgl --disable-3d-apis`: the host `div` has class `dither-fallback`; `window.__wzrdDitherReady` deep-equals `{ webgl:false }`; no `canvas.dither-canvas` exists; `document.querySelectorAll('.dither-container').length === 1` (the host only); and the console holds zero entries beyond the §1.6 allowed list.
 - [ ] Exactly one `wzrd:dither-ready` event per page load, including after 10 theme toggles (§6.16).
 
 #### 12.3.2 Pixel Swap: boot POST, channel flip and the raster clear
@@ -1105,7 +1106,7 @@ Callers pass a `format` that reproduces their strings exactly:
 
 | | |
 |---|---|
-| Purpose | The only shimmer in the system: one metallic sweep across the WZRD.tech wordmark, once per session. It echoes the chrome badge |
+| Purpose | The only shimmer in the system: one metallic sweep across the WZRD.tech wordmark, once per full POST, so at most once per 12 h per browser (§6.2.4). It echoes the chrome badge |
 | Technique | CSS in `BOOT_CSS`: `#wzrd-boot-glint`, a 28° band 18% of the box width, `rgb(236 244 255 / .55)` (#ECF4FF at .55), `translateX(−120%) → translateX(120%)`, clipped by the wordmark's own alpha (`mask-image: url(/brand/wordmark/wzrdtech-640.webp)`). The rule text is `BOOT_CSS` (§6.2.13, owner) and the timeline §6.2.5; this card only summarises them |
 | Timings | 340 ms with `--ease-spec` (`cubic-bezier(.45,0,.2,1)`), at t = 1020–1360 ms of the first-visit boot. It never repeats and is cut on repeat visits (the channel flip has no glint) |
 | Reduced motion | No glint: the static card (§6.2.9) |
@@ -1122,26 +1123,28 @@ Callers pass a `format` that reproduces their strings exactly:
 
 | CSV row (line) | File(s) | Importers at 845147c | After the redesign | Edits | Lint |
 |---|---|---|---|---|---|
-| Morph Slider (147), https://www.reactbits.dev/components/morph-slider | `components/reactbits/MorphSlider.tsx`, `.css` | `TrackManager.tsx:9` (used `:130-143`), `AssetStudioVisualFixture.tsx:6` (`:45`) | The Live Control Audio dock artwork (§8): autoplay off; `onIndexChange` kept (§8). Also the fixture. Both are loaded through `next/dynamic`, and both request `useEffectCanvasSlot('morph', 2, want)` | **Autoplay off** (D3): delete `autoplay autoplayDelay={6}` at `TrackManager.tsx:138-139` and `AssetStudioVisualFixture.tsx:45`. `onIndexChange={selectSliderTrack}` at `TrackManager.tsx:142` stays: explicit artwork navigation arms that track (§8.5.10). Apply the render-on-demand patch (§12.4.1). MorphSlider.css edits: §5.10 (1B). Every aria-label is unchanged | Must stay warning-free |
+| Morph Slider (147), https://www.reactbits.dev/components/morph-slider | `components/reactbits/MorphSlider.tsx`, `.css` | `TrackManager.tsx:9` (used `:130-143`), `AssetStudioVisualFixture.tsx:6` (`:45`) | The Live Control Audio dock artwork (§8.5.10): a **display-only** carousel with autoplay kept (D3, §0.4 BC-15), shown as a square at the Dock body's full height beside the track list, and the same single instance in the 'Expand artwork' Sheet at up to 480×480. Only one MorphSlider instance is ever mounted. Also the fixture (`#audio-library-visual-test`), which keeps autoplay. Both are loaded through `next/dynamic`, and both request `useEffectCanvasSlot('morph', 2, want)` (slot rules unchanged, §7.16) | **Autoplay kept** (D3): the fixture keeps `autoplay autoplayDelay={6}` (`AssetStudioVisualFixture.tsx:45`), and TrackManager keeps `autoplayDelay={6}` and passes `autoplay={autoplayOn}` (§8.5.10). **Display-only** (§0.4 BC-15): `onIndexChange` no longer writes the armed track. `onIndexChange={selectSliderTrack}` (`TrackManager.tsx:142`, `:91`) becomes `onIndexChange={setShownIndex}`, and a track is armed only through the 'Armed track' radiogroup or 'Arm this track' (§8.5.10). Apply the render-on-demand and autoplay-pause patch (§12.4.1). MorphSlider.css edits: §5.10 (1B). Every aria-label is unchanged | Must stay warning-free |
 | Accordion Gallery (115), https://www.reactbits.dev/components/accordion-gallery | `AccordionGallery.jsx`, `.css` | `CharacterLibraryPage.tsx:7`, `LocationLibraryPage.tsx:7`, `AssetStudioVisualFixture.tsx:5`, `ShotCard.tsx:6`, `SceneSection.tsx:5`, `SceneGallery.tsx:5` | Removed from the Characters and Locations heroes (§10) and from the Shotboard pickers, where chips plus a popover grid replace it (§9). **Fixture only** (`#ds-accordion-gallery`). The fixture passes tokens through its CSS-variable props: `accentColor="rgb(var(--c-accent))" overlayColor="rgb(var(--c-screen))"` | None: the file is untouched. 'Image accordion gallery' (`role="list"`) is kept inside the file | Baseline warning `:229` remains |
-| Chroma Grid (123), https://www.reactbits.dev/components/chroma-grid | `ChromaGrid.jsx`, `.css` | `shotboard/CharacterPanel.tsx:6` (`:70`) | Replaced by CastStrip on Shotboard (§9). **Fixture only** (`#ds-reactbits`). The fixture gains one specimen, because no fixture imports it today | None: untouched. Its `backdrop-filter` rules (`ChromaGrid.css:125-126`, `:158-159`) sit in the one file that the G5 backdrop gate excepts (§15.3), and it never reaches a product route | Baseline warning `:115` remains |
+| Chroma Grid (123), https://www.reactbits.dev/components/chroma-grid | `ChromaGrid.jsx`, `.css` | `shotboard/CharacterPanel.tsx:6` (`:70`) | Replaced by CastStrip on Shotboard (§9). **Fixture only** (`#ds-reactbits`). The fixture gains one specimen, because no fixture imports it today | None: untouched. Its `backdrop-filter` rules (`ChromaGrid.css:125-126`, `:158-159`) sit in the one file that the §15.3 G5 backdrop gate excepts, and it never reaches a product route | Baseline warning `:115` remains |
 | Pixel Card (150), https://www.reactbits.dev/components/pixel-card | `PixelCard.jsx`, `.css` | `app/admin/clips/page.tsx:8`, `app/admin/recordings/page.tsx:8` | Replaced by MediaCard on Clips and Recordings (§11), which removes 100 hover canvases. `.pixel-card-latest` moves to MediaCard as a kept class hook, and the `.pixel-card*` shims stay permanently in `components.css` (§5.18). **Fixture only** (`#ds-reactbits`), with one specimen behind the 'Show PixelCard' switch: its canvas is an effect canvas and mounts only while slot `pixel-card` (priority 0) is granted (§12.1 rules 8–9) | None: untouched | — |
 
 > Note: the bible says ChromaGrid is "kept for the fixture only", but at 845147c no fixture imports it (`AssetStudioVisualFixture.tsx:5-6` import only AccordionGallery and MorphSlider). Adding the ChromaGrid and PixelCard specimens keeps both files importable and under visual regression. They are not on the D1 dead-code list, so they stay on disk.
 
-#### 12.4.1 MorphSlider render-on-demand patch (`components/reactbits/MorphSlider.tsx`)
+#### 12.4.1 MorphSlider render-on-demand and autoplay-pause patch (`components/reactbits/MorphSlider.tsx`)
 
-The goal is that the slider draws **only** while a tween, a drag or a texture load is in progress, is invisible to the GPU otherwise, follows reduced motion live, and never holds a stale context.
+The goal is that the slider draws **only** while a tween, a drag or a texture load is in progress, is invisible to the GPU otherwise, follows reduced motion live, never holds a stale context, and keeps its autoplay (D3) only while it is safe to move.
+
+**Autoplay pause (D3, §0.4 BC-15).** Autoplay stays, and it pauses on the slide shown under five conditions: the air lock, reduced motion, the Dock collapsed, the Audio tab hidden, and the page hidden. The component owns three of them, so every caller gets them, the fixture included: the air lock (`useBroadcast(deriveLock)`, §7.17), reduced motion (the live `useReducedMotion()`, §7.2) and a hidden page (`usePageVisible()`, §7.2). The caller owns the other two and expresses them through the `autoplay` prop: TrackManager passes `autoplay={autoplayOn}`, which is false while the Dock is collapsed or the Audio tab is hidden (§8.5.10; its `autoplayOn` may repeat the component's three conditions, which is harmless). The existing hover pause (`:500`) stays. While any condition holds, no autoplay step starts. A tween already running finishes (`duration`, 1.1 s by default; at most 0.35 s under reduced motion). When every condition clears, the next step comes a full `autoplayDelay` later (6 s). Autoplay only changes the slide shown. It never arms a track, because no caller's `onIndexChange` writes the armed track (§8.5.10, §10.5.9).
 
 MorphSlider.css edits (the backdrop-filter removal at `:39-40` and `:65-66`, and the violet retint): §5.10 (1B). They land before this patch; this section does not repeat them.
 
 | Lines | Today | Change |
 |---|---|---|
-| 4 | React imports | Add `import { useReducedMotion } from '@/hooks/useReducedMotion'` |
+| 4 | React imports | Add `import { useReducedMotion } from '@/hooks/useReducedMotion'`, `import { usePageVisible } from '@/hooks/usePageVisible'` and `import { deriveLock, useBroadcast } from '@/lib/broadcast/store'` (all three land in 3A, §7.2, §7.17) |
 | 188–205 | Engine fields | Add `private inView = true`, `private readonly io: IntersectionObserver`, and `private readonly onVisibility = () => { if (document.visibilityState === 'visible') this.requestRender() }` |
 | 210 | `private readonly reducedMotion: boolean` | `private reducedMotion: boolean` (mutable) |
 | 214 | Constructor body start | Move `this.loop = this.loop.bind(this)` (today `:257`) to be the **first** statement, because `resize()` now renders |
-| 216 | `new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' })` | `new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'low-power' })`. A 148 px full-screen quad has no geometry edges, and `'high-performance'` can switch dual-GPU laptops to the discrete GPU while WebRTC is decoding |
+| 216 | `new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' })` | `new THREE.WebGLRenderer({ antialias: false, alpha: false, powerPreference: 'low-power' })`. A full-screen quad (164×164 in the Dock, up to 480×480 in the 'Expand artwork' Sheet, §8.5.10) has no geometry edges, and `'high-performance'` can switch dual-GPU laptops to the discrete GPU while WebRTC is decoding |
 | 253–258 | `ResizeObserver`, `resize()`, `loadTextures()`, `bind`, `requestAnimationFrame(this.loop)` | Keep the RO. Add `this.io = new IntersectionObserver(([e]) => { this.inView = e?.isIntersecting ?? true; if (this.inView) this.requestRender() }); this.io.observe(container)` and `document.addEventListener('visibilitychange', this.onVisibility)`. **Delete** the unconditional `requestAnimationFrame` (`:258`) |
 | 267–281 | Texture `onLoad` | Append `this.requestRender()` |
 | 288–292 | `resize()` | Append `this.renderer.render(this.scene, this.camera)`, a synchronous repaint because `setSize` cleared the buffer |
@@ -1151,10 +1154,10 @@ MorphSlider.css edits (the backdrop-filter removal at `:39-40` and `:65-66`, and
 | 384–390 | `beginDrag()` | After `this.dragging = true`, `this.requestRender()` |
 | 422–427 | `endDrag()` snap-back `onComplete` | Add `this.requestRender()` after `this.animating = false` |
 | 431–441 | `destroy()` | Add `this.io.disconnect()` and `document.removeEventListener('visibilitychange', this.onVisibility)`. After `this.renderer.dispose()`, add `this.renderer.getContext().getExtension('WEBGL_lose_context')?.loseContext()`, which is silent (see the facts table and §8). Never `forceContextLoss()` |
-| 470–474 | Component state | Add `const reduced = useReducedMotion(); const reducedRef = useRef(reduced); reducedRef.current = reduced` |
+| 470–474 | Component state | Add `const reduced = useReducedMotion(); const reducedRef = useRef(reduced); reducedRef.current = reduced`, `const locked = useBroadcast(deriveLock)` and `const pageVisible = usePageVisible()` |
 | 480 | `window.matchMedia('(prefers-reduced-motion: reduce)').matches` | `reducedRef.current` |
 | after 492 | — | `useEffect(() => { engineRef.current?.setReducedMotion(reduced) }, [reduced])` and `useEffect(() => { engineRef.current?.invalidate() })` (no deps: option props such as `overlayColor` may have changed) |
-| 499–503 | Autoplay timer | Unchanged. It is inert because no caller passes `autoplay` (D3) |
+| 499–503 | Autoplay timer: a `setTimeout` of `Math.max(autoplayDelay, 1) * 1000` ms that calls `engineRef.current?.move(1)`, skipped while `hovering` or with fewer than 2 items, re-armed on every `index` change | Kept (D3) and extended with the component's three pause conditions (the second code block below). The step, the delay, the hover pause and the re-arm on `index` are unchanged |
 | 544–556 | Markup and aria | **Unchanged**: 'Coast audio artwork' (`:545`, `role="group"`, `aria-roledescription="carousel"`), the fallback `<img>` (`:546`), the caption `aria-live="polite"` (`:548`), 'Previous song artwork' and 'Next song artwork' (`:550-551`), the 'Song artwork' tablist (`:553`), and `` Show ${caption ?? `cover ${n}`} `` (`:554`) |
 
 ```ts
@@ -1180,12 +1183,30 @@ MorphSlider.css edits (the backdrop-filter removal at `:39-40` and `:65-66`, and
   }
 ```
 
+The autoplay effect that replaces `:499-503` (`locked`, `reduced` and `pageVisible` come from the component-state row above):
+
+```tsx
+  useEffect(() => {
+    // Autoplay pauses on the slide shown while hovered, under the air lock, under reduced motion and while the page is hidden.
+    // The caller turns `autoplay` off for its own conditions. A running tween finishes; the next step waits a full delay.
+    if (!autoplay || hovering || locked || reduced || !pageVisible || items.length < 2) return undefined
+    const timeout = window.setTimeout(() => engineRef.current?.move(1), Math.max(autoplayDelay, 1) * 1000)
+    return () => window.clearTimeout(timeout)
+  }, [autoplay, autoplayDelay, hovering, locked, reduced, pageVisible, index, items.length])
+```
+
 `drift` animates only while frames are being drawn, so it freezes at rest. §8 passes `drift={0}`.
 
 **Acceptance criteria**
-- [ ] `grep -n "autoplay" dashboard/components/TrackManager.tsx dashboard/components/AssetStudioVisualFixture.tsx` prints nothing, and `grep -c "onIndexChange={selectSliderTrack}" dashboard/components/TrackManager.tsx` prints `1` (explicit navigation still arms the track, §8.5.10).
+- [ ] Autoplay is kept in both callers (D3): `grep -c "autoplayDelay={6}" dashboard/components/TrackManager.tsx` prints at least `1`, and so does `grep -c "autoplayDelay={6}" dashboard/components/AssetStudioVisualFixture.tsx`. Under `OVERRIDE D3: autoplay off` (§2.2), `grep -n "autoplay" dashboard/components/TrackManager.tsx dashboard/components/AssetStudioVisualFixture.tsx` prints nothing instead. The display-only wiring is not a §12.4.1 check: §8.10 B12 and B33 check TrackManager's, and the §10.10 "Fixture display-only arming" item checks the fixture's.
+- [ ] The component side of the pause is in the file: `grep -c "useBroadcast(deriveLock)" dashboard/components/reactbits/MorphSlider.tsx` prints `1`, `grep -c "usePageVisible()" dashboard/components/reactbits/MorphSlider.tsx` prints `1`, and `grep -c "window.matchMedia('(prefers-reduced-motion: reduce)')" dashboard/components/reactbits/MorphSlider.tsx` prints `0`.
 - [ ] The §5.10 MorphSlider.css "Done when" grep (1B) still prints nothing; in particular `grep -n "backdrop-filter" dashboard/components/reactbits/MorphSlider.css` prints nothing.
-- [ ] Fixture `[data-specimen="MorphSlider"]` with 4 covers, after the textures load:
+- [ ] Autoplay pause (fixture, no reduced-motion emulation). Scroll `[data-specimen="MorphSlider"]` into view, wait until it contains a `canvas` (≤ 5000 ms), and move the pointer to (0, 0). Let `sel` be the name of the selected tab of its 'Song artwork' tablist (`[role="tab"][aria-selected="true"]`).
+  - `sel` changes within 7000 ms (autoplay kept).
+  - Hidden page: after `Object.defineProperty(document,'visibilityState',{value:'hidden',configurable:true}); document.dispatchEvent(new Event('visibilitychange'))`, `sel` stays the same for 13 000 ms (two 6 s periods). After the same two calls with `'visible'`, `sel` changes within 7000 ms.
+  - Hover: with the pointer over the specimen's `.morph-slider`, `sel` stays the same for 13 000 ms.
+  - The air lock and reduced motion: the §6.16 MorphSlider autoplay item ('Simulate recording' in `#ds-simulator`, and `reducedMotion: 'reduce'`) passes.
+- [ ] Fixture `[data-specimen="MorphSlider"]` with 4 covers, after the textures load, with the pointer over the specimen's `.morph-slider` (the hover pause holds autoplay, so no autoplay step lands inside a measurement):
   - `__wzrd.frames.morph` does not change over 2000 ms idle;
   - clicking 'Next song artwork' increases it, and 1500 ms later it is stable again;
   - scrolling the specimen out of view during a tween stops it from increasing.
@@ -1424,7 +1445,7 @@ All 190 rows are accounted for: **15 picks + 4 retained + 171 banned**.
 4. CountUp. Values render final; the component stays as a pass-through so call sites do not change.
 5. `.sq` squircles. The plain `--r-*` radii remain.
 
-**Never cut:** Dither hardening (§12.3.1), PxResolve, the MorphSlider autoplay removal and render-on-demand patch, StageTrack in the connect plate, and PixelFace wherever a slate kicker or md lamp needs it (the slate family is never-cut).
+**Never cut:** Dither hardening (§12.3.1), PxResolve, the MorphSlider render-on-demand and autoplay-pause patch (§12.4.1; the display-only carousel it serves is §8.5.10), StageTrack in the connect plate, and PixelFace wherever a slate kicker or md lamp needs it (the slate family is never-cut).
 
 ### 12.7 Acceptance criteria
 

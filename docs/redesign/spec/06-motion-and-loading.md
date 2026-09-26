@@ -46,12 +46,14 @@ The system has three verbs, and every animation in the product is one of them. A
 3. Stagger is 30 ms per item for at most 8 items; later items arrive with the 8th. Exits use `--dur-fast` (120 ms), the token nearest 0.66× the 160 ms resolve.
 4. **Exactly one element may blink:** the STALLED ingest lamp in the TallyBar, at 1 Hz for 5 cycles, then steady (§6.7). The TallyCluster's AIR lamp shows STALLED with `data-steady` and never blinks (§7.4). The BayerSpinner is a progress indicator that exists only while a real operation is pending; it is not a blink.
 5. Every loop stops under `prefers-reduced-motion: reduce` (§6.14). Under the air lock, only the items in §6.12 move.
-6. **The `data-air-allow` attribute is the only exemption mechanism.** An element that carries `data-air-allow` (lamps, LEDs, the BayerSpinner, StreamList rows, error chyrons, the connect plate) keeps its resolve under the air lock. CSS rules and JS hooks both check `el.closest('[data-air-allow]')`. Nothing else is exempt.
+6. **The `data-air-allow` attribute is the only exemption mechanism.** An element that carries `data-air-allow` (lamps, LEDs, the BayerSpinner, StreamList rows, error chyrons, the §6.7 cue warning chyron, the connect plate) keeps its resolve under the air lock. CSS rules and JS hooks both check `el.closest('[data-air-allow]')`. Nothing else is exempt.
 7. **JS timings use the token mirror.** Every JS duration and curve (motion/react, WAAPI, canvas, the ticker) that equals a §5.12 token is written as `DUR.*`/`EASE.*` from `lib/motion/tokens.ts`, never as a literal. Component constants with no token (the 2400 ms RouteProgress trickle, the 600 ms hold, the 3000 ms off-air hold) are named `const`s in their module. The one exception is `BOOT_SCRIPT`, which cannot import; its literals are the §6.2 values.
 
 ### 6.2 Boot: "POST → wordmark → carrier" (the new loading animation)
 
-The first load of each session becomes a broadcast ident. An instrument powers on and runs a truthful self-test. The WZRD.tech wordmark resolves out of the carrier's own Bayer grid, glints once, and flies into the command bar. Then the overlay dissolves into the live Dither wave. The boot never blocks the app, which hydrates underneath from the first byte.
+Behaviour change: §0.4 BC-1. It applies by default; the owner vetoes it with `OVERRIDE D10: BC-1` (§2.2 D10), and Devin then keeps the 845147c behaviour and records it under Decisions.
+
+A load becomes a broadcast ident when this browser has not played the full POST in the last 12 h (43 200 000 ms, in any tab); every other load gets the 224 ms channel flip (§6.2.4). An instrument powers on and runs a truthful self-test. The WZRD.tech wordmark resolves out of the carrier's own Bayer grid, glints once, and flies into the command bar. Then the overlay dissolves into the live Dither wave. The boot never blocks the app, which hydrates underneath from the first byte.
 
 #### 6.2.1 Files and placement
 
@@ -131,24 +133,26 @@ The POST list is a 3-column grid: LED 8 px · key `8ch` · value `13ch`. JetBrai
 
 `BOOT_SCRIPT` evaluates these synchronously, top to bottom. The first matching row decides.
 
-| # | Condition | Result | `window.__wzrd.boot.mode` | Sets `sessionStorage['wzrd:boot']` |
+| # | Condition | Result | `window.__wzrd.boot.mode` | Writes `localStorage['wzrd:boot']` |
 |---|---|---|---|---|
 | 1 | `#wzrd-boot` missing | Return | — | no |
 | 2 | `?boot=1` | Force the first-visit POST (reduced motion → static card) | `post` / `static` | no |
 | 3 | `?boot=flip` | Force the channel flip (reduced motion → skip) | `flip` / `skip` | no |
 | 4 | `?noboot` present, or `document.visibilityState === 'hidden'`, or (`navigator.webdriver` and not `?boot=auto`) | Remove the node now | `skip` | no |
-| 5 | `sessionStorage['wzrd:boot'] === '1'` | Channel flip (§6.2.8); reduced motion → skip | `flip` / `skip` | already set |
-| 6 | Otherwise | First-visit POST (§6.2.5); reduced motion → static card (§6.2.9) | `post` / `static` | yes, at the end |
+| 5 | `localStorage['wzrd:boot']` holds the epoch-ms timestamp `ts` of the last full POST, and `0 ≤ Date.now() − ts < 43 200 000` (12 h) | Channel flip (§6.2.8); reduced motion → skip | `flip` / `skip` | no (the timestamp is kept, so a flip never extends the 12 h) |
+| 6 | Otherwise: the key is absent, its value is unparsable, its timestamp is 43 200 000 ms old or older, or it lies in the future | First-visit POST (§6.2.5); reduced motion → static card (§6.2.9) | `post` / `static` | yes: `String(Date.now())` at the end |
 
-- `?boot=auto` bypasses **only** the `navigator.webdriver` gate, so Playwright can test the real session logic (first load → `post`, reload → `flip`).
-- `sessionStorage` access is wrapped in `try/catch`. If it throws, treat the visit as a first visit and skip the write.
+- **The storage key.** `localStorage['wzrd:boot']` is the epoch-ms timestamp, as a decimal string, of the last full POST in this browser. It is shared by every tab of the origin and survives browser restarts, so the ident plays at most once per 12 h per browser, not once per tab. The gate computes `age = Date.now() - Number(localStorage.getItem('wzrd:boot'))` and flips only when `age >= 0 && age < 43200000`. An absent key (`Number(null)` is `0`), an unparsable value (`NaN` fails both comparisons), a future timestamp and an age ≥ 43 200 000 ms all give the full POST.
+- **Who writes it.** Only an unforced `post` run (including one cut short by an interrupt, §6.2.7) or its reduced-motion `static` card writes `String(Date.now())`, once, in `finish()`. `flip` and `skip` runs, the forced `?boot=1` and `?boot=flip` visits and a late-start conversion to the flip (below) never write it.
+- `?boot=auto` bypasses **only** the `navigator.webdriver` gate, so Playwright can test the real 12 h logic (first load → `post`, reload or a second tab → `flip`).
+- `localStorage` access (the read and the write) is wrapped in `try/catch`. If the read throws, treat the visit as a first visit; if the write throws, skip it.
 - **Late start.** Let `T0 = performance.now()` when the script starts (`performance.now()` counts from navigation start):
 
 | `T0` | Behaviour |
 |---|---|
 | ≤ 300 ms | Full timeline, with the absolute times of §6.2.5 |
 | 300 < T0 ≤ 600 ms | Skip the strip resolve (paint the strip fully at once) and the sprite. Show the POST list at `T0`. Everything from 600 ms runs on the absolute timeline |
-| > 600 ms | Run the channel flip (§6.2.8) immediately. The overlay is gone at `T0 + 224` ms (plus at most one frame). Set `sessionStorage`. A visit forced with `?boot=1` never converts: it runs the full POST on the absolute timeline |
+| > 600 ms | Run the channel flip (§6.2.8) immediately. The overlay is gone at `T0 + 224` ms (plus at most one frame). `localStorage['wzrd:boot']` is **not** written, because no POST played; the next load that starts by 600 ms plays it. A visit forced with `?boot=1` never converts: it runs the full POST on the absolute timeline |
 
 #### 6.2.5 First-visit timeline
 
@@ -169,11 +173,11 @@ The hard cap is **1600 ms from navigation start at 60 Hz plus at most one frame*
 | 600–900 | 36–54 | Wordmark mask cells light in Bayer-8 order in `--c-ramp-3`, `p = (t−600)/300` | — | — |
 | 900–1020 | 54–61 | — | `#wzrd-boot-mark` gets class `on`: `<img>` opacity 0 → 1 over 120 ms `linear` | — |
 | 1020 | 61 | Mask cells cleared to 0 | `#wzrd-boot-glint` gets class `go` | — |
-| 1020–1360 | 61–82 | — | **Glint**, the only shimmer in the system: a 28° band, 18% of the box width, `rgb(236 244 255 / .55)`, `translateX(−120%) → translateX(120%)` over 340 ms `--ease-spec`, clipped by the wordmark's own alpha | Once per session |
+| 1020–1360 | 61–82 | — | **Glint**, the only shimmer in the system: a 28° band, 18% of the box width, `rgb(236 244 255 / .55)`, `translateX(−120%) → translateX(120%)` over 340 ms `--ease-spec`, clipped by the wordmark's own alpha | Once per POST (at most once per 12 h per browser) |
 | 1200 | 72 | **Handoff, one frame:** every cell that is still 0 is painted `--c-canvas`, and in the same frame the overlay's CSS background becomes `transparent` (visually identical) | `#wzrd-boot` gets class `out`: LED, POST list and mono line fade over 160 ms `steps(4,end)` | — |
 | 1200–1560 | 72–93 | **Reverse Bayer-8 clear:** cell (x,y) becomes 0 when `easeInOutCubic(p) > 1 − B8(x,y)`, `p = (t−1200)/360`. Sprite and strip cells dissolve with the field. The quantised carrier shows through, so the POST reads as dissolving into the wave | — | — |
 | 1200–1584 | 72–95 | — | **FLIP:** measure `#wzrd-bug` and the mark `<img>`, then animate `#wzrd-boot-mark` (`transform-origin: 0 0`) to `translate(dx,dy) scale(s)` with `s = bug.width / img.width`, over 384 ms `cubic-bezier(.16,1,.3,1)` (WAAPI, `fill:'forwards'`). If `#wzrd-bug` is missing, `display:none` or zero-sized, add class `fade` instead (opacity → 0 over 160 ms `--ease-exit`) | — |
-| first rAF with t ≥ 1584 | 95–96 | `canvas.width = 0` (frees the backing store) | In one task: remove `data-boot` from `<html>` (the bug becomes visible exactly under the flown mark), remove `#wzrd-boot` and `#wzrd-boot-sr`, set `sessionStorage['wzrd:boot'] = '1'`, and record `__wzrd.boot.tEnd` | — |
+| first rAF with t ≥ 1584 | 95–96 | `canvas.width = 0` (frees the backing store) | In one task: remove `data-boot` from `<html>` (the bug becomes visible exactly under the flown mark), remove `#wzrd-boot` and `#wzrd-boot-sr`, write `localStorage['wzrd:boot'] = String(Date.now())` (unforced `post` and `static` runs only, §6.2.4), and record `__wzrd.boot.tEnd` | — |
 
 `B8(x,y) = (BAYER8[(y&7)*8 + (x&7)] + 0.5) / 64`, using the carrier's matrix from the fact table above. No cell is lit at `p = 0`, and every cell is lit at `p = 1`. `easeOutCubic(p) = 1−(1−p)³`; `easeInOutCubic(p) = p<.5 ? 4p³ : 1−(−2p+2)³/2`.
 
@@ -198,21 +202,21 @@ LED colours: ok = `--c-success` fill plus `0 0 0 2px rgb(var(--c-success)/.22)`;
 - **Clearing freezes the phases.** Once a clear has started (handoff, flip or interrupt), no phase writes to the pixel buffer again: only the clear and `put()` run. Otherwise a later resolve would write transparent cells into the mark and sprite boxes and punch rectangular holes through the dissolve.
 - **Hidden tab or stalled rAF.** A `setTimeout(finish, max(1650, T0 + 300) − performance.now())` guarantees removal even when rAF stops firing. The `T0 + 300` term lets a late-start flip finish. `finish()` is idempotent.
 
-#### 6.2.8 Channel flip (repeat visit, 224 ms)
+#### 6.2.8 Channel flip (repeat visit within 12 h, 224 ms)
 
 | t from flip start (ms) | Canvas |
 |---|---|
 | 0 | Overlay background → `transparent`; every cell painted `--c-canvas` in the same frame |
 | 0–80 | **Static burst:** each frame, re-seed `xorshift32` with `(performance.now()*1000)\|0` and light 35% of cells with a random pick of `--c-ramp-1`/`-2`/`-3`. The other cells stay `--c-canvas` |
 | 80–224 | Reverse Bayer-8 clear, `p = (t−80)/144`, `easeInOutCubic` |
-| first rAF with t ≥ 224 | `finish()` (the same as the §6.2.5 final row, minus the `sessionStorage` write, which is already set). `tEnd − t0 ≤ 257` (224 ms plus the script start and one frame) |
+| first rAF with t ≥ 224 | `finish()` (the same as the §6.2.5 final row, minus the `localStorage` write: a flip never refreshes the timestamp, so the next full POST plays 12 h after the last one). `tEnd − t0 ≤ 257` (224 ms plus the script start and one frame) |
 
 The flip has no wordmark, no POST and no FLIP. `html[data-boot]` hides `#wzrd-bug` for these 224 ms.
 
 #### 6.2.9 Reduced motion
 
 - **First visit:** `#wzrd-boot[data-mode="static"]` shows a static card: the wordmark `<img>` at opacity 1 and the mono line, with no canvas, LED, strip, sprite or POST. After 250 ms (`setTimeout`), class `fade` sets opacity 0 with a 150 ms `linear` transition, and `finish()` runs at 400 ms. No rAF is requested. The global reduced-motion rule in `tokens.css` (§5.2) is `@layer base` `!important`, so it beats the unlayered `BOOT_CSS` transition: the fade is a 1 ms cut in practice. The ≤ 450 ms acceptance (§6.16) is unchanged.
-- **Repeat visit:** skip (remove at once).
+- **Repeat visit** (gate 5: a static card or POST in this browser less than 43 200 000 ms ago): skip (remove at once).
 - The check is `matchMedia('(prefers-reduced-motion: reduce)').matches`, read once at script start.
 
 #### 6.2.10 Failsafes
@@ -261,7 +265,7 @@ The flip has no wordmark, no POST and no FLIP. `html[data-boot]` hides `#wzrd-bu
 
 | Constraint | Value | Measurement (§15 automates) |
 |---|---|---|
-| Script size | `BOOT_SCRIPT` including masks ≤ **4096 bytes** gzipped; `BOOT_CSS` ≤ **1536 bytes** gzipped. Measured on this spec's §6.2.14 sketch with masks derived from `public/wzrdtechlogo.png`: 3644 bytes after `gen-boot.mjs` minification (4712 bytes unminified, with comments); `BOOT_CSS` 1168 bytes. The body is minified by `scripts/gen-boot.mjs` (§6.2.1), never by hand | `gen-boot.mjs --check`, and the served-HTML measurement in the block below |
+| Script size | `BOOT_SCRIPT` including masks ≤ **4096 bytes** gzipped; `BOOT_CSS` ≤ **1536 bytes** gzipped. Measured on this spec's §6.2.14 sketch with masks derived from `public/wzrdtechlogo.png`: 3681 bytes after `gen-boot.mjs` minification (4797 bytes unminified, with comments); `BOOT_CSS` 1168 bytes. The body is minified by `scripts/gen-boot.mjs` (§6.2.1), never by hand | `gen-boot.mjs --check`, and the served-HTML measurement in the block below |
 | Renderer | Canvas2D only; no WebGL | The grep in the block below prints nothing (the POST value string `WEBGL` is allowed) |
 | Frame cost | ≈ 0.4 ms per frame at 1440×900 (81 000 cells). Only the handoff and the flip iterate the full grid; the other phases iterate their own region | Performance panel, informational |
 | Cap | Overlay removed at the first frame with `t ≥ 1584`, so by **1617 ms** after navigation start (1600 ms at 60 Hz plus at most one frame), when `T0 ≤ 600`; otherwise (late-start flip) ≤ `T0 + 224` ms plus one frame | `window.__wzrd.boot.tEnd` |
@@ -394,12 +398,12 @@ var raf=0,safety=0,ended=false,force=null,q=location.search,sprite=null;
 function finish(){ if(ended)return; ended=true; cancelAnimationFrame(raf); clearTimeout(safety);
   removeEventListener('keydown',interrupt,true); removeEventListener('pointerdown',interrupt,true);
   if(cv)cv.width=0; H.removeAttribute('data-boot'); host.remove(); if(sr)sr.remove(); R.tEnd=now();
-  if(!force&&R.mode!=='skip'){try{sessionStorage.setItem('wzrd:boot','1')}catch(e){}} }
+  if(!force&&(R.mode==='post'||R.mode==='static')){try{localStorage.setItem('wzrd:boot',String(Date.now()))}catch(e){}} } // last full POST; never flip/skip/forced
 var cv=null;
 try{
   var m=/[?&]boot=(1|flip|auto)\b/.exec(q); force=m&&m[1]!=='auto'?m[1]:null; var auto=m&&m[1]==='auto';
   var reduced=matchMedia('(prefers-reduced-motion: reduce)').matches, seen=false;
-  try{seen=sessionStorage.getItem('wzrd:boot')==='1'}catch(e){}
+  try{var age=Date.now()-Number(localStorage.getItem('wzrd:boot'));seen=age>=0&&age<43200000}catch(e){} // 12 h; absent/NaN/future → POST
   // ---- gates ----
   var mode=force==='1'?'post':force==='flip'?'flip':
     (/[?&]noboot\b/.test(q)||d.visibilityState==='hidden'||(navigator.webdriver&&!auto))?'skip':
@@ -514,22 +518,23 @@ The sketch encodes these rules:
 - `Uint32Array` pixels assume little-endian `0xAABBGGRR`, which holds on every target platform.
 - The WAVE row stays hollow when nothing arrives, because it is simply never written.
 - The late-start branch (`late`) paints the strip at once and skips the sprite. Only an unforced visit with `T0 > 600` converts to the flip.
+- `localStorage['wzrd:boot']` is read once, before the gates, and written only by `finish()` of an unforced `post` or `static` run, as `String(Date.now())`. A converted late start has `R.mode === 'flip'` by then, so it never writes (§6.2.4).
 - The strip image is requested only in `post` mode, immediately after the gates (as early as a preload would be).
 - Once a clear has started, no phase writes to the pixel buffer; only `clearReverse` and `put()` run (§6.2.7).
 - A pointer-initiated interrupt swallows the next `click` (removed after 1000 ms); a key-initiated one lets the key through.
 - The post terminal check is `t >= 1584`, the FLIP runs 384 ms and the flip's clear ends at 224 ms.
 - `finish()` is idempotent. It also runs from the `try/catch`, the safety timeout and the interrupt path.
 
-> Note: this sketch, minified by next's terser with masks derived from `public/wzrdtechlogo.png`, was run in headless Chromium 1194 at 1440×900 against the §6.2.13 markup and CSS. Post `tEnd` 1588–1601 ms (6 runs), flip `tEnd − t0` 233–250 ms (6 runs), interrupt removal 206 ms after the key, transparent share inside the mark box 12.5% against 12.6% outside at 50 ms, clicks at 500 ms and 1300 ms over a button never reached it, reduced-motion `tEnd − t0` 401 ms, CLS 0, no console entries in `?boot=1`, `?boot=flip` or `?noboot`, and no strip request outside `post` mode.
+> Note: this sketch, minified by next's terser with masks derived from `public/wzrdtechlogo.png`, was run in headless Chromium 1194 at 1440×900 against the §6.2.13 markup and CSS. Post `tEnd` 1588–1602 ms (6 runs), flip `tEnd − t0` 239–246 ms (6 runs), interrupt removal 204 ms after the key, transparent share inside the mark box 10.8% against 11.0% outside at 50 ms, clicks at 500 ms and 1300 ms over a button never reached it, reduced-motion `tEnd − t0` 402 ms, CLS 0, no console entries in `?boot=1`, `?boot=flip` or `?noboot`, and no strip request outside `post` mode. The `localStorage` gate, in one context: the first `?boot=auto` load ran `post` and wrote the key; a reload and a second tab ran `flip` and kept it; a key 43 200 001 ms old, `'x'` or 60 s in the future gave `post`; a key 43 190 000 ms old gave `flip`; `?boot=1`, `?boot=flip`, `?noboot` and the `navigator.webdriver` skip wrote nothing.
 
 #### 6.2.15 Test hooks
 
 | Hook | Effect |
 |---|---|
-| `?noboot` | Skip; nothing is recorded in `sessionStorage` |
-| `?boot=1` | Force the first-visit POST even under `navigator.webdriver`; no `sessionStorage` write |
-| `?boot=flip` | Force the channel flip; no `sessionStorage` write |
-| `?boot=auto` | Real gates, bypassing only the `navigator.webdriver` skip |
+| `?noboot` | Skip; nothing is written to `localStorage` |
+| `?boot=1` | Force the first-visit POST even under `navigator.webdriver`; no `localStorage` write |
+| `?boot=flip` | Force the channel flip; no `localStorage` write |
+| `?boot=auto` | Real gates, including the 12 h `localStorage['wzrd:boot']` timestamp (read and write), bypassing only the `navigator.webdriver` skip |
 | `window.__wzrd.boot` | `{ mode: 'post'\|'flip'\|'static'\|'skip', t0, tEnd, interrupted }`, present in development **and** production |
 
 ### 6.3 Route loading (`loading.tsx`)
@@ -808,21 +813,26 @@ The field never reaches `15` before the image exists.
 
 ### 6.7 Going ON AIR
 
+Behaviour changes: §0.4 BC-5 (hold-to-take) and §0.4 BC-7 (ingest truth). Each applies by default, and the owner vetoes one with `OVERRIDE D10: <BC-id>` (§2.2 D10), after which Devin keeps the 845147c behaviour for that row and records it under Decisions.
+
 The public state is the most consequential signal in the product. Only the WHIP truth gate drives its lamp.
 
 **Air state machine** (field `air` of the broadcast store, §7.17). This table is the only description of the states and how each one looks. The algorithm that moves between them, its publishers and its tests are §8.5.6.
 
 | `air` | Entered when | TallyBar ON AIR lamp | Program keyline (§8.4.4) | `data-broadcast` / house lights | Title and favicon | Announce | Transport button |
 |---|---|---|---|---|---|---|---|
-| `off` | Initial; 3 s after `offair`; or `cue` failed (next row) | Unlit `OFF AIR` (`tally-off` ring, `text-on-screen-2`) | none | Unchanged (`idle`, `connecting` or `preview`) | default | — | `Go live on Twitch` (HoldButton) |
-| `cue` | The operator commits (the hold completes or the dialog is confirmed) | **Steady** amber `CUE` ring | none | `preview` | default | — | `Negotiating…` (width-locked, pending) |
-| `cue` → `off` | Negotiation failed (`connectionState` becomes `failed` or `disconnected`, or the negotiation throws), or 10 000 ms pass after the session arrives with no truth gate. A `cue` session never becomes `stalled` | Cut back to unlit `OFF AIR` | none | Unchanged (`preview`) | default | Via the cue-failure chyron's `role="alert"` (strings: §8.9.6) | `Go live on Twitch` |
+| `off` | Initial; 3 s after `offair`; or `cue` failed (the `cue` → `off` row) | Unlit `OFF AIR` (`tally-off` ring, `text-on-screen-2`) | none | Unchanged (`idle`, `connecting` or `preview`) | default | — | `Go live on Twitch` (HoldButton) |
+| `cue` | The operator commits (the hold completes or the dialog is confirmed) | **Steady** amber `CUE` ring | none | `preview` | default | — | `Negotiating…` (width-locked, pending) until the WHIP session arrives (`cueSince`); then `Stop broadcast` (danger outline), because the session exists (§8.6.5) |
+| `cue`, not confirmed (`cueUnconfirmed: true`) | While `cue`, after the WHIP session has arrived (`cueSince`, §7.17): `connectionState` becomes `disconnected`, or 10 000 ms pass since `cueSince` with no truth gate. `air` **stays `cue`** and nothing is torn down; the truth gate can still take it to `on` | Steady amber `CUE {MM:SS}` (MM:SS since `cueSince`, so a timeout shows `CUE 00:10` and counts on). No blink (§6.1 law 4) | none | `preview` | default | Via the warning chyron's `role="status"` (below) | `Stop broadcast` (danger outline) |
+| `cue` → `off` | While `cue`: `connectionState` becomes `failed` (a terminal WebRTC failure; the session is already dead), or the negotiation throws. `disconnected` and the 10 000 ms timeout never do this, and a `cue` session never becomes `stalled` | Cut back to unlit `OFF AIR` | none | Unchanged (`preview`) | default | `failed`: via the cue-failure chyron's `role="alert"` (strings: §8.9.6). A thrown negotiation: the Twitch panel's `connectError` caption (`role="alert"`, §8.5.8) | `Go live on Twitch` |
 | `on` | Truth gate true | Resolves in 4 steps over 160 ms to a solid `#FF3B30` face with the `tally-ink` label `ON AIR` | 2 px `tally-program` ring on the bezel's **outer** edge, cut in (no transition). The picture is never touched | `on-air`: veil .62 (dark) / .72 (light), speed .02, tweened over 1200 ms | `● ON AIR · stream.wzrd.tech admin`; every `link[rel~="icon"]` → `/brand/icons/favicon-onair.svg` | `announce('On air', 'assertive')` | `Stop broadcast` (danger outline) |
 | `stalled` | `air` is `on` and `connectionState` becomes `failed`/`disconnected`, or `bytesSent` is flat for 4 consecutive 1 s polls (§8.5.6) | `STALLED 00:06` (MM:SS since `stalledSince`), hatched red, `led-stall` 1 Hz × 5, then steady. **Never** reads ON AIR | removed (cut) | stays `on-air` (no retint mid-incident) | kept | Via the stalled chyron's `role="alert"` | `Stop broadcast` |
 | `on` (recovered) | Truth gate true again | ON AIR | cut in | `on-air` | kept | `announce('On air again', 'polite')` + status message | `Stop broadcast` |
-| `offair` | Stop broadcast, the Director session ends, or WHIP fails while stopping | Resolves back to a hollow `OFF AIR` at full `text-on-screen`, held 3 s | none | `preview` (or `idle`): house lights come up over 1200 ms | Restored to the values saved at `on` | — | `Go live on Twitch` |
+| `offair` | 'Stop broadcast', 'End broadcast' (on the stalled or the cue warning chyron), the Director session ends, or WHIP fails while stopping | Resolves back to a hollow `OFF AIR` at full `text-on-screen`, held 3 s | none | `preview` (or `idle`): house lights come up over 1200 ms (from `cue` there is no change: it was never `on-air`) | Restored to the values saved at `on` (from `cue`: unchanged, still the default) | — | `Go live on Twitch` |
 
 > Note: bible §2.3 defines `data-broadcast="on-air"` as "truth gate true". This spec keeps `on-air` during `stalled`, so the carrier does not retint twice during an incident ("Information may move, decoration may not"). The lamp, the chyron and the TWITCH LED carry the stall, and the keyline is cut so the monitor stops claiming a clean program feed.
+
+> Note: a `cue` that is not confirmed is never torn down automatically (§0.4 BC-7). A browser whose `getStats()` reports no growing `bytesSent`, or a slow ingest, would otherwise lose every go-live attempt. The operator decides: 'End broadcast' on the warning chyron, or 'Stop broadcast' on the transport, which replaces 'Negotiating…' as soon as the WHIP session arrives (`cueSince`, before the cue can be unconfirmed), so the push can still be ended after the chyron is dismissed.
 
 **Preconditions.** `data-broadcast="preview"` and a stream key ready. Otherwise the HoldButton is `aria-disabled="true"`: still focusable, but activation is ignored. Its Tooltip shows the existing `title` text 'Start the Director session first' (`TwitchBroadcast.tsx:205`). The live-state title 'Push the live Director output to Twitch ingest' is kept too.
 
@@ -841,7 +851,7 @@ Enter and Space never reach the native `click`: HoldButton's keydown handler cal
 
 The ring is a 20 px SVG circle (`r=8`, stroke 2 px, `stroke-dasharray = 2πr`) whose `stroke-dashoffset` runs from `2πr` to 0, `linear`, over 600 ms. Its stroke is `rgb(var(--c-accent))` over a `--c-border-control` track. It replaces the Radio icon inside the button.
 
-**Truth gate** (`lib/broadcast/useWhipTruth.ts`, created in 8C; a wrapper only, `lib/twitchWhip.ts` is never edited). Signature: `useWhipTruth(session: WhipSession | null, onNegotiationFailed: () => void): void`. Algorithm (the pure `nextAir` reducer, the stall and negotiation-failure rules, `whip` publishing), publishers and tests (`tests/whip-truth.spec.ts`): §8.5.6. Publisher summary: §7.17.
+**Truth gate** (`lib/broadcast/useWhipTruth.ts`, created in 8C; a wrapper only, `lib/twitchWhip.ts` is never edited). Signature: `useWhipTruth(session: WhipSession | null, onNegotiationFailed: () => void): void`. Algorithm (the pure `nextAir` reducer, the stall, cue-not-confirmed and negotiation-failure rules, `whip` publishing), publishers and tests (`tests/whip-truth.spec.ts`): §8.5.6. Publisher summary: §7.17.
 
 **Stalled.** `BroadcastProvider` (§7.6, 4B) is the **only** publisher of the stalled chyron:
 - A **sticky chyron** with `tone:'error'` (`role="alert"`) and the title 'Twitch ingest lost'. A counter `· 00:00:04` (`HH:MM:SS` since `stalledSince`) sits inside an `aria-hidden` span, so the alert is announced once rather than every second. The action is labelled **'End broadcast'** and runs `commands.run('twitch.stop')`. `useTwitchBroadcast` registers `twitch.stop` (`palette: false`, `run: stopBroadcast`) in 8C.
@@ -849,16 +859,24 @@ The ring is a 20 px SVG circle (`r=8`, stroke 2 px, `stroke-dasharray = 2πr`) w
 - The program keyline is cut (§8.4.4). The StatusRail TWITCH LED shows danger (§7.10).
 - On recovery, the chyron is dismissed, the keyline cuts back in, `statusMessage.set({ tone:'success', text:'On air again' })` runs, and a polite announcement plays.
 
-**Cue failure.** On `cue` → `off`, `useTwitchBroadcast` tears the WHIP session down without publishing `offair` and pushes the cue-failure chyron: `tone:'error'`, title "Couldn't start the Twitch broadcast", body 'Twitch ingest never received media. Try again.' (strings listed in §8.9.6). The lamp never reads STALLED for a show that never went on air.
+**Cue not confirmed.** `BroadcastProvider` is also the **only** publisher of the cue warning chyron, which it derives from `air === 'cue' && cueUnconfirmed === true` (§7.17):
+- A **sticky** chyron with `tone:'warning'` (`role="status"`, announced politely) and the title 'Twitch ingest not confirmed'. Its action is labelled **'End broadcast'** and runs `commands.run('twitch.stop')`, the same stop as the stalled chyron. Being sticky, it has the §6.10 dismiss IconButton **'Dismiss'**.
+- The air lock is always held during `cue` (`data-broadcast="preview"`), and under the lock a warning would go to the StatusRail message slot, which has no actions. So BroadcastProvider pushes this one chyron with `airAllow: true` (§7.2): it floats and carries `data-air-allow`.
+- It is pushed at most once per `cueSince`. After 'Dismiss' it does not return while the same `cueSince` stands; the lamp keeps counting and the transport keeps 'Stop broadcast'.
+- BroadcastProvider dismisses it as soon as `air` leaves `cue`: the truth gate gives `on` (with the usual `announce('On air', 'assertive')`), `failed` gives `off` (with the cue-failure chyron below), and 'End broadcast', 'Stop broadcast' or the session ending give `offair`.
+- A timeout or `disconnected` while `cue` never tears the WHIP session down. Only `connectionState === 'failed'` or a thrown negotiation ends a `cue` automatically (§8.5.6).
 
-**Off air:** the house lights come up over 1200 ms, the title and favicon are restored, and `statusMessage.set({ tone:'info', text: 'Off air · ' + tc(aired) })` runs (for example "Off air · 01:12:44", with `aired = now − airSince`).
+**Cue failure.** On `cue` → `off` from `connectionState === 'failed'` (useWhipTruth calls `onNegotiationFailed()`), `useTwitchBroadcast` tears the already-dead WHIP session down without publishing `offair` and pushes the cue-failure chyron: `tone:'error'`, title "Couldn't start the Twitch broadcast", body 'Twitch ingest never received media. Try again.' (strings listed in §8.9.6). A thrown negotiation publishes `off` and shows its message in the Twitch panel's `connectError` caption instead (§8.5.6, §8.5.8). The lamp never reads STALLED for a show that never went on air.
+
+**Off air:** the house lights come up over 1200 ms, the title and favicon are restored, and `statusMessage.set({ tone:'info', text: 'Off air · ' + tc(aired) })` runs (for example "Off air · 01:12:44", with `aired = now − airSince`). The message runs only when `airSince` is set; ending a broadcast that never reached `on` (from `cue`) sets no message.
 
 **Rules:** no sound, no glow, no pulse. **Reduced motion:** every lamp change is a cut, the stall lamp is steady, and the veil and speed change instantly.
 
 **New strings (§6.7)**, byte-for-byte:
-- Lamp words: `OFF AIR`, `CUE`, `ON AIR`, `STALLED {MM:SS}`.
+- Lamp words: `OFF AIR`, `CUE`, `CUE {MM:SS}`, `ON AIR`, `STALLED {MM:SS}`.
 - Document title while on air: `● ON AIR · stream.wzrd.tech admin`.
 - Stalled chyron: title 'Twitch ingest lost', the counter `· {HH:MM:SS}`, action 'End broadcast'.
+- Cue warning chyron: title 'Twitch ingest not confirmed', action 'End broadcast', and the §6.10 dismiss control 'Dismiss'.
 - Announcements: 'On air' (assertive), 'On air again' (polite).
 - Status messages: 'On air again', 'Off air · {HH:MM:SS}'.
 - Used here but listed in §8.9.6: the go-live dialog strings and the cue-failure chyron.
@@ -907,7 +925,7 @@ A chyron is the product's toast: a broadcast lower-third that resolves in and ne
 | Roles | Notices `role="status"`, errors `role="alert"`. Existing library notices and errors keep their roles when they move into chyrons |
 | Stack | At most 3 visible, newest on top, 8 px gap. A 4th dismisses the oldest non-sticky one. If all 3 are sticky, the 4th waits in a queue. A queued chyron is announced at once with `announce(title, tone === 'error' ? 'assertive' : 'polite')` (it is not in the DOM, so its role would never speak), and the oldest visible sticky chyron shows a `+{n} queued` badge in `micro` `text-fg-3` |
 | Placement | §7.15 (per route and breakpoint) |
-| Under the air lock | info, success and warning go to the StatusRail message slot (a cut, no motion). Errors still chyron and carry `data-air-allow` |
+| Under the air lock | info, success and warning go to the StatusRail message slot (a cut, no motion). Errors still chyron and carry `data-air-allow`. The one exception is a chyron pushed with `airAllow: true` (§7.2): it still floats and carries `data-air-allow`. Only BroadcastProvider's cue warning 'Twitch ingest not confirmed' (§6.7) passes it, because its actions must stay reachable during `cue` |
 
 ### 6.11 StreamList
 
@@ -919,6 +937,8 @@ A chyron is the product's toast: a broadcast lower-third that resolves in and ne
 
 ### 6.12 Air lock (`html[data-lock="air"]`)
 
+Behaviour changes: §0.4 BC-2 (the lock), BC-3 (leaving Live Control on air) and BC-4 (`beforeunload` and the mouse back/forward buttons). Each applies by default, and the owner vetoes one with `OVERRIDE D10: <BC-id>` (§2.2 D10), after which Devin keeps the 845147c behaviour for that row and records it under Decisions.
+
 The lock is set whenever `data-broadcast ≠ idle` or `data-rec` is present (§7.17). During a show, nothing in the operator's eyeline moves unless it is information.
 
 | Allowed | Frozen or forbidden | Enforced by (CSS text: §5.14) |
@@ -929,8 +949,9 @@ The lock is set whenever `data-broadcast ≠ idle` or `data-rec` is present (§7
 | The STALLED lamp blink (≤ 5 cycles) | CountUp (final value), DecryptedText (final text), except CONNECT_STEPS during connecting | Hooks: `useBroadcast(deriveLock)`; the connect plate carries `data-air-allow` |
 | The carrier retint (1200 ms, once per state change) | Any change of density, dock height or panel size | `useDensity().locked`; the dock collapse control, the palette's 'Collapse dock'/'Expand dock' and the density commands are disabled with the reason 'Locked while on air' |
 | BayerSpinner inside a pending control (a pending operation is information) | GenerationFrame scanline | The BayerSpinner root carries `data-air-allow` (§7.3); §5.14 air-lock block: `:root[data-lock="air"] .gen-scan` animation off |
-| Error chyrons | Floating info/success/warning chyrons (they go to the StatusRail) | `chyron.push` checks `deriveLock(broadcast.get())` |
+| Error chyrons, and the §6.7 cue warning chyron ('Twitch ingest not confirmed') | Floating info/success/warning chyrons (they go to the StatusRail) | `chyron.push` checks `deriveLock(broadcast.get())`; only a push with `airAllow: true` (the cue warning) floats, with `data-air-allow` |
 | — | HoloCard tilt, HoverClip play, BrandVideo (poster only) | Hooks: `useBroadcast(deriveLock)` |
+| — | MorphSlider autoplay (the Audio dock's artwork carousel, and the same instance in the 'Expand artwork' Sheet): paused on the slide shown (D3 keeps autoplay) | Hook: `useBroadcast(deriveLock)` pauses the autoplay; §12.4.1 lists every pause condition (air lock, reduced motion, dock collapsed, Audio tab hidden, page hidden) |
 | — | Sheet and Dialog open/close animations (0 ms) | §5.14 air-lock block: `:is(dialog, [data-sheet])` animation and transition durations `0s !important` |
 | — | Anything animating inside the monitor or within 24 px of it, except lamps and HUD readouts | Monitor components render static states when locked (§8) |
 | — | Hover transforms anywhere; the nav indicator slide (it jumps) | Primitives never use hover transforms on Live Control; AppNav `instant` flag (§6.4.2) |
@@ -987,7 +1008,7 @@ Reduced motion is driven by the live `useReducedMotion()` hook (§7.2) plus the 
 | Effect | Default | Reduced | Mechanism |
 |---|---|---|---|
 | Carrier | ≤ 30 fps loop | One frame, no rAF loop; re-renders once on a theme or state change | `useReducedMotion` in DitherBackground (§12) |
-| Boot | POST / flip | Static card for 250 ms, then its CSS fade (a 1 ms cut under the global rule); repeat visits skip | `matchMedia` in `BOOT_SCRIPT` |
+| Boot | POST / flip | Static card for 250 ms, then its CSS fade (a 1 ms cut under the global rule); repeat visits within 12 h of the last static card or POST skip | `matchMedia` in `BOOT_SCRIPT` |
 | `px-resolve`, route enter | 160 ms mask steps | None | CSS `animation: none` |
 | Skeleton | 25% field + sweep | Static 25% field | CSS `::after { content: none }` |
 | BayerSpinner | 880 ms cycle | Static: squares at .6, the 2×2 centre at 1 | CSS |
@@ -999,6 +1020,7 @@ Reduced motion is driven by the live `useReducedMotion()` hook (§7.2) plus the 
 | Nav indicator | 200 ms slide | Jumps | `transition={{ duration: 0 }}` |
 | RouteProgress | Stepped growth | Static bar while pending | Hook |
 | CoastLoader, BrandVideo, HoverClip | Play | Still or poster | CSS + hook |
+| MorphSlider autoplay | Next slide every 6 s (`autoplayDelay={6}`, D3) | Paused on the slide shown | `useReducedMotion` (§12.4.1) |
 | HoloCard | Tilt + foil | Static foil at 35° | Hook |
 | Sheets, dialogs | 320 / 160 ms | Instant | Global rule |
 | HoldButton | 600 ms ring | Dialog only | Hook |
@@ -1022,11 +1044,12 @@ Implemented verbatim in §5.14: every `@keyframes` lives only in `app/styles/key
 
 ### 6.16 Acceptance criteria
 
-**How to run.** Run modes are §1.6's: **prod** (`npm run qa:build`, then `env $UNSET ADMIN_AUTH_MODE=edge-only NEXT_TELEMETRY_DISABLED=1 npx next start -p 3109`; a plain `next start` returns 401 and is never a prod check), **dev** (`env $UNSET NEXT_TELEMETRY_DISABLED=1 npx next dev -p 3107`) and **fixture** (dev at `/admin/visual-test?noboot#design-system-visual-test`; the route returns 404 in prod, so fixture items never run on prod). Boot, route-loading, navigation and network items run on **prod** unless marked. Items marked (fixture) run in fixture mode; the broadcast simulator is `#ds-simulator` (§10). Items marked (dev, lock) run on `/admin` in dev after `window.__wzrd.broadcast.publish({ director: 'live', firstFrame: true })` (§7.17, from 3A). Commands whose paths start with `dashboard/`, and `git` commands with such pathspecs, run from the repository root; every other command runs from `dashboard/`. Quote any path containing `(live)`.
+**How to run.** Run modes are §1.6's: **prod** (`npm run qa:build`, then `: "${UNSET:?run the §1.6 step 2 UNSET= line in this same shell first}" && env $UNSET ADMIN_AUTH_MODE=edge-only NEXT_TELEMETRY_DISABLED=1 npx next start -p 3109`; a plain `next start` returns 401 and is never a prod check), **dev** (`: "${UNSET:?run the §1.6 step 2 UNSET= line in this same shell first}" && env $UNSET NEXT_TELEMETRY_DISABLED=1 npx next dev -p 3107`) and **fixture** (dev at `/admin/visual-test?noboot#design-system-visual-test`; the route returns 404 in prod, so fixture items never run on prod). Boot, route-loading, navigation and network items run on **prod** unless marked. Items marked (fixture) run in fixture mode; the broadcast simulator is `#ds-simulator` (§10). Items marked (dev, lock) run on `/admin` in dev after `window.__wzrd.broadcast.publish({ director: 'live', firstFrame: true })` (§7.17, from 3A). Commands whose paths start with `dashboard/`, and `git` commands with such pathspecs, run from the repository root; every other command runs from `dashboard/`. Quote any path containing `(live)`.
 
 **Boot**
 - [ ] `/admin?boot=1` (precondition `window.__wzrd.boot.t0 ≤ 600`; re-run otherwise): `window.__wzrd.boot` is `{ mode:'post', interrupted:false }` with `tEnd ≤ 1617`, and `document.getElementById('wzrd-boot') === null` at `performance.now() ≥ 1650`.
-- [ ] `/admin?boot=auto` twice in one context: the first load records `mode:'post'` and `sessionStorage['wzrd:boot'] === '1'`; the reload records `mode:'flip'` with `tEnd − t0 ≤ 257`.
+- [ ] `/admin?boot=auto` in a fresh browser context (empty `localStorage`; precondition `t0 ≤ 600`, re-run otherwise): the load records `mode:'post'`, and afterwards `Date.now() - Number(localStorage.getItem('wzrd:boot'))` is between `0` and `5000`. A reload, and a second page opened in the same context, each record `mode:'flip'` with `tEnd − t0 ≤ 257` and leave `localStorage.getItem('wzrd:boot')` unchanged.
+- [ ] `/admin?boot=auto` after `page.evaluate` sets `localStorage['wzrd:boot']` to each of `String(Date.now() - 43200001)`, `'x'` and `String(Date.now() + 60000)` (a reload per value; precondition `t0 ≤ 600`): each load records `mode:'post'` and rewrites the key to a timestamp within 5000 ms of `Date.now()`. Set to `String(Date.now() - 43190000)`, the load records `mode:'flip'` and the value is unchanged. `?boot=1`, `?boot=flip` and `?noboot` visits with the key removed leave `localStorage.getItem('wzrd:boot') === null`.
 - [ ] `/admin` with no parameter under Playwright: `mode === 'skip'`, and there is no `#wzrd-boot` at `DOMContentLoaded`.
 - [ ] `/admin?boot=1` with `emulateMedia({ reducedMotion: 'reduce' })` (precondition `t0 ≤ 600`): `mode === 'static'` and `tEnd − t0 ≤ 450`. At `t0 + 100` the canvas computes `display: none` while the wordmark `<img>` computes `opacity: 1`.
 - [ ] Pressing `Shift` at `performance.now() ≈ 500` in `?boot=1`: `interrupted === true`, and the overlay is gone ≤ 220 ms after the key press.
@@ -1060,6 +1083,7 @@ Implemented verbatim in §5.14: every `@keyframes` lives only in `app/styles/key
 - [ ] (fixture) GenerationFrame renders in all 7 phases, and no `canvas` exists under any `[data-generation-frame]`. The `failed` frame contains `SIGNAL LOST ·` and a button named 'Retry'. A `queued` frame without `queuePosition` reads `QUEUE --`. For a `running` frame with `startedAt = now − eta`, `frame.querySelector('[data-gf-field]').style.getPropertyValue('--gf-tile') === 'var(--bayer-4-11)'`.
 - [ ] (fixture) 'Simulate on air' (`air:'on'` with `director:'live', firstFrame:true`): `html[data-broadcast="on-air"]`, `html[data-lock="air"]`, `document.title === '● ON AIR · stream.wzrd.tech admin'`, and every `link[rel~="icon"]` href ends in `/brand/icons/favicon-onair.svg`. 'Simulate off air' restores the title and icons.
 - [ ] (fixture) 'Simulate stalled': the TallyBar ON AIR lamp's text matches `/^STALLED \d\d:\d\d$/`; no element inside the TallyBar and no element inside the `banner` landmark has the text `ON AIR`; the TallyCluster AIR lamp reads `STALLED` and carries `data-steady`. Exactly one `role="alert"` chyron starts with 'Twitch ingest lost', and `getByRole('button', { name: 'End broadcast' })` matches exactly one element. `document.getAnimations().filter(a => a.animationName === 'led-stall')` has length 1, with `effect.getTiming().iterations === 5`.
+- [ ] (dev, lock) Cue not confirmed. On `/admin`, `window.__wzrd.broadcast.publish({ air: 'cue', cueSince: Date.now() - 12000, cueUnconfirmed: true })`: the TallyBar ON AIR lamp's text matches `/^CUE \d\d:\d\d$/` and changes within 2000 ms; the TallyCluster AIR lamp reads `CUE`; no element inside the TallyBar has the text `ON AIR`. Exactly one chyron has `role="status"` and starts with 'Twitch ingest not confirmed'; it carries `data-air-allow` and contains exactly one button named 'End broadcast' and one named 'Dismiss', and the StatusRail message slot does not contain 'Twitch ingest not confirmed'. `document.getAnimations().filter(a => a.animationName === 'led-stall')` is empty. Clicking 'Dismiss' removes the chyron, and 3000 ms later it has not returned. A new `publish({ air: 'cue', cueSince: Date.now(), cueUnconfirmed: true })` (a new `cueSince`) shows it again. `publish({ air: 'off' })` removes it within 500 ms and leaves `get().cueSince === undefined` and `get().cueUnconfirmed === undefined`. `window.__wzrd.broadcast.reset()` afterwards.
 - [ ] (fixture) HoldButton: a 100 ms pointer press opens a dialog titled 'Go live on Twitch?', and a 700 ms pointer hold calls the commit stub once. Pressing Enter for 100 ms on the focused HoldButton opens the dialog, and `document.activeElement` is the 'Not yet' button. Holding Enter for 700 ms calls the commit stub once and opens no dialog. With reduced motion, a 700 ms hold opens the dialog.
 
 **Skeletons, pending, chyrons, air lock, slates, reduced motion**
@@ -1067,6 +1091,7 @@ Implemented verbatim in §5.14: every `@keyframes` lives only in `app/styles/key
 - [ ] (fixture) A pending `Button` has `aria-busy="true"` and `aria-disabled="true"`, has no `disabled` attribute, keeps focus, and its width equals its idle width ± 0.5 px.
 - [ ] (fixture) With the simulator holding the lock and no state change for 2 s, every entry of `document.getAnimations().filter(a => a.playState === 'running')` has an effect target inside `[data-air-allow]`.
 - [ ] (fixture) With the simulator holding the lock ('Simulate recording'), the `#ds-feedback` button 'Push info chyron' renders no chyron and sets the StatusRail message slot text to the pushed title. 'Push error chyron' still renders a `role="alert"` chyron.
+- [ ] (fixture) MorphSlider autoplay pauses under the lock and under reduced motion (D3 keeps autoplay). With the MorphSlider specimen (`[data-specimen="MorphSlider"]`, §10.5.9) scrolled into view, its canvas mounted and the pointer outside it, the selected tab of its 'Song artwork' tablist (`[role="tab"][aria-selected="true"]`) changes within 7000 ms. After 'Simulate recording' (`#ds-simulator`), the selected tab stays the same for 13 000 ms (two 6 s periods); after 'Reset simulator' it changes again within 7000 ms. In a context with `reducedMotion: 'reduce'`, it stays the same for 13 000 ms with no lock.
 - [ ] (fixture) After three presses of `#ds-feedback` 'Push error chyron' (three sticky error chyrons visible), a fourth press renders no fourth chyron, writes its title into `#live-assertive` within 100 ms, and the oldest visible chyron shows `+1 queued`.
 - [ ] (dev, lock) On `/admin`, clicking 'Shotboard' opens a dialog containing 'Leaving Live Control ends the Director session and the broadcast.', `document.activeElement` is the 'Stay' button, and the URL stays `/admin`. 'Stay' closes it and the URL is still `/admin`.
 - [ ] From 8C: `grep -c "onNavigate={guard(" components/ScriptTemplatePicker.tsx` prints `2`. The behaviour on a configured deployment is covered by §8.10.

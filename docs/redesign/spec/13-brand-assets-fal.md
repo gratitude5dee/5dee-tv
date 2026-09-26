@@ -1,8 +1,8 @@
 > **Spec chapter §13 — Brand assets with fal (Coast sheet, GPT Image 2.5 Sunburst, MiniMax H3 Max).** Part of the [`goal.md`](../../../goal.md) spec for the stream.wzrd.tech admin redesign ("PIXEL INSTRUMENT"). Same authority as `goal.md` (§1.2). Cross-references "§N.M" resolve through the Chapter map in `goal.md`. Line references are as of commit `845147c`.
 
-## 13. Brand assets with fal: Coast brand sheet, GPT Image 2.5 Sunburst stills, MiniMax H3 Max motion
+## 13. Brand assets with fal: the Coast character sheet, GPT Image 2.5 Sunburst stills, MiniMax H3 Max motion
 
-This section owns every static and motion brand file: the offline `dashboard/scripts/brand` pipeline, its prompts, the post-processing, the procedural placeholders, the generated manifest, the budgets and the likeness gate. How these assets move is in §6. The `Wordmark` and `CoastLoader` components are in §7.5. The `BrandImage` and `BrandVideo` API and behaviour are owned here (§13.8); §7.5 lists their files and points here. The effects that use them (SymbolRaster, HoloCard, HoverClipButton, PixelFace) are in §12. Paths are repo-relative and line references are **as of 845147c** (the `dashboard/` tree is unchanged at `a52f7c6`). Coast is never gendered: write "Coast" or they/them, in code, prompts, comments and PR text.
+This section owns every static and motion brand file: the offline `dashboard/scripts/brand` pipeline, its prompts, the post-processing, the procedural placeholders, the no-likeness set, the generated manifest, the budgets and the likeness gate. The secrets select one of the three brand modes of §2.1 (D5): no `FAL_KEY` → placeholders (mode 1); `FAL_KEY` only → the no-likeness set (mode 2); `FAL_KEY` plus `COAST_SHEET_URL` or `COAST_REF_URLS` → the Coast set (mode 3). How these assets move is in §6. The `Wordmark` and `CoastLoader` components are in §7.5. The `BrandImage` and `BrandVideo` API and behaviour are owned here (§13.8); §7.5 lists their files and points here. The effects that use them (SymbolRaster, HoloCard, HoverClipButton, PixelFace) are in §12. Paths are repo-relative and line references are **as of 845147c** (the `dashboard/` tree is unchanged at `a52f7c6`). Coast is never gendered: write "Coast" or they/them, in code, prompts, comments and PR text.
 
 ### 13.1 Why, and the principles
 
@@ -20,14 +20,21 @@ This section owns every static and motion brand file: the offline `dashboard/scr
 
 **Principles.** Every rule in §13.2–§13.10 comes from these.
 
-1. **One identity anchor.** Exactly one approved sheet, `coast-brand-sheet-v1`, made from references Coast has approved, is **Image 1** of every later Coast call. Nothing else defines Coast's identity. That excludes earlier generations, the Convex "Sheet history", the Twitch channel, and the "Coast originals" cover art (`components/AssetStudioVisualFixture.tsx:22-27`), unless the user lists those URLs in `COAST_REF_URLS`.
+1. **One identity anchor.** Exactly one approved sheet is **Image 1** of every Coast call (§13.4):
+   - the user's existing Coast character sheet, `COAST_SHEET_URL`, used **directly** (no anchor sheet is generated); otherwise
+   - `coast-brand-sheet-v1`, generated from `COAST_REF_URLS` (references Coast has approved), which becomes Image 1 only after the owner's PR comment `APPROVE coast-brand-sheet <n>` (§1.8 item 4).
+
+   Nothing else defines Coast's identity. That excludes automatic sheet history (earlier generations in `.cache/raw`, and the sheets D2 appends to `referenceAssets`), the Twitch channel, and the "Coast originals" cover art (`components/AssetStudioVisualFixture.tsx:22-27`), unless the user supplies one of them as `COAST_SHEET_URL` or lists it in `COAST_REF_URLS`.
 2. **Exact letterforms are never generated.** The wordmark, "WZRD", the 404 digits and every line of text on the OG card come from the real raster (`public/wzrdtechlogo.png`) or from the PX5×7 pixel font (`lib/pixelFont.json`, §12.3.4). Prompts forbid all text.
-3. **The model proposes, `quantize.mts` decides the pixels.** Every generated still is re-quantised the same way every time: to the brand ramp (PX) or to a 32-colour ordered-dither palette (CHROME). Two builds of the same approved raw are byte-identical.
+3. **The model proposes, `quantize.mts` decides the pixels.** Every generated still is re-quantised the same way every time: to the brand ramp (PX), to PX-natural (Coast PX assets only, after Coast declines the blue ramp, §13.6.0) or to a 32-colour ordered-dither palette (CHROME). Two builds of the same approved raw are byte-identical.
 4. **Offline, run by an operator, never in the app.** The pipeline runs on a human's machine or in a Devin session under D5, and reads `FAL_KEY` from the environment. It calls fal directly with `createFalClient({ credentials })`. It never goes through `/api/fal/*`, never runs inside `next build`, CI or the browser, and never adds a runtime dependency (D8).
-5. **Likeness and consent gate (D5, D9).** Coast pixels are generated only when `FAL_KEY` **and** approved references exist. References come from `COAST_REF_URLS`. Files in `scripts/brand/.cache/refs/` are read only when a human operator passes `run --operator-refs` (§13.4). Supplying the references is the user's confirmation of Coast's consent (§2.1). Raw references and the master sheet never enter `public/`, `app/` or git. Only stylised, quantised outputs ship, and Coast signs off on the finals before merge.
-6. **Provenance.** Every shipped generated file can be traced in the committed `scripts/brand/approved.json`: endpoint, exact prompt, input with references tokenised, request id, and sha256 of the raw and built files. `build` needs no key.
-7. **Complete without a key.** Without the D5 secrets, `build` writes procedural, **non-human** placeholders at the final dimensions, listed with `generated:false`. The UI never shows a fake likeness and never 404s a brand file.
+5. **Likeness and consent gate (D5, D9).** Coast pixels are generated only when `FAL_KEY` **and** a Coast input exist: `COAST_SHEET_URL` (preferred) or `COAST_REF_URLS`. Files in `scripts/brand/.cache/refs/` are read only when a human operator passes `run --operator-refs` (§13.4). Supplying either variable is the user's confirmation of Coast's consent (§2.1). Raw references, the user's sheet and the master sheet never enter `public/`, `app/` or git. Only stylised, quantised outputs ship.
+   - **Devin never judges likeness** (§1.8 item 4). Devin selects variants by the technical checks of §13.10 only, and rerolls only on a technical failure or on the owner's PR comment `REROLL <asset-id>`.
+   - The owner and Coast sign off on likeness, and on the PX blue-ramp stylisation, on the PR contact sheet before merge.
+6. **Provenance.** Every shipped generated file can be traced in the committed `scripts/brand/approved.json`: endpoint, exact prompt, input with references tokenised, request id, sha256 of the raw and built files, whether it shows Coast (`likeness`), and any deviation from the requested generators. `build` needs no key.
+7. **Complete without a key.** Without `FAL_KEY`, `build` writes procedural, **non-human** placeholders at the final dimensions, listed with `generated:false` (mode 1). The UI never shows a fake likeness and never 404s a brand file.
 8. **Budgets are code.** `brand:check` enforces dimensions, bytes, alpha, palettes, provenance and git hygiene. `run` enforces the money cap ($40, D5).
+9. **Real art whenever there is a key.** With `FAL_KEY` but no Coast input, `run` generates the **no-likeness set** (mode 2): the same subjects with props only and no person, from GPT Image 2.5 Sunburst (stills) and MiniMax H3 Max (motion). They ship with `likeness:false` and are replaced by the Coast versions, id by id, when a Coast input arrives (§13.10). Placeholders ship only when `FAL_KEY` is absent. The one exception is `motion/coast-talent-nod`, a Coast gesture with no prop-only equivalent: in mode 2 it keeps `sources: []` (the state of a cut motion asset), and `BrandVideo` shows its poster, the generated no-likeness `talent/coast-portrait`.
 
 **Not in scope.** These ideas come from `docs/redesign/audit/fal.md` and the bible dropped them: the admin hero banner, the section textures, light-theme art variants, a monogram "W", and an H3 loop inside the program monitor (bible O13). Also out: the in-app "Brand style" preset and every in-app pipeline change (D7; §17 lists them).
 
@@ -37,13 +44,13 @@ Status as of 2026-09-25, from the authoring sandbox, where `fal.ai` and `api.fal
 
 | Role | Endpoint id | Status | Evidence | Used by |
 |---|---|---|---|---|
-| Still, edit (primary) | `openai/gpt-image-2.5/sunburst/edit` | **UNVERIFIED** | Appears only in `lib/imageModels.ts:69`; absent from the typings | Every still in §13.6 |
-| Still, text-to-image (primary) | `openai/gpt-image-2.5/sunburst/text-to-image` | **UNVERIFIED** | Only in `lib/imageModels.ts:68` | Nothing in §13.6: every asset shows Coast, so every still is an edit. Kept for future art without Coast |
-| Still, edit (fallback) | `openai/gpt-image-2/edit` | Verified in typings | `GptImage2EditInput` (`:13994`), map entry (`:65019`) | Automatic fallback |
-| Still, text-to-image (fallback) | `openai/gpt-image-2` | Verified in typings | `GptImage2Input` (`:14028`), map entry (`:65015`) | Fallback for the unused text-to-image role |
-| Motion, image-to-video (primary) | `minimax/h3-max/image-to-video` | **UNVERIFIED** | Referenced nowhere. The H3 Max family exists on the account: the realtime `DIRECTOR_MODEL = 'minimax/h3-max/director'` (`components/DirectorPlayer.tsx:27`, opened at `:959`) | Both motion assets |
-| Motion, image-to-video (fallback) | `minimax/h3/image-to-video` | Verified in typings | `H3ImageToVideoInput` (`:14250`), map entry (`:64927`) | Automatic fallback |
-| Motion, identity-drift fallback | `minimax/h3/reference-to-video` | Verified in typings | `H3ReferenceToVideoInput` (`:14272`), map entry (`:64931`) | Only after a variant is rejected for identity drift (§13.6.6) |
+| Still, edit (primary) | `openai/gpt-image-2.5/sunburst/edit` | **UNVERIFIED** | Appears only in `lib/imageModels.ts:69`; absent from the typings | Every Coast still in §13.6 (mode 3) |
+| Still, text-to-image (primary) | `openai/gpt-image-2.5/sunburst/text-to-image` | **UNVERIFIED** | Only in `lib/imageModels.ts:68` | Every no-likeness still in §13.6 (mode 2): with no Coast in the image there is no image input |
+| Still, edit (fallback) | `openai/gpt-image-2/edit` | Verified in typings | `GptImage2EditInput` (`:13994`), map entry (`:65019`) | Automatic fallback for the Coast stills |
+| Still, text-to-image (fallback) | `openai/gpt-image-2` | Verified in typings | `GptImage2Input` (`:14028`), map entry (`:65015`) | Automatic fallback for the no-likeness stills |
+| Motion, image-to-video (primary) | `minimax/h3-max/image-to-video` | **UNVERIFIED** | Referenced nowhere. The H3 Max family exists on the account: the realtime `DIRECTOR_MODEL = 'minimax/h3-max/director'` (`components/DirectorPlayer.tsx:27`, opened at `:959`) | `loader/coast-boot` (motion path, §13.6.2), `motion/coast-talent-nod`, `motion/coast-standby-loop` |
+| Motion, image-to-video (fallback) | `minimax/h3/image-to-video` | Verified in typings | `H3ImageToVideoInput` (`:14250`), map entry (`:64927`) | Automatic fallback for the two `motion/*` assets. Never for `loader/coast-boot`, which falls back to its grid path (§13.6.2) |
+| Motion, reference fallback (Coast only) | `minimax/h3/reference-to-video` | Verified in typings | `H3ReferenceToVideoInput` (`:14272`), map entry (`:64931`) | Only through `run --reroll 1` on a Coast `motion/*` asset, after a technical failure (§13.10) or on the owner's PR comment `REROLL <asset-id>` (§13.6.6) |
 | Realtime anchor | `minimax/h3-max/director` | In production use | `DirectorPlayer.tsx:27`, `:959` | Only the manual H3 Max alternative (below) |
 
 **Verified schema facts (typings).** Re-verify them before coding by running this from `dashboard/`: `grep -n "export type GptImage2EditInput\|export type GptImage2Input\|export type H3ImageToVideoInput\|export type H3ReferenceToVideoInput\|export type I2VOutput\|export type photaOutput\|export type ImageSize = " node_modules/@fal-ai/client/src/types/endpoints.d.ts`
@@ -75,14 +82,14 @@ export function assertImageSize(s: { width: number; height: number }): void {
 }
 ```
 
-All nine generation sizes in §13.6 pass. Checked: 2048×1152, 2048×1024, 1024×1024, 1920×1088, 1088×1920, 1088×1088, 1536×2048, 1536×1024, 2400×1264.
+All nine generation sizes in §13.6 pass. Checked: 2048×1152, 2048×1024, 1024×1024, 1920×1088, 1088×1920, 1088×1088, 1536×2048, 1536×1024, 2400×1264. The Coast and no-likeness variants of an id share its size.
 
 **Verification protocol (mandatory before the first paid call):**
 
-1. Open `https://fal.ai/models/openai/gpt-image-2.5/sunburst/edit/api` and `https://fal.ai/models/minimax/h3-max/image-to-video/api`. Record in the PR "Decisions":
+1. Open `https://fal.ai/models/openai/gpt-image-2.5/sunburst/edit/api`, `https://fal.ai/models/openai/gpt-image-2.5/sunburst/text-to-image/api` and `https://fal.ai/models/minimax/h3-max/image-to-video/api`. Record in the PR "Decisions":
    - the date you read the page;
    - whether the endpoint exists;
-   - the input keys and allowed values for `image_size`, `quality`, `background`, `image_urls` (max count), `image_url`, `end_image_url`, `duration` and `resolution`.
+   - the input keys and allowed values for `image_size`, `quality`, `background`, `image_urls` (max count), `image_url`, `end_image_url`, `duration` (including whether `3` is allowed, for `loader/coast-boot`) and `resolution`.
 2. If a key name or allowed value differs from §13.6, change **only** that endpoint's adapter in `endpoints.mts` (for example, renaming a key). Never change a prompt to fit a schema. List the difference in the PR.
 3. The first still call on any endpoint is a draft (`quality: 'low'`, `num_images: 1`).
    - `run --tier final` refuses a **still** endpoint until `.cache/probe.json` records a successful draft on it (`probe: <endpoint> not verified by a draft yet`).
@@ -96,9 +103,15 @@ All nine generation sizes in §13.6 pass. Checked: 2048×1152, 2048×1024, 1024�
      3. Retry once on the same endpoint.
      4. If that fails too, switch to the fallback endpoint.
      The prompt text is never shortened.
-   - `openai/gpt-image-2/edit` has no `background` key, so a transparent asset always uses the magenta key there.
+   - `openai/gpt-image-2/edit` and `openai/gpt-image-2` have no `background` key (`GptImage2Input`, `:14028-14053`), so a transparent asset always uses the magenta key there.
    - Every switch is written to the ledger and, on approval, to `approved.json`. Its `endpoint` field records what actually ran.
    - There is weak evidence that 2.5 accepts `background`: the app sends `background: 'auto'` on every GPT Image 2.5 call today (`lib/imageModels.ts:128`). Whether `'transparent'` works is unverified.
+5. **Deviations are disclosed.** The owner named GPT Image 2.5 Sunburst (`openai/gpt-image-2.5/sunburst/*`) for stills and MiniMax H3 Max (`minimax/h3-max/image-to-video`) for motion. A shipped asset made any other way is a deviation from the request:
+   - a still from `openai/gpt-image-2/edit` or `openai/gpt-image-2`;
+   - a motion asset from `minimax/h3/image-to-video` or `minimax/h3/reference-to-video`;
+   - `loader/coast-boot` from its grid path (a Sunburst sheet instead of H3 Max motion, §13.6.2).
+
+   At each such switch, `run` prints `DEVIATION <id>: <requested> → <used> (<reason>)`, for example `DEVIATION slate/clips: openai/gpt-image-2.5/sunburst/edit → openai/gpt-image-2/edit (404)`. `approve` records `deviation: { requested, reason }` in the asset's `approved.json` entry (`null` otherwise). `plan --deviations` prints one line per approved asset with a deviation, `- <id> → <endpoint used> → <reason> (requested <requested>)`. When it prints anything, the brand PR body **starts** with a `## Deviation from request` section that contains exactly those lines (§13.10 step 11).
 
 **Manual H3 Max alternative.** **Human operator only; Devin never runs it** (§1.8 item 3): it opens a paid realtime Director session and needs a browser `MediaStream`. It is unverified end to end. If a motion asset would need it, Devin lists it under Deferred / blocked as "not run (paid)".
 1. Upload the approved still (the raw from `.cache/raw/…`) with the upload button of the 'First frame (optional)' field. Paste the same URL into 'Last frame of first chunk (optional)' (`components/DirectorSettingsForm.tsx:134-155`).
@@ -116,14 +129,14 @@ All nine generation sizes in §13.6 pass. Checked: 2048×1152, 2048×1024, 1024�
 dashboard/
   scripts/brand/
     generate.mts            CLI entry: plan | run | approve | build | check
-    assets.mts              canonical asset list as data (§13.6): ids, tier, size, inputs, needs, outputs, budgets
-    prompts.mts             STYLE_PX, STYLE_CHROME, IDENTITY, IMAGE2_WORDMARK, CONSTRAINTS, BG, compose(), per-asset parts (§13.5, §13.6)
+    assets.mts              canonical asset list as data (§13.6): ids, tier, size, Coast and no-likeness variants, inputs, needs, outputs, budgets
+    prompts.mts             STYLE_PX, STYLE_PX_COAST, STYLE_CHROME, STYLE_CHROME_PROPS, IDENTITY, IMAGE2_WORDMARK, CONSTRAINTS, CONSTRAINTS_NONE, BG, compose(), per-asset parts (§13.5, §13.6)
     endpoints.mts           endpoint ids, fallbacks, per-endpoint input adapters, droppable keys
     fal.mts                 client, uploads, queue submit/status/result, semaphore(3), cache, ledger (the ONLY module importing @fal-ai/client)
     pricing.mts             live pricing + fallback table + estimate()
-    quantize.mts            PX and CHROME quantisers, median cut, magenta key, alpha threshold, outline, nearest upscale, sprite slicer
+    quantize.mts            PX, PX-natural and CHROME quantisers, median cut, magenta key, alpha threshold, outline, nearest upscale, sprite slicer
     encode.mts              sharp encode ladders, favicon.ico writer, SVG rect writer, pixel-font text renderer
-    video.mts               ffmpeg resolution, frame extraction, loop seam, per-frame quantise, WebM/MP4 ladders
+    video.mts               ffmpeg resolution, frame extraction, the loader's 8-frame pick and loader check, loop seam, per-frame quantise, WebM/MP4 ladders
     placeholders.mts        procedural non-human placeholders (§13.7)
     manifest.mts            writes public/brand/manifest.json, lib/brandAssets.ts, components/boot/masks.ts
     check.mts               brand:check rules BC-01…BC-16 and the contact sheet (§13.9)
@@ -147,14 +160,15 @@ The `.cache/` layout (never committed):
 ```text
 scripts/brand/.cache/
   refs/                         identity references: url-<n>.<ext> downloaded from COAST_REF_URLS; top-level files placed by a human operator are read only with run --operator-refs (§13.4)
-  refs/anchor/                  coast-brand-sheet-v1.png (approved master sheet) and wordmark-material.png; a subfolder, so never read as identity refs
-  raw/<assetId>/                <key16>-<i>.<png|mp4|webm>, <key16>.meta.json, index.json (ordered variants #1, #2, …)
+  refs/anchor/                  the Image 1 anchor: coast-sheet-user.png (COAST_SHEET_URL, re-encoded, §13.4) or coast-brand-sheet-v1.png (the approved generated sheet); also wordmark-material.png; a subfolder, so never read as identity refs
+  raw/<assetId>/                <key16>-<i>.<png|mp4|webm>, <key16>.meta.json, index.json (ordered variants #1, #2, …, each with its likeness coast|none and, for loader/coast-boot, its path motion|grid)
   frames/<assetId>/             ffmpeg scratch, deleted at the end of build
   contact/<tier>-<yyyymmdd-hhmmss>.png   review sheets written by run
+  contact/sheet-final.png       the two coast-brand-sheet-v1 final variants for the §1.8 item 4 question (§13.10 step 4); no references on it
   uploads.json                  sha256 → { url, uploadedAt }; entries older than 20 h are re-uploaded
   requests.jsonl                ledger, one JSON object per line (the submit lines are also in the committed spend.jsonl)
   pending.json                  cache key → { endpoint, requestId } for submitted, unfinished requests
-  selection.json                assetId → { variant, canonicalPromptSha256, endpoint, transparency } approved drafts (gate for --tier final)
+  selection.json                assetId → { coast?: sel, none?: sel }, sel = { variant, canonicalPromptSha256, endpoint, transparency, path? }: approved drafts per likeness (gate for --tier final)
   probe.json                    endpoint → { ok: true, at, assetId } after the first successful draft (still) or final (motion)
 ```
 
@@ -162,7 +176,7 @@ Asset ids contain `/` (for example `slate/clips`), so `raw/slate/clips/` is a ne
 
 #### 13.3.2 Runtime rules
 
-- **Node.** Requires Node ≥ 22.6; `npm run brand:plan` prints the Node version first. Nothing pins Node (`dashboard/package.json` has no `engines` field and there is no `.nvmrc`), so every `brand:*` script that runs Node passes `--experimental-strip-types`: 22.6–22.17 need it, and later versions accept it as a no-op (`node --experimental-strip-types -e 1` exits 0 on 22.22.2). It is a flag, not a loader. On the measured Node v22.22.2, `node -p process.features.typescript` prints `strip`, and an `.mts` file that imports another `.mts` file runs with no warning (verified). Never add `tsx`, `ts-node` or a loader.
+- **Node.** Requires Node ≥ 22.18, the project minimum (goal.md §1.5; 22.22.2 recommended, pinned by `dashboard/.nvmrc` from 0A; `dashboard/package.json` has no `engines` field). `npm run brand:plan` prints the Node version first. Every `brand:*` script that runs Node still passes `--experimental-strip-types`, which Node ≥ 22.18 accepts as a no-op (`node --experimental-strip-types -e 1` exits 0 on 22.22.2), so the scripts state the flag explicitly. It is a flag, not a loader. On the measured Node v22.22.2, `node -p process.features.typescript` prints `strip`, and an `.mts` file that imports another `.mts` file runs with no warning (verified). Never add `tsx`, `ts-node` or a loader.
 - **Erasable TypeScript only.**
   - Allowed: annotations, `type`, `interface`, `as`, `satisfies`, `import type`, `export type`.
   - Banned: `enum`, `const enum`, `namespace` with values, constructor parameter properties, `import x = require()`, `export =`, decorators, JSX.
@@ -199,7 +213,7 @@ Asset ids contain `/` (for example `slate/clips`), so `raw/slate/clips/` is a ne
   ```
 
   - `sharp` is pinned to the version `next` already resolves (`node -p "require('sharp/package.json').version"` prints `0.34.5`), so no second copy installs.
-  - No script reads an env file. `FAL_KEY` and `COAST_REF_URLS` come only from the process environment (Devin secrets). Never create `dashboard/.env.local` (§1.6 step 0, §2.1).
+  - No script reads an env file. `FAL_KEY`, `COAST_SHEET_URL` and `COAST_REF_URLS` come only from the process environment (Devin secrets). Never create `dashboard/.env.local` (§1.6 step 0, §2.1).
   - `approve` has no npm alias. Run `node --experimental-strip-types scripts/brand/generate.mts approve …` from `dashboard/`.
   - Never add `prebuild`, `postinstall` or `pages:build` hooks that call the pipeline.
 - **ffmpeg.**
@@ -230,28 +244,30 @@ Exit codes:
 | `0` | OK |
 | `1` | Check failed |
 | `2` | Usage error |
-| `3` | Missing prerequisite: key, references, sheet, ffmpeg or `lib/pixelFont.json` |
+| `3` | Missing prerequisite: key, Coast input, sheet, ffmpeg or `lib/pixelFont.json` |
 | `4` | Budget exceeded, or `--yes` required |
 | `5` | CI refusal |
 | `6` | fal error after all fallbacks |
 
 | Command | Flags | Behaviour |
 |---|---|---|
-| `plan` | `--only <glob>` · `--tier draft\|final\|all` (default `all`) · `--json` · `--list <assetId>` · `--ledger` | Makes no generation calls. Prints one row per job: asset, tier, endpoint (fallback), `image_size`, quality, `num_images`, estimated USD, price source, `needs`, and cache status (`hit`/`miss`/`pending`). Then prints totals: draft, final, motion, contingency, ledger to date, remaining budget. Works without `FAL_KEY` (price source `fallback`). `--list` prints the variant index of one asset: `#n`, tier, key16, endpoint, dimensions, first 8 characters of the sha256, and `selected`/`approved` flags. `--ledger` prints only the ledger summary |
-| `run` | `--tier draft\|final` (required) · `--only <globs>` · `--budget-usd <n>` (default `40`) · `--yes` · `--allow-ci` · `--reroll <n>` (default `0`) · `--dry-run` · `--operator-refs` (human operator only, §13.4) | Checks, in this order: CI refusal (exit 5), `FAL_KEY` (exit 3), references (§13.4; exit 3 when `COAST_REF_URLS` is empty without `--operator-refs`), budget (exit 4). Then it uploads, builds each job's input, checks the cache, submits with concurrency 3, downloads, writes the ledger, prints a variant list, and writes `.cache/contact/<tier>-<stamp>.png`. See the tier and reroll rules below this table |
-| `approve` | `<assetId> <n>` · `<assetId> --manual <file>` · `--trim-start <s>` (motion, default `0`) · `--seam auto\|off` (loop, default `auto`) | `<n>` is the variant `#n` from `plan --list`. Approving a **draft** variant writes it to `.cache/selection.json`, which gates the final. Approving a **final** variant writes it to `approved.json`. Approving `coast-brand-sheet-v1` also copies the raw to `.cache/refs/anchor/coast-brand-sheet-v1.png`. `--manual` registers a Live Control recording (§13.2) |
+| `plan` | `--only <glob>` · `--tier draft\|final\|all` (default `all`) · `--likeness coast\|none` (default below) · `--json` · `--list <assetId>` · `--ledger` · `--deviations` | Makes no generation calls. Its first line names the Node version; its second line is `likeness: coast (COAST_SHEET_URL)`, `likeness: coast (COAST_REF_URLS)` or `likeness: none (no Coast input)`. Prints one row per job: asset, likeness, tier, endpoint (fallback), `image_size`, quality, `num_images`, estimated USD, price source, `needs`, and cache status (`hit`/`miss`/`pending`). Then prints totals: draft, final, motion, contingency, ledger to date, remaining budget. Works without `FAL_KEY` (price source `fallback`) and without a Coast input. `--list` prints the variant index of one asset: `#n`, likeness, tier, path (`loader/coast-boot` only), key16, endpoint, dimensions, first 8 characters of the sha256, and `selected`/`approved` flags. `--ledger` prints only the ledger summary. `--deviations` prints only the deviation lines of §13.2 item 5 |
+| `run` | `--tier draft\|final` (required) · `--only <globs>` · `--likeness coast\|none` · `--grid` (only with `--only loader/coast-boot`, §13.6.2) · `--budget-usd <n>` (default `40`) · `--yes` · `--allow-ci` · `--reroll <n>` (default `0`) · `--dry-run` · `--operator-refs` (human operator only, §13.4) | Checks, in this order: CI refusal (exit 5), `FAL_KEY` (exit 3), the Coast input for `--likeness coast` (§13.4; exit 3 when `COAST_SHEET_URL` and `COAST_REF_URLS` are both empty and `--operator-refs` is absent), budget (exit 4). Then it prints the §13.4 consent line, uploads, builds each job's input, checks the cache, submits with concurrency 3, downloads, writes the ledger, prints a variant list, and writes `.cache/contact/<tier>-<stamp>.png`. `--likeness none` plans only the ids that have a no-likeness variant (§13.6) and never reads a Coast input. See the tier and reroll rules below this table |
+| `approve` | `<assetId> <n>` · `<assetId> --manual <file>` · `<assetId> --quantize px\|px-natural` · `--trim-start <s>` (motion, default `0`) · `--seam auto\|off` (loop, default `auto`) | `<n>` is the variant `#n` from `plan --list`; the variant carries its likeness (and, for the loader, its path). Approving a **draft** variant writes it to `.cache/selection.json`, which gates the final. Approving a **final** variant writes it to `approved.json`, replacing any earlier entry of that id (so a Coast final replaces the no-likeness one). Approving `coast-brand-sheet-v1` also copies the raw to `.cache/refs/anchor/coast-brand-sheet-v1.png`; Devin runs it only after the owner's PR comment `APPROVE coast-brand-sheet <n>`, with the same `<n>` (§1.8 item 4). Approving a `loader/coast-boot` motion variant first runs the loader check (§13.6.2) and exits 1 with `LOADER-CHECK fail <rule>` when it fails. `--quantize` makes no call: it rewrites only `build.quantize` of an approved Coast PX asset (`loader/coast-boot`, `avatar/coast-px`, `slate/*`), after the owner's PR comment `PX-NATURAL` (§13.10). `--manual` registers a Live Control recording (§13.2) |
 | `build` | `--only <glob>` · `--placeholders` | Offline and repeatable: never imports `fal.mts` and makes zero network requests (proved under `no-network.mjs`, §13.3.7). For each asset: if an approved raw is in `.cache`, build it; if the asset is approved but its raw is absent, keep the committed outputs, which must hash-match `approved.json`; otherwise build placeholders (§13.7). Derived assets (wordmark, masks, icons) always build. Writes `public/brand/manifest.json`, `lib/brandAssets.ts` and `components/boot/masks.ts`. No output contains a timestamp, so a second run produces no git diff. `--placeholders` forces placeholders everywhere (for tests) |
 | `check` | `--contact-sheet <path>` · `--rebuild` | Runs BC-01…BC-16 (§13.9) and prints a table of violations. `--contact-sheet` writes a PNG of every shipped image (§13.10). `--rebuild` rebuilds into a temp dir and compares sha256 (needs the `.cache` raws) |
 
-**`run` tier and reroll rules:**
+**`run` tier, likeness and reroll rules:**
+- **Likeness.** The default for `plan` and `run` is `--likeness coast` when `COAST_SHEET_URL` or `COAST_REF_URLS` is non-empty, else `--likeness none`. `coast` jobs use each id's Coast variant and `none` jobs its no-likeness variant (§13.6). `run --likeness none` while a Coast input exists is allowed: that is how §13.10 step 4 makes the no-likeness set while the generated sheet awaits approval.
 - **Draft:** `quality: 'low'`, `num_images: 1`.
 - **Final:** `quality: 'high'`, `num_images: 2`.
-  - It requires a selected draft whose canonical prompt hash (taken before any magenta switch) equals the current one.
+  - It requires a selected draft of the same likeness (and, for the loader, the same path) whose canonical prompt hash (taken before any magenta switch) equals the current one.
   - It reuses that draft's endpoint and exact prompt, so only `quality` and `num_images` change.
-- Motion jobs run only with `--tier final`.
-- An asset whose `needs` are not approved is skipped with `SKIP <id>: needs <dep> approved`.
+- Motion jobs run only with `--tier final`. `loader/coast-boot` runs its motion path by default and its grid path (still tiers, draft and final) with `--grid` (§13.6.2).
+- An asset whose `needs` are not approved is skipped with `SKIP <id>: needs <dep> approved`. A Coast still needs an approved anchor: `approved.json` `sheet` is non-null (from `COAST_SHEET_URL`, or `coast-brand-sheet-v1` after the owner's `APPROVE coast-brand-sheet <n>`).
+- **Who rerolls.** Devin passes `--reroll` only after a technical failure (§13.10) or on the owner's PR comment `REROLL <asset-id>`, never for a likeness reason (§1.8 item 4).
 - **Stills:** `--reroll n` adds `"reroll": n` to the cache key only, never to the request. `n` is at most the asset's `maxRerolls`: 2 for the sheet, 1 for everything else.
-- **Motion:** `--reroll 1` selects `minimax/h3/reference-to-video`, the identity-drift fallback (§13.6.6).
+- **Motion:** for a Coast `motion/*` asset, `--reroll 1` selects `minimax/h3/reference-to-video`, the reference fallback (§13.6.6), which is a deviation (§13.2 item 5). For `loader/coast-boot` and the no-likeness `motion/coast-standby-loop`, `--reroll 1` resubmits `minimax/h3-max/image-to-video` with `"reroll": 1` in the cache key.
 - `--dry-run` resolves cache hits and cost without uploading or calling.
 
 `--only` takes a comma-separated list of globs over asset ids. `*` matches within one segment and `**` matches across segments (`slate/*`, `standby/**,talent/**`).
@@ -320,33 +336,43 @@ Part 3B commits this initial content: `{ "version": 1, "sheet": null, "assets": 
 ```ts
 type Approved = {
   version: 1
-  sheet: null | {
-    assetId: 'coast-brand-sheet-v1'
-    endpoint: string; requestId: string; prompt: string; promptSha256: string
-    input: Record<string, unknown>        // image_urls → ["coast-ref-1", …, "coast-ref-n"]
-    raw: { sha256: string; width: 2048; height: 1152 }
-    refs: { count: number; sha256: string[] } // hashes of the identity references used; never URLs or file names
-    approvedAt: string                      // ISO date
-  }
+  sheet: null
+    | {                                     // COAST_SHEET_URL (§13.4); written by the first run that uploads it
+        source: 'user'
+        raw: { sha256: string; width: number; height: number } // the re-encoded PNG uploaded as Image 1; never the URL
+        approvedAt: string                  // ISO date; supplying the URL is the user's approval (§2.1)
+      }
+    | {                                     // generated from COAST_REF_URLS (§13.6.1)
+        source: 'generated'
+        assetId: 'coast-brand-sheet-v1'
+        endpoint: string; requestId: string; prompt: string; promptSha256: string
+        input: Record<string, unknown>      // image_urls → ["coast-ref-1", …, "coast-ref-n"]
+        raw: { sha256: string; width: 2048; height: 1152 }
+        refs: { count: number; sha256: string[] } // hashes of the identity references used; never URLs or file names
+        approvedAt: string                  // ISO date
+        approvedBy: string                  // the owner whose PR comment was `APPROVE coast-brand-sheet <n>`
+      }
   assets: Record<string, {
     tier: 'PX' | 'CHROME' | 'MOTION'
+    likeness: boolean                       // true: the Coast variant (Image 1 = the sheet); false: the no-likeness variant
     endpoint: string                        // the endpoint that actually produced the raw
+    deviation: null | { requested: string; reason: string } // §13.2 item 5
     requestId: string | null                // null only for --manual
     prompt: string                          // verbatim, as sent
     promptSha256: string
-    input: Record<string, unknown>          // image_urls → ["coast-brand-sheet", "wzrdtech-wordmark"]; image_url/end_image_url → "<assetId>@raw"
+    input: Record<string, unknown>          // image_urls → ["coast-brand-sheet", "wzrdtech-wordmark"] (absent for no-likeness stills); image_url/end_image_url → "<assetId>@raw"
     transparency?: 'alpha' | 'magenta-key'
-    sheetSha256: string                     // must equal sheet.raw.sha256
+    sheetSha256: string | null              // likeness true: equals sheet.raw.sha256; likeness false: null
     raw: { sha256: string; width: number; height: number; variant: number }
-    build: { trimStartS?: number; seam?: 'auto' | 'off' }
-    outputs: Record<string, string>         // repo-relative path → sha256 of the built file
+    build: { trimStartS?: number; seam?: 'auto' | 'off'; quantize?: 'px' | 'px-natural'; path?: 'motion' | 'grid' } // quantize: Coast PX only; path: loader/coast-boot only
+    outputs: Record<string, string>         // repo-relative path → sha256 of the built file ({} for loader/coast-pose)
     approvedAt: string
-    approvedBy: string                      // 'devin' or the human's name
+    approvedBy: string                      // 'devin' (technical checks only, §13.10; never a likeness decision) or the human's name
   }>
 }
 ```
 
-`approved.json` and `spend.jsonl` must never contain `http`, `Key `, or any `COAST_REF_URLS` value (BC-09).
+`approved.json` and `spend.jsonl` must never contain `http`, `Key `, or any `COAST_SHEET_URL` or `COAST_REF_URLS` value (BC-09).
 
 #### 13.3.6 Budget guard and pricing (`pricing.mts`)
 
@@ -388,10 +414,11 @@ type Approved = {
 - **Redaction.** `util.mts` exports `redact(s)`, which is applied to every console line, thrown message (including the 422 error bodies that §13.2 prints) and ledger write. It replaces, in this order:
   - `/Key\s+[A-Za-z0-9_:.\-]{8,}/g` with `Key [REDACTED]`;
   - the literal `FAL_KEY` value with `[REDACTED]`;
+  - the `COAST_SHEET_URL` value with `sheet-url`;
   - every `COAST_REF_URLS` entry and every uploaded reference URL with `ref-<n>`;
-  - every other URL whose host is `fal.media` or `fal.run` or ends in `.fal.media` or `.fal.run` (outputs, the master-sheet and `<assetId>@raw` uploads), and every URL listed in `.cache/uploads.json`, with `fal-url-<sha8>` (the first 8 hex digits of the URL's sha256).
-  References are printed only as `ref-<n> (sha256:<first 8>)`. `redact('https://v3.fal.media/files/a/b.png')` contains no `fal.media` (§13.11).
-- **Network scope.** `run` talks only to fal hosts and to the hosts in `COAST_REF_URLS`. `build` and `check` make zero network requests. Node's global `fetch` (undici) ignores `HTTP_PROXY` and `HTTPS_PROXY` (measured on Node 22.22.2: a `fetch` with both set to `http://127.0.0.1:9` returned 200), so a dead proxy proves nothing. §13.11 runs `build` and `check` under this preload instead, which makes every network API throw:
+  - every other URL whose host is `fal.media` or `fal.run` or ends in `.fal.media` or `.fal.run` (outputs, the anchor-sheet and `<assetId>@raw` uploads), and every URL listed in `.cache/uploads.json`, with `fal-url-<sha8>` (the first 8 hex digits of the URL's sha256).
+  References are printed only as `ref-<n> (sha256:<first 8>)`, and the user's sheet only as `sheet-url (sha256:<first 8>)`. `redact('https://v3.fal.media/files/a/b.png')` contains no `fal.media` (§13.11).
+- **Network scope.** `run` talks only to fal hosts and to the hosts of `COAST_SHEET_URL` and `COAST_REF_URLS`. `build` and `check` make zero network requests. Node's global `fetch` (undici) ignores `HTTP_PROXY` and `HTTPS_PROXY` (measured on Node 22.22.2: a `fetch` with both set to `http://127.0.0.1:9` returned 200), so a dead proxy proves nothing. §13.11 runs `build` and `check` under this preload instead, which makes every network API throw:
 
   ```js
   // dashboard/scripts/brand/no-network.mjs — preload for the offline checks (docs/redesign/spec/13-brand-assets-fal.md §13.3.7). Never imported by the pipeline.
@@ -413,46 +440,60 @@ type Approved = {
   Verified on Node 22.22.2 with `node --experimental-strip-types --import ./no-network.mjs`: `fetch`, `https.request` and `net.connect` each throw `network disabled (brand offline check)`.
 - **Never in the app.** No file under `app`, `components`, `hooks` or `lib` imports from `scripts/brand`. The generated files only name it in a comment.
 
-### 13.4 The reference protocol
+### 13.4 The Coast input protocol
 
-1. **Sources**, in this order:
-   - `COAST_REF_URLS`: comma-separated `https` URLs. For example, @coast's identity references from Characters → `referenceAssets`, which are Convex storage URLs.
+1. **Sources**, in this order of precedence (§2.1):
+   - **`COAST_SHEET_URL`** (preferred): one `https` URL of the approved Coast character sheet the user already has, for example @coast's current primary sheet in Characters (a Convex storage URL).
+     - It is fetched with `redirect: 'follow'`. The response must be 2xx, have `content-type: image/*`, and be at most 20 MB. It must decode with sharp and have a short side of at least 512 px.
+     - sharp auto-orients it and re-encodes it to PNG (`.rotate().png()`), which strips EXIF and GPS data. It is saved as `.cache/refs/anchor/coast-sheet-user.png`.
+     - It is used **directly** as Image 1 of every Coast call. No anchor sheet is generated: `run` prints `SKIP coast-brand-sheet-v1: COAST_SHEET_URL supplied`, and `COAST_REF_URLS` is not read.
+     - The first `run` that uses it writes `sheet: { source: 'user', raw, approvedAt }` into `approved.json` (§13.3.5). There is no `approve` step: supplying the URL is the user's approval and confirms Coast's consent (§2.1).
+     - If it fails any rule above, `run` prints `COAST_SHEET_URL unusable (<reason>); continuing without it` (redacted), lists `COAST_SHEET_URL unusable` under "Deferred / blocked", and continues with the next source.
+   - **`COAST_REF_URLS`**, only when no usable `COAST_SHEET_URL` exists: comma-separated `https` URLs of references Coast has approved, for example @coast's identity references from Characters → `referenceAssets` (Convex storage URLs).
      - Each is fetched with `redirect: 'follow'`.
      - The response must be 2xx, have `content-type: image/*`, and be at most 20 MB.
      - It is saved as `.cache/refs/url-<n>.<ext>`.
+     - They make `coast-brand-sheet-v1` (§13.6.1). No other Coast asset is generated until the owner comments `APPROVE coast-brand-sheet <n>` (§1.8 item 4).
    - Files a human operator put directly in `.cache/refs/`: top level only, `*.png|*.jpg|*.jpeg|*.webp`, sorted by name. They are read **only** with `run --operator-refs`, which only a human passes. Without it, top-level files in `.cache/refs/` are ignored.
    - Devin never passes `--operator-refs` and never writes, copies or downloads files into `scripts/brand/.cache/refs/` (§2.1). The pipeline's own writes are the exception: the `url-<n>` downloads above and the `refs/anchor/` files (§13.3.1).
-   - Without `--operator-refs`, if `COAST_REF_URLS` is empty, `run` exits 3 with `no approved Coast references (D5): COAST_REF_URLS is empty`.
-2. **Validation.**
+   - With `--likeness coast` and without `--operator-refs`, if `COAST_SHEET_URL` and `COAST_REF_URLS` are both empty, `run` exits 3 with `no approved Coast input (D5): COAST_SHEET_URL and COAST_REF_URLS are empty`. With neither variable set, the default is `--likeness none`, and `run` makes the no-likeness set instead (§13.3.3).
+2. **Validation of references** (`COAST_REF_URLS` and operator files only).
    - Each reference must decode with sharp and have a short side of at least 512 px.
    - It must not be one of the pipeline's own outputs: its sha256 must not match any file under `.cache/raw/**`, any `raw.sha256` in `approved.json`, or `sheet.raw.sha256`.
    - A reference that fails is skipped with a redacted warning.
+   - This self-output check **never** applies to `COAST_SHEET_URL`: the user may designate a sheet that the app or this pipeline generated earlier.
 3. **Count.**
    - De-duplicate by sha256 and use the first **4**.
    - If more are supplied, print `using 4 of <n> references (the pipeline accepts at most 4 identity references)`.
-   - Never use a previously generated sheet as an identity reference. That includes the sheets D2 describes as appended to the references.
-4. **Zero usable references** (every supplied reference failed step 2). Every Coast job (all of §13.6) is skipped with `SKIP <id>: no approved Coast references (D5)`, and `build` ships placeholders. The script never asks for references and never waits.
-5. **Consent line.** At the start of `run`, print once: `Using <n> approved Coast references (COAST_REF_URLS). Proceeding on the user's confirmation of Coast's consent (goal.md §2.1).` There is no interactive prompt.
+   - Never use a previously generated sheet as an identity reference. That rule covers automatic sheet history only: the sheets D2 describes as appended to `referenceAssets`, and every file in `.cache/raw`. A sheet the user designates enters only through `COAST_SHEET_URL`, as Image 1, never as a reference photo in `SHEET(n)`.
+4. **Zero usable Coast input** (no usable `COAST_SHEET_URL`, and every supplied reference failed step 2). Every Coast job is skipped with `SKIP <id>: no approved Coast input (D5)`. Devin then makes the no-likeness set (`--likeness none`, mode 2), so placeholders still ship only without `FAL_KEY`. The script never asks for a Coast input and never waits.
+5. **Consent line.** At the start of `run`, print exactly one of these once:
+   - `Using the Coast character sheet from COAST_SHEET_URL as Image 1. Proceeding on the user's confirmation of Coast's consent (goal.md §2.1).`
+   - `Using <n> approved Coast references (COAST_REF_URLS). Proceeding on the user's confirmation of Coast's consent (goal.md §2.1).`
+   - `No Coast input: generating the no-likeness set (likeness:false, goal.md D5).` (every `--likeness none` run)
+
+   There is no interactive prompt.
 6. **Upload.**
-   - sharp auto-orients each reference and re-encodes it to PNG (`.rotate().png()`), which strips EXIF and GPS data.
+   - sharp auto-orients each reference and re-encodes it to PNG (`.rotate().png()`), which strips EXIF and GPS data. The user's sheet is already re-encoded (step 1).
    - It is uploaded with `fal.storage.upload(new Blob([buf], { type: 'image/png' }), { lifecycle: { expiresIn: '1d' } })`. The installed client accepts `'1d'` for `UploadOptions.lifecycle.expiresIn` (`src/storage.d.ts`).
    - Upload URLs are cached in `.cache/uploads.json` by content hash and re-uploaded after 20 h.
 7. **Image roles.**
-   - The **sheet call** receives only the references: `image_urls: [ref-1 … ref-n]`, addressed as "Images 1–n".
-   - **Every other Coast still**: Image 1 is the approved `coast-brand-sheet-v1`, uploaded from `.cache/refs/anchor/`.
-   - **CHROME stills** (standby ×3, portrait, OG) add Image 2, the wordmark, as a **material-only** reference. It is `public/wzrdtechlogo.png` flattened onto `#05080F` (`sharp(...).flatten({ background: '#05080F' })`), saved as `.cache/refs/anchor/wordmark-material.png` and uploaded once.
-   - **Motion**: `image_url` and `end_image_url` are both the approved raw of the source still, re-encoded as JPEG (`quality: 92, mozjpeg: true`) to stay well under typical input limits.
+   - The **sheet call** (only when there is no usable `COAST_SHEET_URL`) receives only the references: `image_urls: [ref-1 … ref-n]`, addressed as "Images 1–n".
+   - **Every other Coast still**: Image 1 is the anchor, the `coast-brand-sheet` token: `.cache/refs/anchor/coast-sheet-user.png` when `sheet.source` is `'user'`, else the approved `.cache/refs/anchor/coast-brand-sheet-v1.png`.
+   - **CHROME Coast stills** (standby ×3, portrait, OG) add Image 2, the wordmark, as a **material-only** reference. It is `public/wzrdtechlogo.png` flattened onto `#05080F` (`sharp(...).flatten({ background: '#05080F' })`), saved as `.cache/refs/anchor/wordmark-material.png` and uploaded once.
+   - **No-likeness stills** have no image input: they use the text-to-image endpoints (§13.2).
+   - **Motion**: `image_url` and `end_image_url` are both the approved raw of the source still, re-encoded as JPEG (`quality: 92, mozjpeg: true`) to stay well under typical input limits. For `loader/coast-boot`, the raw is first alpha-thresholded and flattened onto `#FF00FF` (§13.6.2).
 8. **Never:**
-   - copy a reference or the master sheet into `public/`, `app/`, `docs/` or git;
-   - upload them anywhere except fal storage with the 1-day lifecycle;
+   - copy a reference, the user's sheet or the master sheet into `public/`, `app/`, `docs/` or git;
+   - upload them anywhere except fal storage with the 1-day lifecycle. The one exception is the downscaled `.cache/contact/sheet-final.png` preview of the two generated sheet finals, attached to the §1.8 item 4 question comment and never committed (§13.10 step 4);
    - upload them to Convex (D2, D7);
-   - put a reference URL in a prompt, a log line, `approved.json` or a PR.
+   - put a reference URL or the `COAST_SHEET_URL` value in a prompt, a log line, `approved.json` or a PR.
 
-> Note: bible §9 puts the master sheet in `.cache/refs/`. It lives in `.cache/refs/anchor/` instead, so step 1 can never pick it up as an identity reference.
+> Note: bible §9 puts the master sheet in `.cache/refs/`. It lives in `.cache/refs/anchor/` instead, so step 1 can never pick it up as an identity reference. The user's sheet lives there too, for the same reason.
 
 ### 13.5 Shared prompt blocks (`scripts/brand/prompts.mts`)
 
-The prompts follow the GPT Image structure (Scene / Subject / Important details / Use case / Constraints), label every input image by its role, and say "Do not redesign the character". They are sent verbatim. They never go through GMI prompt expansion (`convex/promptExpansion.ts`), which rewrites prompts differently on every run. Any edit to a string below changes `promptSha256`, which forces a new draft (§13.3.3).
+The prompts follow the GPT Image structure (Scene / Subject / Important details / Use case / Constraints), label every input image by its role, and say "Do not redesign the character". They are sent verbatim. They never go through GMI prompt expansion (`convex/promptExpansion.ts`), which rewrites prompts differently on every run. Any edit to a string below changes `promptSha256`, which forces a new draft (§13.3.3). No-likeness prompts (mode 2) never contain the word "Coast" (§13.11).
 
 ```ts
 // dashboard/scripts/brand/prompts.mts
@@ -466,7 +507,7 @@ export const PALETTE = {
   glint: '#E8EEF9', chrome: '#4F83CC', tally: '#FF3B30', key: '#FF00FF',
 } as const
 
-/** PX tier: the pixel instrument. Embedded in "Important details". */
+/** PX tier without Coast: the no-likeness PX stills (mode 2). Embedded in "Important details". */
 export const STYLE_PX = [
   'Game Boy Camera-style 4-level ordered-dither pixel illustration, 4x4 Bayer pattern.',
   'Strict palette: #05080F, #1D3160, #3357A8 and #7AA5E0, darkest to lightest; glints #E8EEF9 only, as single pixels.',
@@ -477,7 +518,19 @@ export const STYLE_PX = [
   'No text, no logos.',
 ].join(' ')
 
-/** CHROME tier: flagship key art (portrait, standby, OG). Always sent with Image 2. */
+/** PX tier with Coast (loader pose and grid, avatar, slates; mode 3). The raw keeps natural colours; quantize.mts maps it
+ *  to the blue ramp by default, or to PX-natural if Coast declines the blue ramp, from the same raw (§13.6.0). */
+export const STYLE_PX_COAST = [
+  'Game Boy Camera-style pixel illustration: hard square art pixels in flat natural colours, at most 12 colours in the whole image, with no dithering.',
+  'Skin tones natural and true to Image 1, never tinted blue; props in gunmetal chrome with an electric-blue #4F83CC edge.',
+  'Strong value contrast between skin, hair, clothing and props, so the image still reads when reduced to 4 grey levels.',
+  '1px #05080F outline around every silhouette.',
+  'Hard pixel edges; no anti-aliasing, gradients, grain, blur, glow or bokeh.',
+  'No red anywhere.',
+  'No text, no logos.',
+].join(' ')
+
+/** CHROME tier with Coast: flagship key art (portrait, standby, OG). Always sent with Image 2. */
 export const STYLE_CHROME = [
   'Cinematic key art for a late-night broadcast station.',
   'Deep navy ink shadows #05080F and #0B1120; one cool ice-blue rim light #7AA5E0; a dim neutral-white key light on the face.',
@@ -487,15 +540,25 @@ export const STYLE_CHROME = [
   'Low-key light. No text, logos, lens flares, bokeh or watermarks.',
 ].join(' ')
 
-/** Image 1 role for every Coast call after the sheet. */
+/** CHROME tier without Coast (mode 2): no image inputs, so the chrome material is described in words. */
+export const STYLE_CHROME_PROPS = [
+  'Cinematic key art for a late-night broadcast station.',
+  'Deep navy ink shadows #05080F and #0B1120; one cool ice-blue rim light #7AA5E0; dim neutral-white practical light.',
+  'Gunmetal chrome props with a polished electric-blue #4F83CC edge.',
+  'Backgrounds and shadow falloff resolve into coarse 4-level ordered Bayer dither in navy and chrome blue; the main props stay cleanly rendered.',
+  'Low-key light. No text, logos, lens flares, bokeh or watermarks.',
+].join(' ')
+
+/** Image 1 role for every Coast call after the sheet: COAST_SHEET_URL or the approved coast-brand-sheet-v1 (§13.4). */
 export const IDENTITY = [
-  'Image 1: the approved Coast brand sheet (coast-brand-sheet-v1).',
+  'Image 1: the approved Coast character sheet.',
   "It is the only source of truth for Coast's face shape, eyes, nose, mouth, hairline and hairstyle, skin tone, body proportions and signature outfit.",
+  'Use Image 1 only for identity; ignore its layout, background and any text or labels on it.',
   'Keep Coast recognisably identical to Image 1. Do not redesign the character:',
   'no change of age, face, body, skin tone or hairstyle, and no accessories, tattoos, makeup or clothing that Image 1 does not show.',
 ].join(' ')
 
-/** Image 2 role for CHROME calls. */
+/** Image 2 role for CHROME Coast calls. */
 export const IMAGE2_WORDMARK = [
   'Image 2: the WZRD.tech chrome wordmark.',
   'Use it only as a material and colour reference for gunmetal chrome with an electric-blue edge.',
@@ -503,26 +566,35 @@ export const IMAGE2_WORDMARK = [
 ].join(' ')
 
 export const CAST_ONE = 'exactly one Coast and no other people, faces or characters'
+/** Every no-likeness still (mode 2). */
+export const CAST_NONE = 'no people, faces, hands or characters of any kind'
 
 export function CONSTRAINTS(bg: string, cast: string = CAST_ONE): string {
   return `Constraints: ${cast}; no text, letters, numbers, captions, labels, signatures or watermarks; no logos; ` +
     `no border or frame around the whole image; no UI or grid lines; no extra or missing limbs; no faces other than Coast's; background: ${bg}.`
 }
 
+export function CONSTRAINTS_NONE(bg: string): string {
+  return `Constraints: ${CAST_NONE}; no text, letters, numbers, captions, labels, signatures or watermarks; no logos; ` +
+    `no border or frame around the whole image; no UI or grid lines; background: ${bg}.`
+}
+
 export const BG = {
   transparent: 'fully transparent (alpha 0) everywhere outside Coast, the props and any floor shadow named in Scene',
   magenta: 'flat pure magenta #FF00FF everywhere outside Coast, the props and any floor shadow named in Scene; perfectly uniform, with no gradient, texture or vignette',
+  transparentProps: 'fully transparent (alpha 0) everywhere outside the props and any floor shadow named in Scene',
+  magentaProps: 'flat pure magenta #FF00FF everywhere outside the props and any floor shadow named in Scene; perfectly uniform, with no gradient, texture or vignette',
   void: 'flat #05080F',
 } as const
 
 export type PromptParts = {
-  images: readonly string[]   // role lines, in image_urls order
+  images: readonly string[]   // role lines, in image_urls order; [] for no-likeness stills
   scene: string
   subject: string
   details: string
   useCase: string
   bg: string
-  cast?: string
+  cast?: string               // CAST_NONE selects CONSTRAINTS_NONE
 }
 
 export function compose(p: PromptParts): string {
@@ -532,14 +604,15 @@ export function compose(p: PromptParts): string {
     `Subject: ${p.subject}`,
     `Important details: ${p.details}`,
     `Use case: ${p.useCase}`,
-    CONSTRAINTS(p.bg, p.cast),
+    p.cast === CAST_NONE ? CONSTRAINTS_NONE(p.bg) : CONSTRAINTS(p.bg, p.cast),
   ].join('\n')
 }
 
-/** Transparent assets switch to the magenta key after a 422 on `background` or on openai/gpt-image-2/edit. */
-export const withMagenta = (p: PromptParts): PromptParts => ({ ...p, bg: BG.magenta })
+/** Transparent assets switch to the magenta key after a 422 on `background`, or on openai/gpt-image-2(/edit). */
+export const withMagenta = (p: PromptParts): PromptParts =>
+  ({ ...p, bg: p.cast === CAST_NONE ? BG.magentaProps : BG.magenta })
 
-/** The anchor sheet (§13.6.1). n = number of identity references (1–4). */
+/** The anchor sheet (§13.6.1), only when there is no COAST_SHEET_URL. n = number of identity references (1–4). */
 export function SHEET(n: number): string {
   const refs = n === 1
     ? 'Image 1: an approved reference photo of Coast. It is the only source of truth for Coast\'s identity.'
@@ -556,7 +629,19 @@ export function SHEET(n: number): string {
   ].join('\n')
 }
 
-/** H3 motion prompts: motion only, short (§13.6.6, §13.6.7). */
+/** H3 motion prompts: motion only, short (§13.6.2, §13.6.6, §13.6.7). */
+export const MOTION_LOADER =
+  'Locked-off camera, no cuts, no zoom, no camera movement. Coast taps the button of the small chrome remote once; ' +
+  'a blue pixel spark grows at the antenna tip, turns into a tiny chrome diamond that spins once above the remote and fades, ' +
+  'and Coast returns to the exact starting pose. One simple gesture that fills the whole clip. The flat magenta background, ' +
+  'the framing and the lighting never change, and nothing else moves. The last frame matches the first frame exactly.'
+
+export const MOTION_LOADER_NONE =
+  'Locked-off camera, no cuts, no zoom, no camera movement. The small chrome remote stays in place. Its button presses in once; ' +
+  'a blue pixel spark grows at the antenna tip, turns into a tiny chrome diamond that spins once above the antenna and fades. ' +
+  'One simple gesture that fills the whole clip. The flat magenta background, the framing and the lighting never change, nothing else ' +
+  'moves, and no hands, people or new objects appear. The last frame matches the first frame exactly.'
+
 export const MOTION_NOD =
   'Locked-off camera, no cuts, no zoom, no camera movement. Coast holds the pose of the first frame, blinks once, ' +
   'gives one small friendly nod toward the camera and returns to the exact starting pose within the first two seconds, ' +
@@ -567,23 +652,30 @@ export const MOTION_STANDBY =
   'returns it to its starting position. The CRT monitors behind flicker gently with drifting blue dithered static. ' +
   'Nothing else moves and no new objects or people appear. The last frame matches the first frame exactly, for a seamless loop.'
 
-/** Prefix for minimax/h3/reference-to-video (identity-drift fallback). */
+export const MOTION_STANDBY_NONE =
+  'Locked-off camera, no cuts, no zoom, no camera movement. The empty booth stays still. The CRT monitors flicker gently with ' +
+  'drifting blue dithered static, and the small indicator lights on the desk pulse slowly in ice blue. Nothing else moves and no ' +
+  'people, hands or new objects appear. The last frame matches the first frame exactly, for a seamless loop.'
+
+/** Prefix for minimax/h3/reference-to-video (reference fallback, Coast motion only; a deviation, §13.2 item 5). */
 export const R2V_PREFIX =
-  "Image 1 is the approved Coast brand sheet and defines Coast's identity; keep Coast identical to Image 1. " +
+  "Image 1 is the approved Coast character sheet and defines Coast's identity; keep Coast identical to Image 1. " +
   "Image 2 is the exact first frame: keep its scene, framing, lighting and Coast's pose. "
 ```
 
-> Note: the bible puts "exactly one Coast" inside both STYLE blocks. Here it lives in the `cast` parameter of `CONSTRAINTS` instead, because the sheet (nine views) and the loader (eight cells) need different wording. Every single-figure asset still sends "exactly one Coast". The fixed constraints never forbid what a subject asks for: they ban a frame around the whole image (not the storyboard or film frames that the `shotboard` and `clips` slates draw) and faces other than Coast's (not Coast's repeated views on the sheet and the loader).
+> Note: the bible puts "exactly one Coast" inside both STYLE blocks. Here it lives in the `cast` parameter of `CONSTRAINTS` instead, because the sheet (nine views) and the loader grid (eight cells) need different wording, and the no-likeness set needs none. Every single-figure Coast asset still sends "exactly one Coast". The fixed constraints never forbid what a subject asks for: they ban a frame around the whole image (not the storyboard or film frames that the `shotboard` and `clips` slates draw) and faces other than Coast's (not Coast's repeated views on the sheet and the loader grid).
 
 > Note: bible §9's CHROME block says "like a chrome blackletter logo". Naming a blackletter logo invites the model to draw blackletter glyphs on props, against principle 2, so `STYLE_CHROME` names only the material of Image 2 (whose role `IMAGE2_WORDMARK` defines).
 
-**Fully expanded example.** This is the `avatar/coast-px` draft prompt exactly as sent, produced by running `compose()` on §13.6.3's parts:
+> Note: Coast PX stills ask the model for natural colours (`STYLE_PX_COAST`) instead of the four blues. Principle 3 already lets `quantizePx` decide every shipped pixel, so the default output keeps the blue ramp and BC-06 is unchanged. The raw keeps Coast's skin tones, so if Coast declines the blue-ramp stylisation, the PX-natural rebuild (§13.6.0, §13.10) re-quantises the approved raws with no new call and no spend. The no-likeness PX stills keep `STYLE_PX`.
+
+**Fully expanded example.** This is the `avatar/coast-px` Coast draft prompt exactly as sent, produced by running `compose()` on §13.6.3's parts:
 
 ```text
-Image 1: the approved Coast brand sheet (coast-brand-sheet-v1). It is the only source of truth for Coast's face shape, eyes, nose, mouth, hairline and hairstyle, skin tone, body proportions and signature outfit. Keep Coast recognisably identical to Image 1. Do not redesign the character: no change of age, face, body, skin tone or hairstyle, and no accessories, tattoos, makeup or clothing that Image 1 does not show.
+Image 1: the approved Coast character sheet. It is the only source of truth for Coast's face shape, eyes, nose, mouth, hairline and hairstyle, skin tone, body proportions and signature outfit. Use Image 1 only for identity; ignore its layout, background and any text or labels on it. Keep Coast recognisably identical to Image 1. Do not redesign the character: no change of age, face, body, skin tone or hairstyle, and no accessories, tattoos, makeup or clothing that Image 1 does not show.
 Scene: no environment.
 Subject: Coast's head and shoulders, facing the viewer with a slight three-quarter turn, calm and confident.
-Important details: Game Boy Camera-style 4-level ordered-dither pixel illustration, 4x4 Bayer pattern. Strict palette: #05080F, #1D3160, #3357A8 and #7AA5E0, darkest to lightest; glints #E8EEF9 only, as single pixels. Tones are mapped by luminance: skin, hair, clothing and props all become these four blues, with no selective recolouring and no other hues. 1px #05080F outline around every silhouette. Hard pixel edges; no anti-aliasing, gradients, grain, blur, glow or bokeh. #FF3B30 only on tally-lamp props. No text, no logos. Designed on a 32×32 art-pixel grid, one art pixel per 32×32 block of the image: the head fills the upper 70% of the square, the shoulders touch the bottom edge, and the hairstyle silhouette is the most recognisable shape. The face stays readable at 16×16.
+Important details: Game Boy Camera-style pixel illustration: hard square art pixels in flat natural colours, at most 12 colours in the whole image, with no dithering. Skin tones natural and true to Image 1, never tinted blue; props in gunmetal chrome with an electric-blue #4F83CC edge. Strong value contrast between skin, hair, clothing and props, so the image still reads when reduced to 4 grey levels. 1px #05080F outline around every silhouette. Hard pixel edges; no anti-aliasing, gradients, grain, blur, glow or bokeh. No red anywhere. No text, no logos. Designed on a 32×32 art-pixel grid, one art pixel per 32×32 block of the image: the head fills the upper 70% of the square, the shoulders touch the bottom edge, and the hairstyle silhouette is the most recognisable shape. The face stays readable at 16×16.
 Use case: roster avatar in a broadcast-console web app and the master for the browser favicon and app icons; it must stay recognisable at 16×16.
 Constraints: exactly one Coast and no other people, faces or characters; no text, letters, numbers, captions, labels, signatures or watermarks; no logos; no border or frame around the whole image; no UI or grid lines; no extra or missing limbs; no faces other than Coast's; background: fully transparent (alpha 0) everywhere outside Coast, the props and any floor shadow named in Scene.
 ```
@@ -595,44 +687,70 @@ Constraints: exactly one Coast and no other people, faces or characters; no text
 - Byte budgets use KB = 1,024 B.
 - **Draft input** is the final input with `quality: 'low'` and `num_images: 1`.
 - Every still input also carries `output_format: 'png'`.
-- The symbolic tokens `coast-ref-n`, `coast-brand-sheet`, `wzrdtech-wordmark` and `<assetId>@raw` are replaced by upload URLs at run time, and restored in `approved.json`.
+- The symbolic tokens `coast-ref-n`, `coast-brand-sheet`, `wzrdtech-wordmark` and `<assetId>@raw` are replaced by upload URLs at run time, and restored in `approved.json`. `coast-brand-sheet` is the Image 1 anchor of §13.4 step 7: the user's `COAST_SHEET_URL` sheet or the approved `coast-brand-sheet-v1`.
+- **Two variants per id.** Each subsection gives the **Coast variant** (mode 3) and, where one exists, the **no-likeness variant** (mode 2). A no-likeness variant keeps the id, size, outputs, budgets and post-processing of its Coast variant and changes only what the subsection lists. Unless it says otherwise, a no-likeness still uses `openai/gpt-image-2.5/sunburst/text-to-image` → `openai/gpt-image-2`, sends no `image_urls`, has `images: []`, uses `cast: CAST_NONE`, and replaces `BG.transparent` with `BG.transparentProps`. `coast-brand-sheet-v1` and `motion/coast-talent-nod` have no no-likeness variant.
 
 `assets.mts` holds the table below as data:
 
 ```ts
 // dashboard/scripts/brand/assets.mts — the canonical asset list (docs/redesign/spec/13-brand-assets-fal.md §13.6). Every § below is in that file.
+export type ImageToken = 'coast-ref' | 'coast-brand-sheet' | 'wzrdtech-wordmark'
+export type Variant = {
+  endpoints: readonly string[]                       // primary first, then fallbacks (§13.2)
+  images: readonly ImageToken[]                      // [] for every no-likeness still (text-to-image)
+  needs: readonly string[]                           // ids that must be approved first, in this likeness
+  prompt: (refCount: number) => string               // SHEET(n) or compose(parts); motion returns MOTION_*
+  input: (tier: 'draft' | 'final') => Record<string, unknown> // tokenised input, exactly as in §13.6.1–§13.6.9
+}
 export type AssetSpec = {
   id: string
   tier: 'anchor' | 'PX' | 'CHROME' | 'MOTION' | 'DERIVED'
-  endpoints: readonly string[]                       // primary first, then fallbacks (§13.2)
   size?: { width: number; height: number }           // stills only; passed through assertImageSize at load
-  images: readonly ('coast-ref' | 'coast-brand-sheet' | 'wzrdtech-wordmark')[]
   transparent: boolean
-  needs: readonly string[]
   maxRerolls: number                                 // sheet 2, every other asset 1
-  prompt: (refCount: number) => string               // SHEET(n) or compose(parts); motion returns MOTION_*
-  input: (tier: 'draft' | 'final') => Record<string, unknown> // tokenised input, exactly as in §13.6.1–§13.6.9
-  outputs: readonly { path: string; width: number; height: number; maxBytes: number; alpha: 'required' | 'forbidden' | 'any' }[]
+  coast: Variant | null                              // the Coast variant (mode 3); null only for DERIVED
+  none: Variant | null                               // the no-likeness variant (mode 2); null for coast-brand-sheet-v1, motion/coast-talent-nod and DERIVED
+  grid?: { size: { width: 2048; height: 1024 }; coast: Variant; none: Variant } // loader/coast-boot only: the grid path (§13.6.2)
+  outputs: readonly { path: string; width: number; height: number; maxBytes: number; alpha: 'required' | 'forbidden' | 'any' }[] // [] for coast-brand-sheet-v1 and loader/coast-pose
 }
-export const ASSETS: readonly AssetSpec[] = [ /* §13.6.1–§13.6.11, in this order */ ]
+export const ASSETS: readonly AssetSpec[] = [ /* §13.6.1–§13.6.11, in this order (loader/coast-pose before loader/coast-boot) */ ]
 export function assertImageSize(s: { width: number; height: number }): void { /* §13.2 */ }
 ```
 
 | # | id | Tier | Endpoint → fallback | Generate at | Art master / cell grid | Ships (§13.9 has every budget) | Used in |
 |---|---|---|---|---|---|---|---|
-| 1 | `coast-brand-sheet-v1` | anchor | sunburst/edit → gpt-image-2/edit | 2048×1152 | — | **Nothing** (hash only) | Image 1 of every Coast call |
-| 2 | `loader/coast-boot` | PX, transparent | sunburst/edit → gpt-image-2/edit | 2048×1024 | 8 frames × 32×32 | strip @1x/@2x, still, json | CoastLoader (§7.5), every `loading.tsx` (§6.3), boot POST sprite (§6.2) |
+| 1 | `coast-brand-sheet-v1` | anchor | sunburst/edit → gpt-image-2/edit | 2048×1152 | — | **Nothing** (hash only). Not generated when `COAST_SHEET_URL` is supplied | Image 1 of every Coast call (when there is no `COAST_SHEET_URL`) |
+| 2a | `loader/coast-pose` | PX, transparent | sunburst/edit → gpt-image-2/edit | 1024×1024 | — | **Nothing** (the first and last frame of #2's clip) | Input of #2 (motion path) |
+| 2 | `loader/coast-boot` | PX, transparent | Motion path: h3-max/image-to-video from #2a, 3 s. Grid path (fallback): sunburst/edit → gpt-image-2/edit at 2048×1024 | 3 s clip, or 2048×1024 | 8 frames × 32×32 | strip @1x/@2x, still, json | CoastLoader (§7.5), every `loading.tsx` (§6.3), boot POST sprite (§6.2) |
 | 3 | `avatar/coast-px` | PX, transparent | sunburst/edit → gpt-image-2/edit | 1024×1024 | 32×32 and 16×16 | 16/32 PNG masters, 48/96 WebP | Characters roster fallback (§10), Shotboard CastStrip (§9), icon source (#10) |
 | 4 | `standby/coast-16x9`, `-9x16`, `-1x1` | CHROME | sunburst/edit (+ wordmark) → gpt-image-2/edit | 1920×1088, 1088×1920, 1088×1088 | 640×360, 360×640, 640×640 at 2 px | `-1280`/`-640` AVIF+WebP, `-lum.png` | SymbolRaster source and idle-slot fallback (§8.4.4, §8.5.11), loop start frame (#7), loop poster |
 | 5 | `talent/coast-portrait` | CHROME | sunburst/edit (+ wordmark) → gpt-image-2/edit | 1536×2048 | 384×512 at 2 px | `-768`/`-384` AVIF+WebP | HoloCard (§10, §12), nod poster (`-768`), OG fallback crop |
-| 6 | `motion/coast-talent-nod` | MOTION | h3-max/image-to-video → h3/image-to-video → h3/reference-to-video | 5 s, trimmed to 2.0 s | 384×512 cells at 2 px (768×1024 frames) | WebM + MP4 | HoverClipButton "Play ident" (§10, §12); first in the cut order |
-| 7 | `motion/coast-standby-loop` | MOTION | same chain | 5 s | 640×360 cells at 2 px (1280×720 frames) | `-1280` WebM + MP4 | Analytics StreamRail offline (§11) |
+| 6 | `motion/coast-talent-nod` | MOTION | h3-max/image-to-video → h3/image-to-video → h3/reference-to-video | 5 s, trimmed to 2.0 s | 384×512 cells at 2 px (768×1024 frames) | WebM + MP4 | HoverClipButton "Play ident" (§10, §12); an early cut (§17.2) |
+| 7 | `motion/coast-standby-loop` | MOTION | same chain | 5 s | 640×360 cells at 2 px (1280×720 frames) | `-1280` WebM + MP4 | Analytics StreamRail offline (§11); one of the last cuts (§17.2) |
 | 8 | `slate/<11 ids>` | PX, transparent | sunburst/edit → gpt-image-2/edit | 1536×1024 | 192×128 | `<id>.png` master + `<id>.webp` 384×256 | Slate family (§6.13), §8–§11, `app/not-found.tsx`, `app/admin/error.tsx` |
 | 9 | `share/og` | CHROME, text-free | sunburst/edit (+ wordmark) → gpt-image-2/edit | 2400×1264 | 600×316 at 2 px | `app/opengraph-image.png`, `app/twitter-image.png`, alt texts | Metadata (§7.7) |
 | 10 | `icons/app` | **derived** from #3 | — | — | 16/32 masters | `public/favicon.ico`, `app/icon.svg`, `app/apple-icon.png`, `icons/icon-{192,512}.png`, `icons/icon-maskable-512.png`, `icons/favicon-onair.svg`, `app/manifest.ts` | Tab icon, PWA, ON AIR favicon swap (§6.7, §8) |
 | 11 | `wordmark/wzrdtech` | **derived** from `public/wzrdtechlogo.png` | — | — | — | `wordmark/wzrdtech-{160,320,640}.{avif,webp}`, `components/boot/masks.ts` | CommandBar bug (§7.8), boot (§6.2), OG composite (#9), `app/not-found.tsx` (§7.5) |
 
-**Needs** (enforced by `run`): #2–#5, #8 and #9 need #1 approved. #6 needs #5 approved. #7 needs `standby/coast-16x9` approved. #10 and #11 need nothing.
+The endpoints above are the Coast variants'. **Needs** (enforced by `run`):
+- Coast variants: #2a, #3–#5, #8 and #9 need an approved anchor (`approved.json` `sheet` non-null: `COAST_SHEET_URL`, or #1 after the owner's `APPROVE coast-brand-sheet <n>`). #2 needs #2a approved (motion path) or an approved anchor (grid path). #6 needs #5 approved. #7 needs `standby/coast-16x9` approved.
+- No-likeness variants: #2 needs #2a approved (motion path); #7 needs `standby/coast-16x9` approved; every other no-likeness still needs nothing.
+- #10 and #11 need nothing.
+
+**No-likeness set (D5 mode 2).** The same subjects with props only and no person. Every variant ships with `likeness: false` (§13.8) and is replaced by the Coast variant, id by id, when a Coast input arrives (§13.10):
+
+| id | No-likeness subject (full prompt parts in the subsection) | Endpoint → fallback |
+|---|---|---|
+| `coast-brand-sheet-v1` | None (Coast only; never generated in mode 2) | — |
+| `loader/coast-pose` → `loader/coast-boot` | The chrome broadcast remote; its antenna spark becomes a spinning chrome diamond (§13.6.2) | Pose: sunburst/text-to-image → gpt-image-2; clip: h3-max/image-to-video; grid path: sunburst/text-to-image → gpt-image-2 |
+| `avatar/coast-px` | The head of the chrome broadcast remote as an icon (§13.6.3) | sunburst/text-to-image → gpt-image-2 |
+| `standby/*` | The empty chrome control booth (§13.6.4) | sunburst/text-to-image → gpt-image-2 |
+| `talent/coast-portrait` | The booth's empty chrome host chair with the remote on its seat (§13.6.5) | sunburst/text-to-image → gpt-image-2 |
+| `motion/coast-talent-nod` | None (Coast only; keeps `sources: []`, §13.6.6) | — |
+| `motion/coast-standby-loop` | The empty booth: drifting CRT static and pulsing desk lights (§13.6.7) | h3-max/image-to-video → h3/image-to-video |
+| `slate/*` | Each slate's props without Coast: a camera with an unlit tally, blank storyboard frames, a VHS stack and the rest (§13.6.8) | sunburst/text-to-image → gpt-image-2 |
+| `share/og` | Text-free booth and carrier art (§13.6.9) | sunburst/text-to-image → gpt-image-2 |
+| `icons/app`, `wordmark/wzrdtech` | Derived, as in every mode | — |
 
 #### 13.6.0 Post-processing library (`quantize.mts`, `encode.mts`)
 
@@ -648,11 +766,12 @@ export function assertImageSize(s: { width: number; height: number }): void { /*
   - A pixel with |R−255| ≤ 8, G ≤ 8 and |B−255| ≤ 8 gets α = 0.
   - Then one spill pass: an opaque pixel that touches a keyed pixel (8-neighbour) and has R ≥ 200, B ≥ 200 and G ≤ 96 also gets α = 0.
   - The key runs on the full-resolution raw, before the downscale.
+  - Video frames of `loader/coast-boot` (motion path, §13.6.2) use `keyMagenta(frame, 40)`: video compression moves the key colour, so the tolerance is 40 instead of 8. The spill pass is unchanged.
 - `fal-ai/bria/background/remove` is never used, because it softens pixel edges.
 
-**PX quantiser** (`quantizePx(master, { transparent, outline, outlineColor = '#05080F' })`). It runs per pixel of the art master:
+**PX quantiser** (`quantizePx(master, { transparent, outline, outlineColor = '#05080F', tally = true })`). It runs per pixel of the art master:
 1. Opaque assets are flattened onto `#05080F` first.
-2. **Tally rule:** if R ≥ 170, G ≤ 90, B ≤ 90 and R − max(G, B) ≥ 100, the pixel becomes `#FF3B30`.
+2. **Tally rule:** if R ≥ 170, G ≤ 90, B ≤ 90 and R − max(G, B) ≥ 100, the pixel becomes `#FF3B30`. Coast PX raws pass `tally: false`: they are drawn in natural colours (`STYLE_PX_COAST`, §13.5), where the rule would turn lips or red clothing into tally red, and none of them has a lit tally.
 3. **Luminance:** `L = (0.2126 R + 0.7152 G + 0.0722 B) / 255`. Auto-levels over the opaque pixels: `L' = clamp((L − p2) / (p98 − p2) × 0.92 + 0.04, 0, 1)`, where p2 and p98 are the 2nd and 98th percentiles of L.
 4. **Glint rule:** the pixel becomes `#E8EEF9` when all three hold:
    - `L' ≥ 0.92`;
@@ -664,6 +783,14 @@ export function assertImageSize(s: { width: number; height: number }): void { /*
    - `#05080F` (the default) for `avatar/coast-px`, whose WebPs are flattened onto `#1D3160` (§13.6.3).
    - Both colours are in the BC-06 palette.
 7. The output has at most 6 colours plus transparency.
+
+**PX-natural quantiser** (`quantizePxNatural(master, { transparent, outline, outlineColor })`). It replaces `quantizePx` only for the Coast PX assets (`loader/coast-boot`, `avatar/coast-px`, `slate/*` with `likeness: true`) whose `approved.json` entry has `build.quantize: 'px-natural'`. That is set only after Coast declines the PX blue-ramp stylisation (the owner's PR comment `PX-NATURAL`, §13.10). It re-quantises the same approved raws, which keep Coast's natural colours (§13.5 Note), so it needs no new call. Every other PX file, and the rest of the PX system, is unchanged.
+1. Alpha as in the PX quantiser (1-bit). Opaque assets are flattened onto `#05080F` first.
+2. **Palette.** The CHROME quantiser's step 1 (deterministic median cut) over the opaque pixels of the art master, to **12** colours. Skin tones survive because the palette adapts to the raw and nothing is remapped by hue or luminance.
+3. **Dither.** The CHROME quantiser's step 2 (`t = ((B4[y & 3][x & 3] + 0.5) / 16 − 0.5) × 40`, nearest by `2ΔR² + 4ΔG² + 3ΔB²`), one Bayer cell per art pixel. Every shipped PX-natural raster shows an art pixel as at least 2×2 px (slate WebPs ×2, loader strips ×2 and ×4, the loader still ×4, avatar WebPs ×3), so the Bayer cells are 2 px or larger. The 16 and 32 px avatar masters and the icons derived from them are the only 1 px cells.
+4. **Outline** as in the PX quantiser's step 6, with the same `outlineColor` per id.
+5. No tally rule and no glint rule.
+6. The output has at most 13 colours (12 plus the outline colour) plus transparency. The PX PNG rung (`colors: 16`) and the lossless WebP rung keep them; BC-06 checks the count.
 
 **CHROME quantiser** (`quantizeChrome(grid, { colors, palette? })`). It runs on an opaque RGB cell grid:
 1. **Palette.** A deterministic median cut over the grid's pixels to `colors` boxes:
@@ -695,32 +822,87 @@ Each variant's colour count is the largest of 32, 24 and 16 whose lossless WebP 
 
 #### 13.6.1 `coast-brand-sheet-v1` (anchor)
 
+Generated only in mode 3 when there is no usable `COAST_SHEET_URL` (§13.4). With `COAST_SHEET_URL`, the user's sheet is the anchor and this asset is skipped.
+
 - **Input:** `{ "prompt": SHEET(n), "image_urls": ["coast-ref-1", "…", "coast-ref-n"], "image_size": { "width": 2048, "height": 1152 }, "quality": "high", "num_images": 2, "output_format": "png" }`, with n ≤ 4. `maxRerolls: 2`.
 - **Prompt:** `SHEET(n)` (§13.5), complete.
 - **Post:** none.
-  - `approve` copies the chosen raw to `.cache/refs/anchor/coast-brand-sheet-v1.png` and records `sheet` in `approved.json`.
-  - For the identity comparison, this asset's draft contact sheet also shows the references side by side (in `.cache` only).
-- **Ships:** nothing. Approving a different sheet later invalidates every asset whose `sheetSha256` no longer matches (BC-09).
+  - Devin approves the **draft** on the technical checks of §13.10 only (it gates the final; it is not a likeness decision).
+  - After the final, `run` also writes `.cache/contact/sheet-final.png`: the two final variants side by side, each downscaled with lanczos3 to 1024×576 and labelled `#<n>` in PX5×7, with no references on it. It is the preview for the `BLOCKING QUESTION (§1.8 item 4)` comment (§13.10 step 4) and is never committed.
+  - `approve coast-brand-sheet-v1 <n>` runs only after the owner's PR comment `APPROVE coast-brand-sheet <n>`, with the same `<n>`. It copies the chosen raw to `.cache/refs/anchor/coast-brand-sheet-v1.png` and records `sheet` (`source: 'generated'`, `approvedBy` = the owner) in `approved.json`.
+  - The `.cache` contact sheets of this asset also show the references side by side, for a human operator only. Devin never compares identity.
+- **Ships:** nothing. Approving a different sheet later, or a different `COAST_SHEET_URL`, invalidates every Coast asset whose `sheetSha256` no longer matches (BC-09).
 
-#### 13.6.2 `loader/coast-boot` (PX)
+#### 13.6.2 `loader/coast-boot` (PX) and `loader/coast-pose`
 
-- **Input:** `{ prompt, "image_urls": ["coast-brand-sheet"], "image_size": { "width": 2048, "height": 1024 }, "quality": "high", "num_images": 2, "output_format": "png", "background": "transparent" }`.
-- **Prompt parts:**
+Two build paths write the same loader files. The **motion path** is the default: MiniMax H3 Max animates one approved GPT Image 2.5 Sunburst still (`loader/coast-pose`), and 8 frames are taken from the clip. The **grid path** is the fallback: one Sunburst sheet of 8 cells. `run` uses the grid path only when `minimax/h3-max/image-to-video` is unavailable (404, or 422 after the §13.2 retry) or the clip fails the loader check below. Either switch is a deviation (§13.2 item 5): `DEVIATION loader/coast-boot: minimax/h3-max/image-to-video → grid path (<reason>)`. The loader has no `minimax/h3/*` fallback. `approved.json` records the path in `build.path`.
+
+**`loader/coast-pose`** (still; ships nothing; its approved raw is the first and last frame of the clip):
+- **Coast input:** `{ prompt, "image_urls": ["coast-brand-sheet"], "image_size": { "width": 1024, "height": 1024 }, "quality": "high", "num_images": 2, "output_format": "png", "background": "transparent" }`.
+- **Coast prompt parts:**
+  - images: `[IDENTITY]`
+  - scene: `no environment.`
+  - subject: `Coast as one compact full-body pixel-art sprite, standing turned three-quarters toward the viewer and holding a small chrome broadcast remote at chest height, thumb resting on its single round button, its short antenna pointing up and to the right. This is the first frame of a short loop, so the pose is relaxed and neutral and nothing glows yet.`
+  - details: `${STYLE_PX_COAST} Drawn on a 32×32 art-pixel grid, one art pixel per 32×32 block of the image. The head is about 40% of the body height. Coast is centred horizontally and stands on a baseline 2 art pixels above the bottom edge; the antenna tip stays at least 4 art pixels inside the top and right edges. Bold readable silhouette at 32×32; no motion blur.`
+  - useCase: `the first frame of a looping 8-frame loading animation in a dark broadcast-console web app, shown at 64 and 128 px; an image-to-video model animates it.`
+  - bg: `BG.transparent`
+- **No-likeness variant:** input without `image_urls`. Parts:
+  - images: `[]`
+  - scene: `no environment.`
+  - subject: `one small chrome broadcast remote control standing upright on its base, seen three-quarters from the front: its short antenna points up and to the right, and its single round button faces the viewer. No hand holds it. This is the first frame of a short loop, so nothing glows yet.`
+  - details: `${STYLE_PX} Drawn on a 32×32 art-pixel grid, one art pixel per 32×32 block of the image. The remote fills about 60% of the image height, is centred horizontally and stands on a baseline 2 art pixels above the bottom edge; the antenna tip stays at least 4 art pixels inside the top and right edges. Bold readable silhouette at 32×32; no motion blur.`
+  - useCase: the Coast variant's.
+  - bg: `BG.transparentProps`; cast: `CAST_NONE`
+- **Post:** none. `approve` writes an `approved.json` entry with `outputs: {}`.
+
+**Motion path** (`loader/coast-boot`, `--tier final` only; `maxRerolls: 1`):
+- **H3 input image.** The approved `loader/coast-pose` raw, alpha-thresholded (or magenta-keyed, if the pose was made on magenta), flattened onto `#FF00FF` (`sharp(raw).flatten({ background: '#FF00FF' })`), then re-encoded as JPEG (`quality: 92, mozjpeg: true`). H3 has no alpha, so the clip keeps the flat magenta background, and every frame is keyed.
+- **Input:** `{ "prompt": MOTION_LOADER, "image_url": "loader/coast-pose@raw", "end_image_url": "loader/coast-pose@raw", "duration": 3, "resolution": "2K" }`. The no-likeness variant sends `MOTION_LOADER_NONE`. If the §13.2 protocol finds that `3` is not an allowed `duration`, the endpoint adapter sends the smallest allowed value above 3, which the frame sampling below absorbs (it spans the whole clip).
+- **Post** (`video.mts`):
+  1. Decode every frame of the clip:
+
+     ```bash
+     ffmpeg -v error -y -i <raw.mp4> -pix_fmt rgb24 .cache/frames/loader/coast-boot/f%04d.png
+     ```
+
+     The image2 muxer writes each decoded frame once. N is the number of files written.
+  2. Keep 8 evenly spaced frames: frame i (i = 0…7) is `f<round(i × (N − 1) / 7) + 1>`, zero-padded to 4 digits. Frame 8 (i = 7) is the clip's last frame, which `end_image_url` pins to the first.
+  3. Key each kept frame at full resolution with `keyMagenta(frame, 40)` (§13.6.0).
+  4. Run steps 3 and 4 of the grid path's post below on the 8 keyed frames (union box, crop, lanczos3 to 32×32, `quantizePx`).
+  5. **Loader check** (`LOADER-CHECK`, technical; on the 8 quantised 32×32 frames before step 6). It fails when any rule fails:
+     - `silhouette`: a frame's opaque-pixel count differs from frame 1's by more than 15%, or its lowest opaque row differs from frame 1's by more than 1 pixel;
+     - `motion`: fewer than 3 of frames 2–7 differ from frame 1 in at least 16 of the 1,024 pixels;
+     - `loop`: frame 8 differs from frame 1 in more than 64 pixels.
+
+     `approve loader/coast-boot <n>` runs this check (it needs ffmpeg, like `build`) and exits 1 with `LOADER-CHECK fail <rule>`. Devin then makes the grid path, and `approve` of the grid variant records `deviation: { requested: 'minimax/h3-max/image-to-video', reason: 'LOADER-CHECK fail <rule>' }`.
+  6. Steps 5 and 6 of the grid path's post (frame 8 := frame 1, pack).
+- **Reroll:** `--reroll 1` resubmits `minimax/h3-max/image-to-video` (§13.3.3).
+
+**Grid path** (`run --only loader/coast-boot --grid`, draft and final tiers):
+- **Coast input:** `{ prompt, "image_urls": ["coast-brand-sheet"], "image_size": { "width": 2048, "height": 1024 }, "quality": "high", "num_images": 2, "output_format": "png", "background": "transparent" }`.
+- **Coast prompt parts:**
   - images: `[IDENTITY]`
   - scene: `an empty sprite sheet with no environment.`
   - subject: `Coast as a compact full-body pixel-art sprite, repeated in a 4-column by 2-row grid of eight equal square cells, one pose per cell. The animation reads left to right, top row then bottom row: in frames 1–4 Coast raises a small chrome broadcast remote and taps its button while a blue pixel spark grows at the remote's antenna tip; in frames 5–7 the spark becomes a tiny chrome diamond spinning above the remote; frame 8 is exactly the pose of frame 1.`
-  - details: `${STYLE_PX} Each of the eight cells is drawn on a 32×32 art-pixel grid, one art pixel per 16×16 block of the image. The head is about 40% of the body height. Coast is centred in every cell at identical scale, stands on one shared baseline 2 art pixels above the bottom of the cell, and is turned three-quarters toward the viewer in all eight frames; only the arm, the remote, the spark and the diamond move. Bold readable silhouette at 32×32; no motion blur.`
+  - details: `${STYLE_PX_COAST} Each of the eight cells is drawn on a 32×32 art-pixel grid, one art pixel per 16×16 block of the image. The head is about 40% of the body height. Coast is centred in every cell at identical scale, stands on one shared baseline 2 art pixels above the bottom of the cell, and is turned three-quarters toward the viewer in all eight frames; only the arm, the remote, the spark and the diamond move. Bold readable silhouette at 32×32; no motion blur.`
   - useCase: `a looping 8-frame loading animation in a dark broadcast-console web app, shown at 64 and 128 px.`
   - bg: `BG.transparent`
   - cast: `exactly one Coast in each of the eight cells and nothing else in any cell except the remote, the spark and the diamond`
+- **No-likeness variant:** input without `image_urls`. Parts:
+  - images: `[]`
+  - scene: `an empty sprite sheet with no environment.`
+  - subject: `one small chrome broadcast remote control, repeated in a 4-column by 2-row grid of eight equal square cells, one pose per cell. The animation reads left to right, top row then bottom row: in frames 1–4 the remote's button presses in while a blue pixel spark grows at its antenna tip; in frames 5–7 the spark becomes a tiny chrome diamond spinning above the antenna; frame 8 is exactly frame 1.`
+  - details: `${STYLE_PX} Each of the eight cells is drawn on a 32×32 art-pixel grid, one art pixel per 16×16 block of the image. The remote is centred in every cell at identical scale, stands on one shared baseline 2 art pixels above the bottom of the cell, and is turned three-quarters toward the viewer in all eight frames; only the button, the spark and the diamond change. Bold readable silhouette at 32×32; no motion blur.`
+  - useCase: the Coast variant's.
+  - bg: `BG.transparentProps`; cast: `CAST_NONE`
 - **Post:**
   1. Alpha threshold or magenta key on the raw.
   2. Slice into 8 cells of 512×512. Frame i is at column `i % 4`, row `floor(i / 4)`.
   3. Take the union of the 8 alpha bounding boxes (in cell coordinates). Expand it to a square, centred horizontally and bottom-aligned, so all frames share one baseline.
-  4. Crop every cell to that square, resize with lanczos3 to **32×32**, then run `quantizePx({ transparent: true, outline: true, outlineColor: '#1D3160' })`.
+  4. Crop every cell to that square, resize with lanczos3 to **32×32**, then run `quantizePx({ transparent: true, outline: true, outlineColor: '#1D3160' })`, with `tally: false` for the Coast variant (or `quantizePxNatural` with the same outline after a `PX-NATURAL` comment, §13.6.0).
   5. Overwrite frame 8 with frame 1, pixel for pixel.
   6. Pack the frames horizontally.
-- **Ships:**
+- **Ships** (both paths, the same files):
 
   | File | Size | Budget |
   |---|---|---|
@@ -738,11 +920,18 @@ Each variant's colour count is the largest of 32, 24 and 16 whose lossless WebP 
   - images: `[IDENTITY]`
   - scene: `no environment.`
   - subject: `Coast's head and shoulders, facing the viewer with a slight three-quarter turn, calm and confident.`
-  - details: `${STYLE_PX} Designed on a 32×32 art-pixel grid, one art pixel per 32×32 block of the image: the head fills the upper 70% of the square, the shoulders touch the bottom edge, and the hairstyle silhouette is the most recognisable shape. The face stays readable at 16×16.`
+  - details: `${STYLE_PX_COAST} Designed on a 32×32 art-pixel grid, one art pixel per 32×32 block of the image: the head fills the upper 70% of the square, the shoulders touch the bottom edge, and the hairstyle silhouette is the most recognisable shape. The face stays readable at 16×16.`
   - useCase: `roster avatar in a broadcast-console web app and the master for the browser favicon and app icons; it must stay recognisable at 16×16.`
   - bg: `BG.transparent`
   - The expanded text is in §13.5.
-- **Post:** alpha threshold, then two independent masters: lanczos3 to 32×32 and to 16×16, each through `quantizePx({ transparent: true, outline: true })`.
+- **No-likeness variant:** input without `image_urls`. Parts:
+  - images: `[]`
+  - scene: `no environment.`
+  - subject: `the head of a small chrome broadcast remote control seen from the front: its single round button in the centre and a short antenna rising to the upper right, with one blue pixel spark at the antenna tip.`
+  - details: `${STYLE_PX} Designed on a 32×32 art-pixel grid, one art pixel per 32×32 block of the image: the remote fills the central 80% of the square, and the antenna silhouette is the most recognisable shape. It stays readable at 16×16.`
+  - useCase: `roster avatar in a broadcast-console web app and the master for the browser favicon and app icons; it must stay recognisable at 16×16.`
+  - bg: `BG.transparentProps`; cast: `CAST_NONE`
+- **Post:** alpha threshold, then two independent masters: lanczos3 to 32×32 and to 16×16, each through `quantizePx({ transparent: true, outline: true })`, with `tally: false` for the Coast variant (or `quantizePxNatural({ transparent: true, outline: true, outlineColor: '#05080F' })` after a `PX-NATURAL` comment, §13.6.0).
 - **Ships:**
   - `avatar/coast-px-16.png` 16×16 (2 KB) and `avatar/coast-px-32.png` 32×32 (2 KB), both transparent;
   - `avatar/coast-px-48.webp` 48×48 (16 master ×3) and `avatar/coast-px-96.webp` 96×96 (32 master ×3), both flattened onto `#1D3160` and opaque (8 KB each).
@@ -772,6 +961,16 @@ Each variant's colour count is the largest of 32, 24 and 16 whose lossless WebP 
   - bg: `the booth described in Scene; every monitor shows only dithered static, never readable text`
 
   The compositions match §8's StandbySlate plate: the right two-thirds at 16:9, the bottom 45% at 9:16 and 1:1. At 16:9, Coast's head sits below the top-left `STAND BY` plate of §11's StreamRail.
+- **No-likeness variant** (the empty chrome control booth): input without `image_urls`. Parts:
+  - images: `[]`
+  - scene: the Coast variant's.
+  - subject: `the empty chrome control booth, waiting for the show to start: the host chair is empty and pushed in at the desk, and nobody is present.`, followed by:
+    - 16x9: `The chair and the near end of the desk are in the left third of the frame, seen three-quarters toward screen-right.`
+    - 9x16: `The empty chair is centred horizontally in the upper half of the frame.`
+    - 1x1: `The empty chair is centred horizontally.`
+  - details: `${STYLE_CHROME_PROPS}`, followed by the Coast variant's reserved-area sentence for the aspect, then, for all three: `Locked-off eye-level camera. This image is also the first and last frame of a seamless 5-second loop.`
+  - useCase: the Coast variant's.
+  - bg: the Coast variant's; cast: `CAST_NONE`
 - **Post:**
   - Cover-resize the raw to the cell grid (640×360, 360×640 or 640×640), then run `quantizeChrome` (32, 24 or 16 colours, per the ladder).
   - Upscale ×2 (nearest) for `-1280`; keep ×1 for `-640`.
@@ -794,18 +993,27 @@ Each variant's colour count is the largest of 32, 24 and 16 whose lossless WebP 
   - details: `${STYLE_CHROME} Vertical 3:4 composition: the eyes sit on the upper-third line, the top of the head is 8–12% below the top edge, and both shoulders are fully in frame. A strong ice-blue rim light traces the hair and the camera-right shoulder against the dark background; the dim neutral key keeps the face readable. The pose is neutral because this image is also the first and last frame of a 5-second video.`
   - useCase: `talent-card portrait for a character bible, shown 144–400 px wide under a holographic foil overlay.`
   - bg: `the navy studio void described in Scene`
+- **No-likeness variant** (the booth's empty host chair): input without `image_urls`. Parts:
+  - images: `[]`
+  - scene: the Coast variant's.
+  - subject: `the empty host chair of the chrome control booth: a gunmetal chrome swivel chair turned three-quarters toward camera-left, with a small chrome broadcast remote resting on its seat.`
+  - details: `${STYLE_CHROME_PROPS} Vertical 3:4 composition: the top of the chair back sits on the upper-third line, and the whole chair is in frame with its base 6–10% above the bottom edge. A strong ice-blue rim light traces the chair's edges against the dark background.`
+  - useCase: `talent-card image for a character bible, shown 144–400 px wide under a holographic foil overlay, standing in until approved art of the performer exists.`
+  - bg: the Coast variant's; cast: `CAST_NONE`
 - **Post:** lanczos3 to 384×512, then `quantizeChrome`. Upscale ×2 to 768×1024; keep ×1 at 384×512.
 - **Ships:** `talent/coast-portrait-768.{avif,webp}` at 768×1024 (90 KB each) and `talent/coast-portrait-384.{avif,webp}` at 384×512 (35 KB each). The `-768` variant is the poster and the frozen palette of `motion/coast-talent-nod` (§13.6.6).
-- If `share/og` fails review, its fallback art is this portrait: the raw, cover-cropped into the right third of the OG canvas. No extra call is made.
+- If `share/og` fails the technical checks (§13.10), its fallback art is this portrait of the same likeness: the raw, cover-cropped into the right third of the OG canvas. No extra call is made, and the OG alt text follows the portrait's `likeness` (§13.6.9).
 
 > Note: the bible sends Image 2 (the wordmark) only for standby and OG, yet its CHROME style block refers to "Image 2". Every CHROME call here sends Image 2, the portrait included, so the style block never refers to a missing image.
 
 #### 13.6.6 `motion/coast-talent-nod` (MOTION)
 
+**Coast only.** A nod needs a person, so there is no no-likeness variant. In mode 2, and until a Coast `talent/coast-portrait` is approved, the entry keeps `sources: []` (the state of a cut motion asset, §13.10), and `BrandVideo` renders its poster, `talent/coast-portrait`.
+
 - **Input**, tried in endpoint order until one succeeds:
   1. `minimax/h3-max/image-to-video`: `{ "prompt": MOTION_NOD, "image_url": "talent/coast-portrait@raw", "end_image_url": "talent/coast-portrait@raw", "duration": 5, "resolution": "2K" }`
-  2. `minimax/h3/image-to-video`: the same input.
-  3. `minimax/h3/reference-to-video`: only after review rejects the output of 1–2 for identity drift. Select it with `run --only motion/coast-talent-nod --tier final --reroll 1`. Input: `{ "prompt": R2V_PREFIX + MOTION_NOD, "reference_image_urls": ["coast-brand-sheet", "talent/coast-portrait@raw"], "aspect_ratio": "3:4", "duration": 5, "resolution": "2K" }`
+  2. `minimax/h3/image-to-video`: the same input (a deviation, §13.2 item 5).
+  3. `minimax/h3/reference-to-video` (a deviation): only after the output of 1–2 fails a technical check (§13.10) or the owner comments `REROLL motion/coast-talent-nod`. Select it with `run --only motion/coast-talent-nod --tier final --reroll 1`. Input: `{ "prompt": R2V_PREFIX + MOTION_NOD, "reference_image_urls": ["coast-brand-sheet", "talent/coast-portrait@raw"], "aspect_ratio": "3:4", "duration": 5, "resolution": "2K" }`
 - **Post** (`video.mts`):
   1. Extract 48 frames. `trimStartS` comes from `approve --trim-start` (default 0):
 
@@ -824,6 +1032,7 @@ Each variant's colour count is the largest of 32, 24 and 16 whose lossless WebP 
 #### 13.6.7 `motion/coast-standby-loop` (MOTION)
 
 - **Input:** the same endpoint chain as §13.6.6, with `"prompt": MOTION_STANDBY` and with `"image_url"` and `"end_image_url"` both `"standby/coast-16x9@raw"`. The reference-to-video variant uses `"aspect_ratio": "16:9"`.
+- **No-likeness variant** (the empty booth): `"prompt": MOTION_STANDBY_NONE`, with `"image_url"` and `"end_image_url"` both the approved no-likeness `"standby/coast-16x9@raw"`. Its chain is `minimax/h3-max/image-to-video` → `minimax/h3/image-to-video` only; there is no reference-to-video variant, and `--reroll 1` resubmits H3 Max (§13.3.3). Post and ships are the same as below.
 - **Post:**
   1. Extract the frames (N ≈ 120):
 
@@ -845,7 +1054,7 @@ Each variant's colour count is the largest of 32, 24 and 16 whose lossless WebP 
   - `motion/coast-standby-loop-1280.mp4`, 1280×720, max 2,097,152 B.
   There is no 640 variant: 1 px cells smear under 4:2:0 chroma (§13.6.6 Note), so `BrandVideo` always uses the 1280 source. The poster is `standby/coast-16x9`. Manifest: `durationMs = round(frames × 1000 / 24)`, `loop: true`.
 
-**Video encode commands** (both motion assets). `<frames>` is `.cache/frames/motion/coast-talent-nod/q%04d.png` for the nod and `.cache/frames/motion/coast-standby-loop/q1280_%04d.png` for the loop. Both sequences start at `0001`, which the image2 demuxer finds by probing (it tries start numbers 0–4). Each ladder tries CRF values in order until the file fits; the chosen CRF is recorded in `enc`:
+**Video encode commands** (both `motion/*` assets; the loader's clip is reduced to the PNG strip of §13.6.2 and never re-encoded as video). `<frames>` is `.cache/frames/motion/coast-talent-nod/q%04d.png` for the nod and `.cache/frames/motion/coast-standby-loop/q1280_%04d.png` for the loop. Both sequences start at `0001`, which the image2 demuxer finds by probing (it tries start numbers 0–4). Each ladder tries CRF values in order until the file fits; the chosen CRF is recorded in `enc`:
 
 ```bash
 # WebM (VP9); crf ladder 34 → 36 → 38 → 40
@@ -867,9 +1076,15 @@ ffmpeg -v error -y -framerate 24 -i <frames> \
 - **Shared prompt parts:**
   - images: `[IDENTITY]`
   - scene: `an isolated spot illustration with no environment except a small dithered oval floor shadow directly under Coast.`
-  - details: `${STYLE_PX} Drawn on a 192×128 art-pixel grid, one art pixel per 8×8 block of the image. Coast and the props stay inside the central 76% of the width and 84% of the height, with empty margins, and the silhouette reads clearly at 192×128 inside a black monitor window.`, plus the slate's extra detail from the table below
+  - details: `${STYLE_PX_COAST} Drawn on a 192×128 art-pixel grid, one art pixel per 8×8 block of the image. Coast and the props stay inside the central 76% of the width and 84% of the height, with empty margins, and the silhouette reads clearly at 192×128 inside a black monitor window.`, plus the slate's extra detail from the table below
   - useCase: `a spot illustration for the ${screen} of a broadcast-console web app, shown at 384×256 inside a black monitor window.`
   - bg: `BG.transparent`
+- **Shared no-likeness parts:** input without `image_urls`.
+  - images: `[]`
+  - scene: `an isolated spot illustration with no environment except a small dithered oval floor shadow directly under the props.`
+  - details: `${STYLE_PX} Drawn on a 192×128 art-pixel grid, one art pixel per 8×8 block of the image. The props stay inside the central 76% of the width and 84% of the height, with empty margins, and the silhouette reads clearly at 192×128 inside a black monitor window.`, plus the same extra detail as the Coast variant
+  - useCase: the Coast variant's.
+  - bg: `BG.transparentProps`; cast: `CAST_NONE`
 - **Per-slate subject.** The kicker is §6.13's and is never sent to the model.
 
   | id | Kicker | `${screen}` | Subject | Extra detail |
@@ -886,8 +1101,24 @@ ffmpeg -v error -y -framerate 24 -i <frames> \
   | `no-access` | NO ACCESS | sign-in-required screen | `Coast holding up a lanyard access pass toward the viewer; the pass is blank except for a small padlock shape.` | — |
   | `signal-lost` | SIGNAL LOST, NO CARRIER | error and connection-lost screen | `Coast sitting calmly beside a small CRT television whose screen is full of noisy dithered static.` | — |
 
+- **Per-slate no-likeness subject** (same kicker, `${screen}` and extra detail):
+
+  | id | No-likeness subject |
+  |---|---|
+  | `live-control` | `a vintage shoulder-mounted broadcast camera on a short tripod, seen three-quarters from the front, with the small tally lamp on top of the camera dark and unlit.` |
+  | `shotboard` | `a floating board with small blank storyboard frames pinned onto it and one more blank frame leaning against it; every frame is empty, with no drawing inside.` |
+  | `characters` | `three empty chrome easel stands of equal height, each holding a blank card with a dotted outline, beside a folded director's chair; the cards are empty.` |
+  | `locations` | `an unfolded paper map from which a tiny pop-up landscape rises: one suspension-bridge tower and wisps of fog.` |
+  | `clips` | `a blank strip of film unspooling from a small chrome reel, with two empty frames curling off the end.` |
+  | `recordings` | `a stack of chrome VHS cassettes, the top one tilted up to show its blank label.` |
+  | `analytics` | `a chrome spyglass on a small stand, aimed at three dithered bar-chart columns; the third column is only an empty outline.` |
+  | `not-found` | `loose coaxial cables tangled on the left, one cable end lying free, beside a small CRT television. The CRT is exactly centred in the frame; its screen is completely blank and dark and is about 34% of the frame width and 24% of the frame height.` |
+  | `not-patched` | `two unplugged chrome cable ends lying on the floor, almost touching, with a tiny blue pixel spark between them.` |
+  | `no-access` | `a lanyard access pass hanging from a small chrome hook; the pass is blank except for a small padlock shape.` |
+  | `signal-lost` | `a small CRT television on a short chrome stand, its screen full of noisy dithered static.` |
+
   The `not-found` CRT screen (about 65×31 art pixels) holds §11's centred `<PixelFace text="404" cell={4}>` (68×28 display px, or 34×14 art pixels). The digits are SVG and are never generated.
-- **Post:** alpha threshold or magenta key → lanczos3 to 192×128 → `quantizePx({ transparent: true, outline: true, outlineColor: '#1D3160' })` → ×2 nearest.
+- **Post:** alpha threshold or magenta key → lanczos3 to 192×128 → `quantizePx({ transparent: true, outline: true, outlineColor: '#1D3160' })`, with `tally: false` for the Coast variant (or `quantizePxNatural` with the same outline after a `PX-NATURAL` comment, §13.6.0) → ×2 nearest.
 - **Ships:** `slate/<id>.png`, the 192×128 palette master (12 KB), and `slate/<id>.webp`, 384×256 lossless (40 KB). §6.13 shows the WebP at 384×256 (`route`) and at 192×128 (`panel`), with `image-rendering: pixelated`.
 
 #### 13.6.9 `share/og` (CHROME, text-free)
@@ -900,6 +1131,13 @@ ffmpeg -v error -y -framerate 24 -i <frames> \
   - details: `${STYLE_CHROME} Wide 1.9:1 composition. Coast stays between 62% and 92% of the frame width and inside the central 90% of the frame height. The left 55% of the frame is calm, low-contrast dithered navy with no objects, reserved for a logo and one line of text added later.`
   - useCase: `1200×630 social share card for stream.wzrd.tech.`
   - bg: `the dithered navy field described in Scene`
+- **No-likeness variant** (text-free booth and carrier art): input without `image_urls`. Parts:
+  - images: `[]`
+  - scene: the Coast variant's.
+  - subject: `the empty chrome control booth: a gunmetal chrome mixing desk with rows of faders and a small wall of dark CRT monitors showing faint blue dithered static, seen from camera-left and lit by cool blue monitor light.`
+  - details: `${STYLE_CHROME_PROPS} Wide 1.9:1 composition. The booth stays between 62% and 92% of the frame width and inside the central 90% of the frame height. The left 55% of the frame is calm, low-contrast dithered navy with no objects, reserved for a logo and one line of text added later.`
+  - useCase: the Coast variant's.
+  - bg: the Coast variant's; cast: `CAST_NONE`
 - **Post** (sharp; the same output every run):
   1. Cover-resize the raw to 600×316, run `quantizeChrome`, upscale ×2 to 1200×632, then `extract({ left: 0, top: 1, width: 1200, height: 630 })`.
   2. Composite the **real** wordmark: `public/wzrdtechlogo.png` resized with lanczos3 to width 560 (560×139), at `{ left: 64, top: 216 }`.
@@ -907,7 +1145,15 @@ ffmpeg -v error -y -framerate 24 -i <frames> \
   4. Encode with the OG PNG rung.
 - **Ships:**
   - `app/opengraph-image.png` and `app/twitter-image.png`: byte-identical, 1200×630, ≤180 KB each;
-  - `app/opengraph-image.alt.txt` and `app/twitter-image.alt.txt`. The alt text is `Pixel-art key art of Coast beside the chrome WZRD.tech wordmark and the line STREAM.WZRD.TECH.` when the art is generated, and `The chrome WZRD.tech wordmark and the line STREAM.WZRD.TECH over a blue pixel-dither field.` for the placeholder.
+  - `app/opengraph-image.alt.txt` and `app/twitter-image.alt.txt`, byte-identical, with no trailing newline. `build` writes exactly one of these texts, chosen by the art it composited (the `share/og` art, or the §13.6.5 portrait fallback):
+
+    | Art | Alt text |
+    |---|---|
+    | Coast art (`likeness: true`) | `Key art of Coast beside the chrome WZRD.tech wordmark and the line STREAM.WZRD.TECH` |
+    | No-likeness art (`generated: true`, `likeness: false`) | `Key art of the WZRD.tech control booth beside the chrome wordmark and the line STREAM.WZRD.TECH` |
+    | Placeholder (`generated: false`) | `The chrome WZRD.tech wordmark and the line STREAM.WZRD.TECH over a blue pixel-dither field.` |
+
+    `share/og` is CHROME key art in which only the background is dithered, so no alt text says "Pixel-art" (BC-15).
   These root metadata routes sit outside the middleware matcher `['/admin/:path*', '/api/:path*']`.
 
 > Note: the bible specifies `.jpg`. A 256-colour PNG keeps the 2 px dither exact and measured 2.5× smaller (72 KB vs 182 KB for JPEG q82 on the same composite), so the metadata files are `.png`. There is no "LIVE" dot on the card: a static image cannot know the broadcast state (principle "Truth over theatre").
@@ -993,12 +1239,12 @@ export default function manifest(): MetadataRoute.Manifest {
 
 ### 13.7 Placeholders (`placeholders.mts`)
 
-Placeholders let the whole UI ship complete without a key.
+Placeholders let the whole UI ship complete without a key. They ship only when `FAL_KEY` is absent (mode 1); with a key, the no-likeness set replaces them (principle 9). The one exception is `motion/coast-talent-nod` outside mode 3, whose entry keeps `sources: []` (§13.6.6).
 - They are **non-human**, use only the dark ramp, and are drawn in code.
 - They go through the **same** quantisers, encoders and file names as the generated assets, so every consumer, dimension and budget stays the same.
-- Every entry they produce is `origin: 'placeholder'`, `generated: false`.
-- The wordmark and masks are always `origin: 'derived'`, `generated: false`.
-- The icons are `origin: 'derived'` and copy the avatar's `generated` value: false from the placeholder avatar, true from an approved one.
+- Every entry they produce is `origin: 'placeholder'`, `generated: false`, `likeness: false`.
+- The wordmark and masks are always `origin: 'derived'`, `generated: false`, `likeness: false`.
+- The icons are `origin: 'derived'` and copy the avatar's `generated` and `likeness` values: false from the placeholder avatar; `generated: true` from an approved one, with its `likeness`.
 
 **Glyphs.** `.` is transparent, `0`–`3` are ramp levels, `g` is the glint. ANTENNA and CRT are symmetric:
 
@@ -1043,6 +1289,7 @@ Placeholders go through `quantizePx` (4 ramp colours plus glint) even for CHROME
 `build` writes this typed module and `public/brand/manifest.json`.
 - The JSON's shape is `{ "version": 1, "assets": { "<id>": <the same entry, with "sha256" and "enc" added to every source> } }`.
 - The JSON also lists `icons/app`, for `check` only. The TypeScript module does not.
+- Every entry carries `generated` and `likeness`. The §2.4 mode checks read them from the JSON: mode 1, every `generated` is false; mode 2, every generated entry has `likeness: false`; mode 3, the Coast entries have `likeness: true`.
 - Both files come out the same on every run.
 - The TypeScript uses two-space indents, single quotes and a trailing newline, and passes `npm run lint` and `npm run typecheck`.
 
@@ -1068,6 +1315,7 @@ export type BrandImageEntry = {
   readonly blur: string             // 'data:image/png;base64,…', a 16-px-wide nearest mosaic, rendered pixelated
   readonly pixelated: boolean       // true for PX and CHROME art; false for wordmark
   readonly generated: boolean
+  readonly likeness: boolean        // true only for approved Coast art (mode 3); false for the no-likeness set, placeholders and derived files
   readonly origin: 'fal' | 'placeholder' | 'derived'
 }
 
@@ -1080,6 +1328,7 @@ export type BrandVideoEntry = {
   readonly durationMs: number | null
   readonly loop: boolean
   readonly generated: boolean
+  readonly likeness: boolean
   readonly origin: 'fal' | 'placeholder'
 }
 
@@ -1093,7 +1342,7 @@ export const brandAssets = {
       { src: '/brand/standby/coast-16x9-1280.webp', type: 'image/webp', width: 1280, height: 720, bytes: 50122 },
     ],
     fallback: '/brand/standby/coast-16x9-1280.webp',
-    color: '#0B1426', blur: 'data:image/png;base64,…', pixelated: true, generated: false, origin: 'placeholder',
+    color: '#0B1426', blur: 'data:image/png;base64,…', pixelated: true, generated: false, likeness: false, origin: 'placeholder',
   },
   // … one entry per id in §13.6 (#2–#9, #11), in §13.6 order (byte counts above are illustrative)
 } as const satisfies Record<string, BrandImageEntry | BrandVideoEntry>
@@ -1183,64 +1432,89 @@ export function resolveBrandId(id: BrandImageId | BrandVideoId): keyof typeof br
 | BC-03 Bytes | Every file is within its budget |
 | BC-04 Totals | The image and video totals above hold |
 | BC-05 Alpha | "required": the file has alpha, at least 1 pixel with α = 0, and (for PX files) every α ∈ {0, 255}. "forbidden": no alpha channel, or every α = 255. Does not apply to video |
-| BC-06 Palette | Applies only to PNG and lossless WebP (AVIF is lossy and exempt; video does not apply). PX files (loader, avatar, slates, icons and every placeholder): every opaque pixel ∈ {`#05080F`, `#1D3160`, `#3357A8`, `#7AA5E0`, `#E8EEF9`, `#FF3B30`}. CHROME lossless WebP: ≤ 32 unique colours. `-lum.png`: 1 channel |
+| BC-06 Palette | Applies only to PNG and lossless WebP (AVIF is lossy and exempt; video does not apply). PX files (loader, avatar, slates, icons and every placeholder): every opaque pixel ∈ {`#05080F`, `#1D3160`, `#3357A8`, `#7AA5E0`, `#E8EEF9`, `#FF3B30`}. The exception is the PX-natural files (an `approved.json` entry with `build.quantize: 'px-natural'`, and the icons derived from such an avatar): ≤ 16 unique opaque colours. CHROME lossless WebP: ≤ 32 unique colours. `-lum.png`: 1 channel |
 | BC-07 Loader | Strip width = 8 × height. Frame 8 equals frame 1 pixel for pixel. `coast-boot.json` equals §13.6.2 |
 | BC-08 No raw leak | No file under `public/` or `app/` has a sha256 equal to: a reference hash (`approved.json` `sheet.refs.sha256`), `sheet.raw.sha256`, any `assets.*.raw.sha256`, or any file in `.cache/` when present. No image under `public/` or `app/` has a generation size (2048×1152, 2048×1024, 1024×1024, 1920×1088, 1088×1920, 1088×1088, 1536×2048, 1536×1024, 2400×1264) or a long edge > 1280. The exception is `public/wzrdtechlogo.png`, the wordmark source. No image carries EXIF or XMP (sharp `metadata().exif` and `.xmp` are undefined) |
-| BC-09 Provenance | Every manifest entry with `generated: true` has an `approved.json` entry whose `outputs` sha256 match the files and whose `sheetSha256` equals `sheet.raw.sha256`. `approved.json` and `scripts/brand/spend.jsonl` (when present) contain no `http`, no `Key ` and no `COAST_REF_URLS` value |
+| BC-09 Provenance | Every manifest entry with `origin: 'fal'` has an `approved.json` entry of the same id whose `outputs` sha256 match the files and whose `likeness` equals the manifest's. When `likeness` is true, its `sheetSha256` equals `sheet.raw.sha256`; when false, its `sheetSha256` is `null`. `approved.json` and `scripts/brand/spend.jsonl` (when present) contain no `http`, no `Key ` and no `COAST_SHEET_URL` or `COAST_REF_URLS` value |
 | BC-10 Manifest parity | Every id in `lib/brandAssets.ts` is in `public/brand/manifest.json` with identical sources and bytes. The bytes match the files. Every alias target exists |
 | BC-11 Git hygiene | `.gitignore` contains the line `scripts/brand/.cache/`. `git ls-files scripts/brand/.cache` is empty. The `exclude` in `tsconfig.json` contains `"scripts"`. `app/favicon.ico` does not exist |
 | BC-12 Pre-LCP | The `<link rel="preload" as="image">` hrefs in `app/layout.tsx` are all in the allowlist |
 | BC-13 Icons | `app/icon.svg` has `viewBox="0 0 32 32"`. `favicon-onair.svg` contains a `#FF3B30` 4×4 rect at x=28, y=0. `app/manifest.ts` references the three icon paths |
 | BC-14 Masks | `masks.ts` exports `MASK_L` (w 120, h 30) and `MASK_S` (w 80, h 20). The decoded bit counts equal w·h. The fill ratio is in [0.2, 0.8] |
-| BC-15 Honesty | Every `origin: 'placeholder'` entry has `generated: false`. When `approved.json.assets` is empty, every entry has `generated: false` |
+| BC-15 Honesty | Every `origin: 'placeholder'` entry has `generated: false` and `likeness: false`. Every entry with `likeness: true` has `generated: true`. When `approved.json.sheet` is null, no entry has `likeness: true`. When `approved.json.assets` is empty, every entry has `generated: false`. `app/opengraph-image.alt.txt` and `app/twitter-image.alt.txt` are byte-identical, equal the §13.6.9 text for the `share/og` entry's `generated` and `likeness`, and do not contain `Pixel-art` |
 | BC-16 Video containers | WebM files start with `1A 45 DF A3`. MP4 files have `ftyp` at byte 4 and `moov` before `mdat` (faststart). A generated video lists both formats |
 
 **Contact sheet** (`check --contact-sheet <path>`):
 - A PNG on `#05080F`, 4 columns of 320×240 tiles, with each shipped image fitted inside its tile (nearest-neighbour when `pixelated`).
 - Video entries are shown by their poster, with a `VIDEO` tag.
-- Under each tile is `<id> · <origin>` in PX5×7 at 2 px cells in `#7AA5E0`. Labels are uppercased, because the glyph table has no lowercase.
+- Under each tile is `<id> · <origin>` in PX5×7 at 2 px cells in `#7AA5E0`, followed by ` · COAST` when the entry has `likeness: true`. Labels are uppercased, because the glyph table has no lowercase.
+- **PX stylisation band.** When any PX-tier entry has `likeness: true`, the sheet starts with a full-width band titled `PX STYLISATION · COAST SIGN-OFF` (PX5×7, 2 px cells, `#7AA5E0`). It holds those entries' tiles (the `loader/coast-boot` still, `avatar/coast-px` and the 11 `slate/*`) and the icons derived from the avatar, before every other tile. It shows Coast in the blue-ramp stylisation (skin mapped to `#05080F`–`#7AA5E0`), which Coast approves or declines as its own sign-off item (§13.10 step 11). After a PX-natural rebuild, the band title is `PX-NATURAL · COAST SIGN-OFF`.
 - It is built only from files under `public/` and `app/`, never from `.cache`.
 
 ### 13.10 Cost plan and the D5 run procedure
 
-**Cost plan** at the fallback prices (§13.3.6). A live price replaces any figure it exceeds.
+**Cost plan** at the fallback prices (§13.3.6). A live price replaces any figure it exceeds. The Coast and no-likeness variants of an id cost the same.
 
-| Asset | Endpoint | Draft (low × 1) | Final (high × 2) | Est. draft | Est. final |
+| Asset | Endpoint (Coast / no-likeness) | Draft (low × 1) | Final (high × 2) | Est. draft | Est. final |
 |---|---|---|---|---|---|
-| `coast-brand-sheet-v1` | sunburst/edit | 1 call | 1 call | $0.05 | $0.80 |
-| `loader/coast-boot` | sunburst/edit | 1 | 1 | $0.05 | $0.80 |
-| `avatar/coast-px` | sunburst/edit | 1 | 1 | $0.05 | $0.80 |
-| `standby/*` (3) | sunburst/edit | 3 | 3 | $0.15 | $2.40 |
-| `talent/coast-portrait` (3.15 MP, ×1.333) | sunburst/edit | 1 | 1 | $0.07 | $1.07 |
-| `slate/*` (11) | sunburst/edit | 11 | 11 | $0.55 | $8.80 |
-| `share/og` (3.03 MP, ×1.285) | sunburst/edit | 1 | 1 | $0.06 | $1.03 |
-| **Stills subtotal** | | 19 calls | 19 calls (38 images) | **$0.98** | **$15.69** |
-| `motion/coast-talent-nod` | h3-max/image-to-video, 5 s | — | 1 | — | $5.00 |
+| `coast-brand-sheet-v1` (mode 3 without `COAST_SHEET_URL` only) | sunburst/edit / — | 1 call | 1 call | $0.05 | $0.80 |
+| `loader/coast-pose` | sunburst/edit / sunburst/text-to-image | 1 | 1 | $0.05 | $0.80 |
+| `avatar/coast-px` | sunburst/edit / sunburst/text-to-image | 1 | 1 | $0.05 | $0.80 |
+| `standby/*` (3) | sunburst/edit / sunburst/text-to-image | 3 | 3 | $0.15 | $2.40 |
+| `talent/coast-portrait` (3.15 MP, ×1.333) | sunburst/edit / sunburst/text-to-image | 1 | 1 | $0.07 | $1.07 |
+| `slate/*` (11) | sunburst/edit / sunburst/text-to-image | 11 | 11 | $0.55 | $8.80 |
+| `share/og` (3.03 MP, ×1.285) | sunburst/edit / sunburst/text-to-image | 1 | 1 | $0.06 | $1.03 |
+| **Stills per set** (without the sheet) | | 18 calls | 18 calls (36 images) | **$0.93** | **$14.90** |
+| `loader/coast-boot`, motion path | h3-max/image-to-video, 3 s | — | 1 | — | $3.00 |
 | `motion/coast-standby-loop` | h3-max/image-to-video, 5 s | — | 1 | — | $5.00 |
-| **Planned total** | | | | | **$26.68** |
-| Contingency | 5 draft rerolls ($0.25) + 1 reference-to-video retry ($3.00) | | | | $3.25 |
-| **Planned + contingency** | | | | | **$29.93** of the $40.00 cap |
+| `motion/coast-talent-nod` (Coast set only) | h3-max/image-to-video, 5 s | — | 1 | — | $5.00 |
+| `loader/coast-boot`, grid path (only on fallback) | sunburst/edit / sunburst/text-to-image, 2048×1024 | 1 | 1 | $0.05 | $0.80 |
 
-**With `FAL_KEY` and references (D5; the M9 `brand` part).** Run from `dashboard/`, with `FAL_KEY` and `COAST_REF_URLS` in the process environment (Devin secrets). **Never create `dashboard/.env.local`** (§1.6 step 0): `next dev` would load it and break §1.6's keyless QA.
+| Run | Planned | Contingency | Planned + contingency (of the $40.00 cap) |
+|---|---|---|---|
+| Mode 2: the no-likeness set | $0.93 + $14.90 + $8.00 = **$23.83** | 5 draft rerolls ($0.25) + the loader grid path ($0.85) = $1.10 | **$24.93** |
+| Mode 3 with `COAST_SHEET_URL` | $0.93 + $14.90 + $13.00 = **$28.83** | $1.10 + 1 reference-to-video reroll ($3.00) = $4.10 | **$32.93** |
+| Mode 3 from `COAST_REF_URLS` (the sheet included) | $28.83 + $0.85 = **$29.68** | $4.10 + 2 sheet final rerolls ($1.60) = $5.70 | **$35.38** |
+| Mode 3 from `COAST_REF_URLS`, plus the no-likeness set made while the sheet awaits approval (step 4) | about **$53.50** | — | Over the cap: the replacement order below applies |
 
-1. The keyless pipeline is part 3B; the finals are the M9 `brand` PR (§14.15). Waiting for Coast's sign-off therefore never blocks the pipeline or any other part.
-2. Run `npm run brand:plan` and paste the table into the PR.
+The PX-natural rebuild (step 12) makes no call and costs nothing.
+
+**Replacement order.** A Coast input can arrive after the no-likeness set exists: in mode 3 from `COAST_REF_URLS` (step 4 makes the no-likeness set while the sheet awaits approval), or in a later session after a mode-2 run. The committed ledger carries across (§13.3.4), so the Coast set may not fit the remaining cap. Coast finals then replace the no-likeness ones in this order, each only while `npm run brand:plan -- --likeness coast --only <ids>` shows that it fits the remaining budget:
+
+1. `standby/*` (3): $2.55
+2. `loader/coast-pose` and `loader/coast-boot`: $3.85
+3. `avatar/coast-px`: $0.85
+4. `talent/coast-portrait`: $1.14
+5. `share/og`: $1.09
+6. `slate/*`, in the §13.6.8 table order: $0.85 each
+7. `motion/coast-standby-loop`: $5.00
+8. `motion/coast-talent-nod`: $5.00
+
+At fallback prices, after the sheet and the no-likeness set ($24.68), $15.32 remains: items 1–5 ($9.48) and the first 6 slates ($5.10) fit. Every id that does not fit keeps its no-likeness version (the nod keeps `sources: []`). Devin posts `BLOCKING QUESTION (§1.8 item 3)` with the cap the rest needs, lists each such id under "Deferred / blocked" as `Coast <id> not generated: needs $<est> above the $40 cap (D5)`, and continues with other work. If the owner writes a new cap (the D5 override), Devin resumes the order.
+
+**With `FAL_KEY` (D5 modes 2 and 3; the M9 `brand` part).** Run from `dashboard/`, with the secrets in the process environment (Devin secrets). **Never create `dashboard/.env.local`** (§1.6 step 0): `next dev` would load it and break §1.6's keyless QA.
+
+1. The keyless pipeline is part 3B; the finals are the M9 `brand` PR (§14.15). Waiting for the owner's or Coast's decisions therefore never blocks the pipeline or any other part.
+2. Run `npm run brand:plan` and paste the table into the PR. Its second line names the mode: `likeness: coast (COAST_SHEET_URL)`, `likeness: coast (COAST_REF_URLS)` or `likeness: none (no Coast input)`.
 3. Verify the endpoints (§13.2 protocol). Record the findings in the PR "Decisions".
-4. Make the sheet draft:
+4. **The generated sheet** (mode 3 without a usable `COAST_SHEET_URL` only; otherwise go to step 5):
    1. Run `npm run brand:gen -- --tier draft --only coast-brand-sheet-v1`.
-   2. Open the newest `.cache/contact/draft-*.png`.
-   3. Run `node --experimental-strip-types scripts/brand/generate.mts approve coast-brand-sheet-v1 1` (the later `approve …` steps use the same command). If identity drifts, re-run the draft with `--reroll 1`, then `--reroll 2`.
-5. Make the sheet final: run `npm run brand:gen -- --tier final --only coast-brand-sheet-v1`, compare both variants with the references, then run `approve coast-brand-sheet-v1 <n>`.
-6. Make the still drafts (18 drafts):
-   1. Run `npm run brand:gen -- --tier draft --only 'loader/**,avatar/**,standby/**,talent/**,slate/**,share/**'`.
-   2. Review the contact sheet and run `approve <id> <n>` for each acceptable draft.
-   3. Use at most one `--reroll 1` per rejected asset.
-7. Make the still finals: run `npm run brand:gen -- --tier final --only 'loader/**,avatar/**,standby/**,talent/**,slate/**,share/**' --yes`, review, and run `approve <id> <n>` for each.
-8. Make the motion finals:
+   2. Apply the technical checks (below) to the draft on the newest `.cache/contact/draft-*.png`. If it passes, run `node --experimental-strip-types scripts/brand/generate.mts approve coast-brand-sheet-v1 1` (the later `approve …` steps use the same command); if it fails, re-run the draft once with `--reroll 1`. This approval only gates the final; it is not a likeness decision.
+   3. Run `npm run brand:gen -- --tier final --only coast-brand-sheet-v1`. It writes `.cache/contact/sheet-final.png` (§13.6.1).
+   4. Post one PR comment that starts `BLOCKING QUESTION (§1.8 item 4)`, with `sheet-final.png` attached. It asks the owner to reply `APPROVE coast-brand-sheet <n>` (`<n>` is the variant number on the preview) or `REROLL coast-brand-sheet-v1`. List it under "Deferred / blocked". Devin never approves the sheet itself.
+   5. Continue at once with steps 6–11 in `--likeness none`, so the PR ships the no-likeness set whatever the answer.
+   6. On `APPROVE coast-brand-sheet <n>`: run `approve coast-brand-sheet-v1 <n>`, then steps 6–11 in `--likeness coast`, in the replacement order above. On `REROLL coast-brand-sheet-v1`: run `npm run brand:gen -- --tier final --only coast-brand-sheet-v1 --reroll 1` (`--reroll 2` for a second one), then ask again as in sub-step 4.
+5. **The user's sheet** (mode 3 with `COAST_SHEET_URL`): nothing is generated for the anchor and no question is asked. The first `run --likeness coast` in step 6 downloads the sheet and records it (§13.4 step 1).
+6. **Still drafts** (18 drafts):
+   1. Run `npm run brand:gen -- --tier draft --only 'loader/coast-pose,avatar/**,standby/**,talent/**,slate/**,share/**'` (with `--likeness none` in step 4.5).
+   2. Apply the technical checks to each draft on the newest `.cache/contact/draft-*.png`, and run `approve <id> <n>` for the first variant that passes.
+   3. Use at most one `--reroll 1` per asset that fails a technical check.
+7. **Still finals:** run `npm run brand:gen -- --tier final --only 'loader/coast-pose,avatar/**,standby/**,talent/**,slate/**,share/**' --yes`, apply the technical checks, and run `approve <id> <n>` for each.
+8. **Motion finals:**
    1. Run `npm i --no-save ffmpeg-static@5.3.0`.
-   2. Run `npm run brand:gen -- --tier final --only 'motion/**'`.
-   3. Review the clips in any video player.
-   4. Run `approve motion/coast-talent-nod <n> --trim-start <s>` and `approve motion/coast-standby-loop <n>`.
+   2. Run `npm run brand:gen -- --tier final --only 'loader/coast-boot,motion/**'`. In mode 2, `motion/**` is only `motion/coast-standby-loop` (the nod is Coast only, §13.6.6).
+   3. Run `approve loader/coast-boot <n>`. If `run` printed `DEVIATION loader/coast-boot`, or `approve` exits 1 with `LOADER-CHECK fail <rule>`, make the grid path: `npm run brand:gen -- --tier draft --only loader/coast-boot --grid`, `approve loader/coast-boot <n>`, `npm run brand:gen -- --tier final --only loader/coast-boot --grid`, `approve loader/coast-boot <n>`.
+   4. Apply the motion technical checks, then run `approve motion/coast-talent-nod <n> --trim-start <s>` (Coast set; `<s>` is `0` unless the clip opens with a black or faded frame) and `approve motion/coast-standby-loop <n>`.
 9. Run `npm run brand:build`, then `npm run brand:check -- --contact-sheet ../docs/redesign/after/brand-contact-sheet.png`, then `npm run build`.
 10. Commit only these files:
     - `public/brand/**` and `public/favicon.ico`;
@@ -1250,30 +1524,55 @@ export function resolveBrandId(id: BrandImageId | BrandVideoId): keyof typeof br
     - `scripts/brand/approved.json`;
     - `scripts/brand/spend.jsonl` (every paid submit of this run and of any earlier session, §13.3.4);
     - `docs/redesign/after/brand-contact-sheet.png` (from the repository root; every other path in this list is under `dashboard/`).
-11. Fill in the PR body, under "Owner-decision evidence":
-    - the contact sheet: `![Brand finals](https://github.com/gratitude5dee/5dee-tv/blob/<branch>/docs/redesign/after/brand-contact-sheet.png?raw=true)`;
-    - the `plan --ledger` output, computed over the committed `spend.jsonl` (ledger total ≤ $40.00);
-    - the endpoint that produced each asset (from `approved.json`), including every fallback taken;
-    - under "Deferred / blocked": `Coast sign-off on brand finals (D5/D9)`.
+11. Fill in the PR body:
+    - **Deviations first.** Run `npm run brand:plan -- --deviations`. If it prints anything, the PR body starts with a `## Deviation from request` section that contains exactly its lines (`- <id> → <endpoint used> → <reason> (requested <requested>)`, §13.2 item 5), before every other section.
+    - Under "Owner-decision evidence":
+      - the contact sheet: `![Brand finals](https://github.com/gratitude5dee/5dee-tv/blob/<branch>/docs/redesign/after/brand-contact-sheet.png?raw=true)`;
+      - the brand mode and which Coast input it used, by variable name only;
+      - the `plan --ledger` output, computed over the committed `spend.jsonl` (ledger total ≤ $40.00);
+      - the endpoint that produced each asset (from `approved.json`), including every fallback taken.
+    - Under "Deferred / blocked":
+      - mode 3: `Coast sign-off on brand finals (D5/D9)`, and, as its own item, `Coast approves the PX blue-ramp stylisation (skin mapped to #05080F–#7AA5E0)`. The body asks Coast, through the owner, to review the contact sheet's `PX STYLISATION · COAST SIGN-OFF` band, and says that a declined stylisation is answered with the comment `PX-NATURAL`;
+      - mode 2: `Coast set not generated: no Coast input (add COAST_SHEET_URL or COAST_REF_URLS as a Devin secret; goal.md §2.1)`;
+      - the open §1.8 item 4 sheet question, while unanswered, and each id that the replacement order left on its no-likeness version.
 
-    Devin does not merge this PR. The user merges it after Coast signs off.
+    Devin does not merge this PR. The user merges it; in mode 3, after Coast signs off.
+12. **Owner comments after the PR is open.** Each counts only as the user's comment on the brand PR (§2.3). After each, Devin repeats steps 9–11 and updates the PR:
+    - `REROLL <asset-id>`: run that asset once more with `--reroll 1` (tier final; a Coast `motion/*` asset then uses `minimax/h3/reference-to-video`, a deviation), apply the technical checks, and `approve` it.
+    - `PX-NATURAL` (Coast declines the blue-ramp stylisation): for `loader/coast-boot`, `avatar/coast-px` and each `slate/*` whose entry has `likeness: true`, run `node --experimental-strip-types scripts/brand/generate.mts approve <id> --quantize px-natural`. No fal call is made (§13.6.0), and the rest of the PX system is unchanged. The sign-off item then reads `Coast approves the PX-natural stylisation`.
 
-**Review rubric** for `approve`. Reject a variant if any line applies:
-- The face, hairline, hairstyle, skin tone or proportions differ from Image 1 or the references.
-- There is any second person or face, any text, letter, digit or logo, a border or frame around the whole image, or a grid line. Frames that a subject asks for (the `shotboard` and `clips` slates) are allowed (§13.5 Note).
-- Composition: Coast is outside the stated third or band, the reserved empty space is busy, or the `not-found` CRT is off centre.
-- CHROME only: the skin reads blue.
-- PX only: after `build`, BC-06 fails, or the 32×32 or 16×16 master is unreadable.
-- Motion: identity drifts, anything besides the prompted motion moves, or the nod does not return to the start pose within the kept 2 s.
+**Technical checks** (Devin's variant selection). Devin approves a variant when every check that applies to it passes. These checks never cover likeness or identity (§1.8 item 4), and `approvedBy: 'devin'` records a technical approval only.
+- **Dimensions and format.** The raw has the requested `image_size` and is a PNG (stills), or is an MP4 (motion). After `build`, BC-01, BC-02 and BC-03 pass.
+- **Alpha** (transparent assets). After the alpha threshold or magenta key, the top-left and top-right 16×16 blocks of the raw are fully transparent. After `build`, BC-05 passes.
+- **Palette and quantisation.** After `build`, BC-06 passes, and each PX art master (the 32×32 and 16×16 masters, the 8 loader frames and the 192×128 slates) has between 10% and 90% opaque pixels.
+- **Artifacts.** The variant shows none of these: text, letters, digits or logos; a border or frame around the whole image (frames that a subject asks for, in the `shotboard` and `clips` slates, are allowed, §13.5 Note); a grid line; a second person or face (Coast set), or any person, face or hand (no-likeness set); extra or missing limbs; on the sheet, anything other than the nine views of `SHEET(n)`.
+- **Composition safe areas**, measured on the built art master or cell grid, with luminance `(0.2126 R + 0.7152 G + 0.0722 B) / 255`:
+  - `slate/*`: the alpha bounding box of the 192×128 master lies inside x 23–168 and y 10–117 (the central 76% × 84%).
+  - `slate/not-found`: the largest 4-connected region of `#05080F` pixels enclosed by the CRT (its blank screen) is at least 40×18 art pixels, and its centre is within 4 art pixels of (96, 64).
+  - `standby/coast-16x9`: in the 640×360 grid, the right two-thirds (x ≥ 214) have a mean luminance ≤ 0.18, and at most 3% of their pixels have a luminance > 0.5. `standby/coast-9x16` (360×640) and `standby/coast-1x1` (640×640): the same for the bottom 45% (y ≥ 352).
+  - `share/og`: in the 600×316 grid, the same rule for the left 55% (x < 330).
+- **Frame-to-frame consistency** (motion; on the extracted 24 fps frames, before quantising):
+  - no cut: every pair of consecutive frames differs by a mean `|ΔRGB| / 255` of at most 0.08;
+  - `motion/coast-talent-nod`: the last kept frame (2.0 s) differs from the first by a mean of at most 0.03, so the nod returns to the start pose;
+  - `motion/coast-standby-loop`: `seamDelta` (§13.6.7) is at most 0.10 before the crossfade;
+  - `loader/coast-boot`: the loader check (§13.6.2).
+- A variant that fails gets one `--reroll 1` (§13.3.3). If the reroll fails too, Devin approves the variant that fails the fewest checks and lists `<id>: <check> failed after reroll` under "Deferred / blocked".
 
-**Without `FAL_KEY` or without references (keyless; part 3B, which runs this even when `FAL_KEY` is set):**
+**Likeness sign-off** (human only: the owner and Coast, on the contact sheet, before merge; never Devin):
+- whether Coast's face, hairline, hairstyle, skin tone and proportions match Image 1, in every still and clip;
+- CHROME: whether the skin reads natural, never blue;
+- the PX blue-ramp stylisation of Coast (the `PX STYLISATION · COAST SIGN-OFF` band). If Coast declines it, the owner comments `PX-NATURAL` (step 12).
+
+A rejected asset comes back as the owner's `REROLL <asset-id>` comment (step 12).
+
+**Without `FAL_KEY` (mode 1, keyless; part 3B, which runs this even when `FAL_KEY` is set):**
 1. Run `npm run brand:build`. It writes the placeholders and the derived wordmark, masks and icons.
 2. Run `npm run brand:check`.
-3. Run `npm run brand:plan` and paste the table (price source `fallback`) into the PR, so a human can run the procedure above later.
+3. Run `npm run brand:plan -- --likeness none` and `npm run brand:plan -- --likeness coast`, and paste both tables (price source `fallback`) into the PR, so a human can run the procedure above later.
 4. Commit the pipeline, `lib/pixelFont.json` (§13.6.10), the placeholder and derived outputs, `lib/brandAssets.ts`, `public/brand/manifest.json`, `components/boot/masks.ts`, and `approved.json` containing `{ "version": 1, "sheet": null, "assets": {} }`.
-5. Never ask for, wait for, or embed a key. The PR states: "Brand art is placeholder (`generated:false`). Run §13.10 with `FAL_KEY` and `COAST_REF_URLS` to replace it."
+5. Never ask for, wait for, or embed a key. The PR states: "Brand art is placeholder (`generated:false`). Run §13.10 with `FAL_KEY` (the no-likeness set) and `COAST_SHEET_URL` or `COAST_REF_URLS` (the Coast set) to replace it."
 
-**Cut order** (bible §0.7): if time or budget runs short, drop `motion/coast-talent-nod` first, then `motion/coast-standby-loop` (poster only). A dropped motion asset keeps its manifest entry with `sources: []`.
+**Cut order** (§17.2): `motion/coast-talent-nod` is an early cut, and `motion/coast-standby-loop` is one of the last cuts, just before the never-cut list. A dropped motion asset keeps its manifest entry with `sources: []`. While `FAL_KEY` exists, `loader/coast-boot` never falls back to a placeholder: its grid path makes the same files (§13.6.2).
 
 ### 13.11 Acceptance criteria
 
@@ -1287,22 +1586,53 @@ Working directory (§1.5): commands whose paths start with `dashboard/`, `docs/`
 - [ ] With no `FAL_KEY` in the environment: `npm run brand:build` exits 0; running it a second time leaves `git status --porcelain` unchanged; `npm run brand:check` exits 0.
 - [ ] `build` and `check` are offline (§13.3.7): `env -u FAL_KEY node --experimental-strip-types --import ./scripts/brand/no-network.mjs scripts/brand/generate.mts build && env -u FAL_KEY node --experimental-strip-types --import ./scripts/brand/no-network.mjs scripts/brand/generate.mts check` exits 0.
 - [ ] `env -u FAL_KEY -u CI node --experimental-strip-types --import ./scripts/brand/no-network.mjs scripts/brand/generate.mts run --tier draft` exits 3, and its output contains no `network disabled`. `CI=1 FAL_KEY=x npm run brand:gen -- --tier draft --dry-run` exits 5.
-- [ ] Reference gate (§13.4): `env -u CI -u COAST_REF_URLS FAL_KEY=x node --experimental-strip-types --import ./scripts/brand/no-network.mjs scripts/brand/generate.mts run --tier draft --dry-run` exits 3 and prints `no approved Coast references (D5): COAST_REF_URLS is empty`. Devin never places a file in `.cache/refs/` for this check. **Human operator only:** with one PNG at the top level of `scripts/brand/.cache/refs/`, the same command still exits 3.
+- [ ] Coast input gate (§13.4): this command exits 3 and prints `no approved Coast input (D5): COAST_SHEET_URL and COAST_REF_URLS are empty`. Devin never places a file in `.cache/refs/` for this check. **Human operator only:** with one PNG at the top level of `scripts/brand/.cache/refs/`, the same command still exits 3.
+
+  ```bash
+  env -u CI -u COAST_SHEET_URL -u COAST_REF_URLS FAL_KEY=x node --experimental-strip-types --import ./scripts/brand/no-network.mjs scripts/brand/generate.mts run --tier draft --dry-run --likeness coast
+  ```
+
+- [ ] No-likeness default (mode 2, §13.3.3): this command exits 0. Its output contains the line `No Coast input: generating the no-likeness set (likeness:false, goal.md D5).` and the id `loader/coast-pose`, and does not contain `coast-brand-sheet-v1`.
+
+  ```bash
+  env -u CI -u COAST_SHEET_URL -u COAST_REF_URLS FAL_KEY=x node --experimental-strip-types --import ./scripts/brand/no-network.mjs scripts/brand/generate.mts run --tier draft --dry-run
+  ```
+
 - [ ] `FAL_KEY=test-key-1234567890abcdef npm run brand:plan 2>&1 | grep -c "test-key-1234567890abcdef"` prints `0`, the first line of the output names the Node version, and every row shows a `PRICE SOURCE` value.
 - [ ] `node --experimental-strip-types --input-type=module -e "const {redact}=await import('./scripts/brand/util.mts'); process.exit(redact('https://v3.fal.media/files/a/b.png').includes('fal.media')?1:0)"` exits 0 (§13.3.7).
+- [ ] `COAST_SHEET_URL=https://example.com/coast-sheet.png node --experimental-strip-types --input-type=module -e "const {redact}=await import('./scripts/brand/util.mts'); process.exit(redact('from https://example.com/coast-sheet.png').includes('example.com')?1:0)"` exits 0 (the user's sheet URL is redacted to `sheet-url`, §13.3.7).
 - [ ] `grep -rnE "sdk-proxy|/api/fal|proxyUrl" dashboard/scripts/brand` prints nothing. `grep -rln "@fal-ai/client" dashboard/scripts/brand` prints only `fal.mts`. `grep -rnE "from ['\"][^'\"]*scripts/brand" dashboard/app dashboard/components dashboard/lib dashboard/hooks` prints nothing.
-- [ ] `node --experimental-strip-types --input-type=module -e "const a=await import('./scripts/brand/assets.mts'); for (const x of a.ASSETS) if (x.size) a.assertImageSize(x.size); let t=0; try { a.assertImageSize({width:2048,height:600}) } catch { t=1 }; process.exit(t?0:1)"` exits 0.
-- [ ] Keyless: `node -e "const m=require('./public/brand/manifest.json');process.exit(Object.values(m.assets).every(a=>a.generated===false)?0:1)"` exits 0, `cat scripts/brand/approved.json` prints `{ "version": 1, "sheet": null, "assets": {} }` (ignoring whitespace), and `test ! -e scripts/brand/spend.jsonl` succeeds.
+- [ ] `node --experimental-strip-types --input-type=module -e "const a=await import('./scripts/brand/assets.mts'); for (const x of a.ASSETS) { if (x.size) a.assertImageSize(x.size); if (x.grid) a.assertImageSize(x.grid.size) } let t=0; try { a.assertImageSize({width:2048,height:600}) } catch { t=1 }; process.exit(t?0:1)"` exits 0.
+- [ ] Keyless: `node -e "const m=require('./public/brand/manifest.json');process.exit(Object.values(m.assets).every(a=>a.generated===false&&a.likeness===false)?0:1)"` exits 0, `cat scripts/brand/approved.json` prints `{ "version": 1, "sheet": null, "assets": {} }` (ignoring whitespace), and `test ! -e scripts/brand/spend.jsonl` succeeds.
+- [ ] Keyless: `cat dashboard/app/opengraph-image.alt.txt` prints exactly `The chrome WZRD.tech wordmark and the line STREAM.WZRD.TECH over a blue pixel-dither field.`, `cmp dashboard/app/opengraph-image.alt.txt dashboard/app/twitter-image.alt.txt` exits 0, and `grep -l "Pixel-art" dashboard/app/opengraph-image.alt.txt dashboard/app/twitter-image.alt.txt` prints nothing (§13.6.9, BC-15).
 - [ ] Every file in §13.9's table exists with the listed dimensions and within its budget. The image total is ≤ 2,621,440 B and the video total ≤ 6,291,456 B (BC-01…BC-04 pass).
 - [ ] `file dashboard/public/favicon.ico` reports 3 icons, and `test ! -e dashboard/app/favicon.ico` succeeds. In prod (§1.6), `curl -s localhost:3109/favicon.ico | head -c 4 | xxd -p` prints `00000100`.
 - [ ] In prod (§1.6), `curl -s -o /dev/null -w '%{http_code}' localhost:3109<path>` prints `200` for each `<path>` of `/manifest.webmanifest`, `/icon.svg`, `/apple-icon.png`, `/opengraph-image.png`, `/twitter-image.png`, `/brand/icons/favicon-onair.svg` and `/brand/loader/coast-boot-strip@2x.png`. The HTML of `curl -s localhost:3109/admin` contains `og:image` and `rel="manifest"`.
 - [ ] `grep -rlE "coast-brand-sheet-v1|/\.cache/" dashboard/public dashboard/app` prints nothing, and BC-08 passes: no raw, reference or master sheet is under `public/` or `app/`.
 - [ ] `grep -rniE "coast[^.]{0,80}\b(he|him|his|she|her|hers)\b" dashboard/scripts/brand` prints nothing (D9).
-- [ ] `node --experimental-strip-types --input-type=module -e "const {ASSETS}=await import('./scripts/brand/assets.mts'); const ok=ASSETS.filter(a=>a.size).every(a=>a.prompt(3).includes('\nConstraints: ')) && ASSETS.filter(a=>a.tier==='CHROME').every(a=>a.images.join()==='coast-brand-sheet,wzrdtech-wordmark'); process.exit(ok?0:1)"` exits 0.
+- [ ] This exits 0: every still prompt (both variants, and both loader grid variants) has a Constraints line; every CHROME Coast variant sends the sheet and the wordmark and every CHROME no-likeness variant sends no image; no no-likeness prompt contains "Coast" or sends an image token; and only `coast-brand-sheet-v1` and `motion/coast-talent-nod` lack a no-likeness variant (§13.5, §13.6).
+
+  ```bash
+  node --experimental-strip-types --input-type=module -e "
+  const {ASSETS}=await import('./scripts/brand/assets.mts')
+  const stills=ASSETS.filter(a=>a.size).flatMap(a=>[a.coast,a.none]).concat(ASSETS.filter(a=>a.grid).flatMap(a=>[a.grid.coast,a.grid.none])).filter(Boolean)
+  const nones=ASSETS.flatMap(a=>[a.none,a.grid?.none]).filter(Boolean)
+  const ok=stills.every(v=>v.prompt(3).includes('\nConstraints: '))
+    && ASSETS.filter(a=>a.tier==='CHROME').every(a=>a.coast.images.join()==='coast-brand-sheet,wzrdtech-wordmark'&&a.none.images.length===0)
+    && nones.every(v=>!/coast/i.test(v.prompt(0))&&v.images.length===0)
+    && ASSETS.filter(a=>a.tier!=='DERIVED'&&a.none===null).map(a=>a.id).join()==='coast-brand-sheet-v1,motion/coast-talent-nod'
+  process.exit(ok?0:1)"
+  ```
+
 - [ ] The loader strip's 8th 128×128 frame is pixel-identical to its 1st (BC-07).
 - [ ] From 5C, in fixture mode (§1.6): the `#ds-brand` `CoastLoader`s (64 and 128) show the strip, and the console has no 404.
 - [ ] `lib/brandAssets.ts` exports `brandAssets`, `brandAliases`, `BrandImageId`, `BrandVideoId` and `resolveBrandId`. `resolveBrandId('standby-16x9') === 'standby/coast-16x9'` and `resolveBrandId('coast-standby-loop') === 'motion/coast-standby-loop'`.
 - [ ] From 5C, keyless, in fixture mode (§1.6): `#ds-brand` renders `<BrandVideo id="motion/coast-standby-loop">` as the `standby/coast-16x9` poster `<img>` with no `<video>`, and the page makes no request whose path starts with `/brand/motion/`.
-- [ ] D5 run only: `approved.json` has one entry per generated asset and a non-null `sheet`; `check` passes BC-09; `scripts/brand/spend.jsonl` is committed with one line per paid submit, and `plan --ledger` over it prints a total ≤ $40.00; the PR body shows the contact sheet image, that total and the endpoint used for each asset; the PR is left unmerged until Coast signs off.
+- [ ] D5 run only: `approved.json` has one entry per generated asset; `check` passes BC-09 and BC-15; `scripts/brand/spend.jsonl` is committed with one line per paid submit, and `plan --ledger` over it prints a total ≤ $40.00; the PR body shows the contact sheet image, that total and the endpoint used for each asset; the PR is left unmerged for the user.
+- [ ] D5 run only, mode 2: `approved.json` `sheet` is `null`, and every entry has `likeness: false` and `sheetSha256: null`. `cat dashboard/app/opengraph-image.alt.txt` prints exactly `Key art of the WZRD.tech control booth beside the chrome wordmark and the line STREAM.WZRD.TECH`. "Deferred / blocked" lists `Coast set not generated: no Coast input (add COAST_SHEET_URL or COAST_REF_URLS as a Devin secret; goal.md §2.1)`.
+- [ ] D5 run only, mode 3: `approved.json` `sheet` is non-null, and its `source` is `'user'` or its `approvedBy` is the owner who commented `APPROVE coast-brand-sheet <n>` (never `devin`). Every entry with `likeness: true` has `sheetSha256` equal to `sheet.raw.sha256`. When the OG art is Coast's, `cat dashboard/app/opengraph-image.alt.txt` prints exactly `Key art of Coast beside the chrome WZRD.tech wordmark and the line STREAM.WZRD.TECH`. The contact sheet starts with the `PX STYLISATION · COAST SIGN-OFF` band, and "Deferred / blocked" lists `Coast sign-off on brand finals (D5/D9)` and `Coast approves the PX blue-ramp stylisation (skin mapped to #05080F–#7AA5E0)` as separate items. The PR is left unmerged until Coast signs off.
+- [ ] D5 run only: `approved.json` `loader/coast-boot` has `build.path: 'motion'` (and `loader/coast-pose` has an entry with `outputs: {}`), or `build.path: 'grid'` with a non-null `deviation`.
+- [ ] D5 run only: when `npm run brand:plan -- --deviations` prints anything, the brand PR body starts with `## Deviation from request` followed by exactly those lines; when it prints nothing, the body has no such section (§13.2 item 5).
+- [ ] D5 run only, after a `PX-NATURAL` comment: every `loader/coast-boot`, `avatar/coast-px` and `slate/*` entry with `likeness: true` has `build.quantize: 'px-natural'`, BC-06 passes, the contact-sheet band reads `PX-NATURAL · COAST SIGN-OFF`, and the commit that applies it adds no line to `scripts/brand/spend.jsonl` (no new call).
 - [ ] D5 run only: with the approved motion raws in `.cache`, running `npm run brand:build` a second time leaves `git status --porcelain` unchanged (byte-identical video, §13.6.7).
 - [ ] D5 run only: `git log -p -- dashboard/scripts/brand/approved.json dashboard/scripts/brand/spend.jsonl | grep -cE "https?://|Key [A-Za-z0-9]"` prints `0`.

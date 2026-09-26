@@ -4,7 +4,7 @@
 
 # PIXEL INSTRUMENT: canonical design bible for the stream.wzrd.tech admin
 
-**Status:** canonical. This document is binding for every section of `goal.md`. If a section writer's text conflicts with this bible, the bible wins. Every repo claim below was re-verified against the code on 2026-09-25; the verification notes are marked **[v]**.
+**Status (historical):** this bible was binding for the section writers while the spec was drafted. It is now a rationale record: `goal.md` and `docs/redesign/spec/` win on every conflict (see the precedence note above). Every repo claim below was re-verified against the code on 2026-09-25; the verification notes are marked **[v]**.
 
 **Glossary. Use these words exactly.**
 
